@@ -86,6 +86,48 @@ Buka:
 
 - [http://localhost:3010](http://localhost:3010)
 
+### 3b. WhatsApp Vira (opsional)
+
+Vira memakai Baileys di **proses terpisah** (bukan di dalam `next dev`).
+
+```bash
+# terminal 1
+npm run dev
+
+# terminal 2
+npm run wa:vira
+```
+
+Lalu di app: menu **WhatsApp (Vira)** → pilih rekening default → **Connect** → scan QR dari HP.
+
+Auth session tersimpan di `.wa-auth/` (diabaikan Git). QR yang expired diganti otomatis di halaman yang sama.
+
+#### Cara ngetik di WhatsApp
+
+Kirim ke chat diri sendiri (atau nomor yang diizinkan). Format: **deskripsi + jumlah** (jumlah di akhir).
+
+| Contoh | Arti |
+| --- | --- |
+| `makan 50rb` | Expense Food Rp50.000 |
+| `kopi 35k` | Expense Food Rp35.000 |
+| `gojek 25.000` | Expense Transport Rp25.000 |
+| `isi bensin 200rb` | Expense Fuel Rp200.000 |
+| `bayar parkir 5rb` | Expense Parking Rp5.000 |
+| `isi flazz 100rb` | Expense Parking (Flazz/e-toll) Rp100.000 |
+| `belanja 150rb` | Expense Lifestyle Rp150.000 |
+| `gaji 10jt` | Income Salary Rp10.000.000 |
+| `freelance 2 juta` | Income Freelance Rp2.000.000 |
+| `expense kopi 35k` | Paksa tipe expense |
+| `income project 500rb` | Paksa tipe income |
+| `total pengeluaran` | Total expense bulan ini |
+| `pengeluaran hari ini` | Total expense hari ini |
+| `total pemasukan` | Total income bulan ini |
+| `ringkasan` | Pengeluaran + pemasukan |
+
+Jumlah yang dikenali: `50rb`, `50 ribu`, `35k`, `25.000`, `1.5jt`, `10 juta`.
+
+Ketik `help`, `bantuan`, `vira`, atau `menu` di WA untuk daftar contoh yang sama.
+
 > Port default app ini **3010** (3000 biasanya Umami; 3001–3003 sering bentrok).
 > `127.0.0.1:3010` juga bisa.
 
@@ -123,6 +165,8 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 | `npm run lint` | ESLint |
 | `npm run smoke:money` | Smoke test util uang (minor units) |
 | `npm run smoke:phase2` | Smoke test math Phase 2 |
+| `npm run smoke:wa-parse` | Smoke test parser nominal WA |
+| `npm run wa:vira` | Worker Baileys (asisten WhatsApp Vira) |
 
 ---
 
@@ -140,6 +184,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 | `/goals` | Target tabungan |
 | `/reports` | Ringkasan chart |
 | `/settings` | Profil & theme |
+| `/whatsapp` | Vira: status WA, QR scan, rekening default |
 
 ### Phase 2 — Intelligence
 
@@ -168,6 +213,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 /api/reports/monthly
 /api/financial-context
 /api/ai/chat
+/api/whatsapp
 ```
 
 ---
@@ -178,6 +224,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 - Transfer **bukan** expense.
 - Semua angka finansial dihitung **backend (deterministic)**.
 - AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang.
+- WhatsApp Vira menulis transaksi lewat **parser deterministik** → `createTransaction` (bukan OpenRouter).
 - Smart Budget **tidak** menimpa budget sebelum user klik Accept.
 
 ---

@@ -23,6 +23,7 @@ export const authConfig = {
         pathname.startsWith("/reports") ||
         pathname.startsWith("/insights") ||
         pathname.startsWith("/simulator") ||
+        pathname.startsWith("/whatsapp") ||
         pathname.startsWith("/settings");
 
       if (isAuthPage) {

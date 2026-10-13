@@ -18,6 +18,7 @@ import {
   FlaskConical,
   CalendarRange,
   Receipt,
+  MessageCircle,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -64,7 +65,14 @@ const navGroups = [
   },
   {
     label: "System",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      {
+        href: "/whatsapp",
+        label: "WhatsApp (Vira)",
+        icon: MessageCircle,
+      },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
   },
 ];
 

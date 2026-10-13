@@ -162,3 +162,16 @@ export const createFixedCostSchema = z.object({
 export const updateFixedCostSchema = createFixedCostSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
+
+export const whatsappActionSchema = z.object({
+  action: z.enum(["start", "stop", "logout"]),
+});
+
+export const updateWhatsappSchema = z.object({
+  defaultAccountId: z.string().min(1).nullable().optional(),
+  allowedFrom: z
+    .string()
+    .regex(/^\d{8,20}$/, "allowedFrom must be digits only (e.g. 62812...)")
+    .nullable()
+    .optional(),
+});

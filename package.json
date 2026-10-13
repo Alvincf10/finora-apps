@@ -8,10 +8,13 @@
     "start": "next start -H 0.0.0.0 -p 3010",
     "lint": "eslint",
     "smoke:money": "node scripts/smoke-money.mjs",
-    "smoke:phase2": "node scripts/smoke-phase2.mjs"
+    "smoke:phase2": "node scripts/smoke-phase2.mjs",
+    "smoke:wa-parse": "node scripts/smoke-wa-parse.mjs",
+    "wa:vira": "tsx --tsconfig tsconfig.json scripts/wa-vira.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@whiskeysockets/baileys": "^6.7.22",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -21,6 +24,8 @@
     "next": "16.3.8",
     "next-auth": "^5.0.0-beta.32",
     "next-themes": "^0.4.6",
+    "pino": "^10.4.0",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",
@@ -36,9 +41,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^18.0.7",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
