@@ -1,36 +1,224 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finly
 
-## Getting Started
+**Finly** = **Fin**ance + **-ly** — finance yang ringan & gampang dipakai (*finance, made simple*).
 
-First, run the development server:
+Aplikasi personal finance management (Phase 1 + Phase 2).
+
+- **Phase 1** — ledger: accounts, transactions, budget, debts, goals, dashboard
+- **Phase 2** — financial intelligence: smart budget, insights, forecast, simulator, monthly review
+
+PRD: `prd/phase1.md`, `prd/phase2.md`
+
+---
+
+## Stack
+
+| Layer | Tech |
+| --- | --- |
+| Frontend | Next.js 16 (App Router), React, TypeScript, Tailwind, shadcn/ui, Recharts |
+| Backend | Next.js Route Handlers, Zod |
+| Database | MongoDB + Mongoose |
+| Auth | Auth.js (credentials / email + password) |
+| AI (opsional) | OpenRouter abstraction — penjelasan saja, tidak mengubah data uang |
+
+---
+
+## Prerequisites
+
+- **Node.js** 20+ (disarankan LTS)
+- **MongoDB** lokal atau MongoDB Atlas
+- npm
+
+Cek MongoDB lokal:
+
+```bash
+# Homebrew (macOS)
+brew services start mongodb-community
+
+# atau pastikan port 27017 terbuka
+nc -z 127.0.0.1 27017 && echo "Mongo OK"
+```
+
+---
+
+## Cara running (local)
+
+### 1. Install dependencies
+
+```bash
+cd money_management
+npm install
+```
+
+### 2. Environment
+
+```bash
+cp .env.example .env.local
+```
+
+Isi minimal di `.env.local`:
+
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017/money_management
+AUTH_SECRET=ganti-dengan-string-acak-minimal-32-karakter
+AUTH_URL=http://localhost:3010
+AUTH_TRUST_HOST=true
+NEXT_PUBLIC_APP_NAME=Finly
+
+# Opsional — tombol "AI explain" di dashboard
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openai/gpt-4o-mini
+```
+
+Generate `AUTH_SECRET` cepat:
+
+```bash
+openssl rand -base64 32
+```
+
+### 3. Jalankan development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- [http://localhost:3010](http://localhost:3010)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> Port default app ini **3010** (3000 biasanya Umami; 3001–3003 sering bentrok).
+> `127.0.0.1:3010` juga bisa.
 
-## Learn More
+### 4. Akun pertama
 
-To learn more about Next.js, take a look at the following resources:
+1. Buka `/register`
+2. Buat akun (email + password min. 8 karakter)
+3. Login → buat **Account** → catat **Transaction**
+4. Baru pakai Budget / Smart Budget / Insights
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> Insight & smart budget lebih berguna kalau ada data history (idealnya ≥ 2–3 bulan transaksi).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Production build (local)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run build
+npm run start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+App listen di port `3010`.
+
+---
+
+## Scripts
+
+| Command | Fungsi |
+| --- | --- |
+| `npm run dev` | Development (Turbopack) |
+| `npm run build` | Production build |
+| `npm run start` | Jalankan hasil build |
+| `npm run lint` | ESLint |
+| `npm run smoke:money` | Smoke test util uang (minor units) |
+| `npm run smoke:phase2` | Smoke test math Phase 2 |
+
+---
+
+## Fitur & halaman
+
+### Phase 1 — Money core
+
+| Route | Isi |
+| --- | --- |
+| `/dashboard` | KPI, cash flow, budget, recent txs |
+| `/transactions` | Income / expense / transfer |
+| `/accounts` | Rekening & saldo |
+| `/budget` | Budget bulanan per kategori |
+| `/debts` | Hutang + pembayaran |
+| `/goals` | Target tabungan |
+| `/reports` | Ringkasan chart |
+| `/settings` | Profil & theme |
+
+### Phase 2 — Intelligence
+
+| Route | Isi |
+| --- | --- |
+| `/budget/recommendation` | Smart Budget (generate → adjust → accept) |
+| `/insights` | Recommendation center + evidence |
+| `/reports/monthly` | Monthly review & vs bulan lalu |
+| `/simulator` | What-if + debt scenarios + emergency fund |
+
+### API utama
+
+```text
+/api/accounts
+/api/transactions
+/api/budgets
+/api/debts
+/api/goals
+/api/dashboard
+
+/api/analytics
+/api/budget/recommendation
+/api/insights
+/api/forecast
+/api/simulator
+/api/reports/monthly
+/api/financial-context
+/api/ai/chat
+```
+
+---
+
+## Aturan penting (uang & AI)
+
+- Jumlah disimpan sebagai **integer minor units** (IDR = rupiah utuh, EUR = cents).
+- Transfer **bukan** expense.
+- Semua angka finansial dihitung **backend (deterministic)**.
+- AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang.
+- Smart Budget **tidak** menimpa budget sebelum user klik Accept.
+
+---
+
+## Troubleshooting
+
+**Tidak bisa login / tombol Sign in tidak bereaksi**
+
+- Pakai `http://localhost:3010` atau `http://127.0.0.1:3010` secara konsisten.
+- Hard refresh browser.
+- Pastikan `AUTH_SECRET` dan `AUTH_URL` di `.env.local` terisi, lalu restart `npm run dev`.
+
+**Error Mongo / register gagal**
+
+- Pastikan MongoDB running dan `MONGODB_URI` benar.
+- Untuk Atlas, pakai connection string lengkap + user/password.
+
+**Port 3010 sudah dipakai**
+
+```bash
+lsof -ti:3010 | xargs kill -9
+npm run dev
+```
+
+**OpenRouter / AI explain gagal**
+
+- Normal jika `OPENROUTER_API_KEY` kosong. Fitur ledger tetap jalan tanpa AI.
+
+---
+
+## Struktur singkat
+
+```text
+src/
+  app/                 # pages + API routes
+  components/          # UI + app shell
+  lib/financial/       # engine Phase 1 & Phase 2
+  lib/ai/              # OpenRouter provider
+  models/              # Mongoose schemas
+prd/
+  phase1.md
+  phase2.md
+scripts/
+  smoke-money.mjs
+  smoke-phase2.mjs
+```
