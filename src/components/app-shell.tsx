@@ -119,7 +119,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/80 p-4 backdrop-blur md:flex">
           <div className="mb-6 px-2">
             <p className="font-heading text-xl font-semibold tracking-tight text-emerald-800 dark:text-emerald-300">
-              Finly
+              Finora
             </p>
             <p className="text-xs text-muted-foreground">
               Financial intelligence
@@ -156,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SheetContent side="left" className="w-72 overflow-y-auto">
                 <SheetHeader>
                   <SheetTitle className="font-heading text-emerald-800">
-                    Finly
+                    Finora
                   </SheetTitle>
                 </SheetHeader>
                 <div className="mt-6">
@@ -164,7 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               </SheetContent>
             </Sheet>
-            <p className="font-heading font-semibold">Finly</p>
+            <p className="font-heading font-semibold">Finora</p>
           </header>
           <main className="flex-1 p-4 md:p-8">{children}</main>
         </div>

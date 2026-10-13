@@ -1,6 +1,6 @@
-# Finly
+# Finora
 
-**Finly** = **Fin**ance + **-ly** — finance yang ringan & gampang dipakai (*finance, made simple*).
+**Finora** = **Fin**ance + **ora** (horizon) — finance yang jelas ke depannya (*finance with a clear horizon*).
 
 Aplikasi personal finance management (Phase 1 + Phase 2).
 
@@ -46,7 +46,7 @@ nc -z 127.0.0.1 27017 && echo "Mongo OK"
 ### 1. Install dependencies
 
 ```bash
-cd money_management
+cd finora
 npm install
 ```
 
@@ -59,11 +59,11 @@ cp .env.example .env.local
 Isi minimal di `.env.local`:
 
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/money_management
+MONGODB_URI=mongodb://127.0.0.1:27017/finora
 AUTH_SECRET=ganti-dengan-string-acak-minimal-32-karakter
 AUTH_URL=http://localhost:3010
 AUTH_TRUST_HOST=true
-NEXT_PUBLIC_APP_NAME=Finly
+NEXT_PUBLIC_APP_NAME=Finora
 
 # Opsional — tombol "AI explain" di dashboard
 OPENROUTER_API_KEY=
@@ -108,6 +108,8 @@ npm run start
 ```
 
 App listen di port `3010`.
+
+Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-commit.
 
 ---
 

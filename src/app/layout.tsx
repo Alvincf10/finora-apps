@@ -15,7 +15,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finly — Personal Finance",
+  title: "Finora — Personal Finance",
   description:
     "Track income, expenses, budgets, debts, and savings with deterministic financial insights.",
 };

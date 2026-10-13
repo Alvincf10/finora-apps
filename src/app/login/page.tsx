@@ -44,7 +44,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md border-emerald-900/10 shadow-xl">
         <CardHeader>
           <p className="font-heading text-2xl font-semibold text-emerald-800 dark:text-emerald-300">
-            Finly
+            Finora
           </p>
           <CardTitle className="text-xl">Welcome back</CardTitle>
           <CardDescription>
