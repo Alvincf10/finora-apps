@@ -86,6 +86,7 @@ async function loadAppModules() {
   const moneyMod = await import("../src/lib/money");
   const helpMod = await import("../src/lib/whatsapp/help-text");
   const totalsMod = await import("../src/lib/whatsapp/query-totals");
+  const prefixMod = await import("../src/lib/whatsapp/prefix");
   return {
     WhatsAppSession: sessionMod.WhatsAppSession,
     Account: accountMod.Account,
@@ -93,9 +94,12 @@ async function loadAppModules() {
     resolveCategoryId: catMod.resolveCategoryId,
     createTransaction: txMod.createTransaction,
     formatMoney: moneyMod.formatMoney,
-    VIRA_HELP_TEXT: helpMod.VIRA_HELP_TEXT,
+    getViraHelpText: helpMod.getViraHelpText,
     parseTotalsQuery: totalsMod.parseTotalsQuery,
     buildTotalsReply: totalsMod.buildTotalsReply,
+    stripWaPrefix: prefixMod.stripWaPrefix,
+    getWaPrefix: prefixMod.getWaPrefix,
+    formatPrefixExamples: prefixMod.formatPrefixExamples,
   };
 }
 
@@ -283,21 +287,26 @@ function isAllowedSender(
   session: {
     allowedFrom?: string | null;
     phoneNumber?: string | null;
-  }
+  },
+  /** When true, fromMe in any 1:1 chat is OK (user typed on same phone into OpenClaw chat). */
+  hasFinoraPrefix: boolean
 ): boolean {
   const remote = jidToPhone(msg.key.remoteJid);
   const allowed = digitsOnly(session.allowedFrom);
   const self = digitsOnly(session.phoneNumber);
 
   if (msg.key.fromMe) {
-    // Personal-number mode: only "chat with myself" / note to self
-    return !!self && remote === self;
+    // Note-to-self
+    if (self && remote === self) return true;
+    // Same phone, chatting the OpenClaw/Vira contact — allow prefixed commands only
+    if (hasFinoraPrefix) return true;
+    return false;
   }
 
+  // Incoming DM to the bot number
   if (allowed) return remote === allowed;
-  if (self) return remote === self;
-  // First-time (no phone yet): accept non-group DMs until settings are filled
-  return !self && !allowed;
+  // No allowlist set: accept any private DM (single-user bot). Set allowedFrom to lock it down.
+  return true;
 }
 
 async function handleMessage(
@@ -317,9 +326,34 @@ async function handleMessage(
 
   const session = await mods.WhatsAppSession.findOne({ userId });
   if (!session || session.status !== "connected") return;
-  if (!isAllowedSender(msg, session)) return;
 
-  const lower = text.toLowerCase();
+  // Shared number with OpenClaw: only handle messages with Finora prefix (default "finora ").
+  const stripped = mods.stripWaPrefix(text);
+  if (!stripped.ok) {
+    // Silent ignore — let OpenClaw answer non-prefixed chats
+    return;
+  }
+
+  if (!isAllowedSender(msg, session, true)) {
+    logger.info(
+      {
+        userId,
+        fromMe: msg.key.fromMe,
+        remote: jidToPhone(jid),
+        allowedFrom: session.allowedFrom,
+        phone: session.phoneNumber,
+      },
+      "ignored prefixed message (sender not allowed)"
+    );
+    return;
+  }
+
+  const body = stripped.body;
+  if (!body) return;
+
+  logger.info({ userId, body, fromMe: msg.key.fromMe }, "handling Finora command");
+
+  const lower = body.toLowerCase();
   if (
     lower === "help" ||
     lower === "bantuan" ||
@@ -327,11 +361,11 @@ async function handleMessage(
     lower === "?" ||
     lower === "menu"
   ) {
-    await sock.sendMessage(jid, { text: mods.VIRA_HELP_TEXT });
+    await sock.sendMessage(jid, { text: mods.getViraHelpText() });
     return;
   }
 
-  const totalsQuery = mods.parseTotalsQuery(text);
+  const totalsQuery = mods.parseTotalsQuery(body);
   if (totalsQuery) {
     const reply = await mods.buildTotalsReply(userId, totalsQuery);
     await sock.sendMessage(jid, { text: reply });
@@ -341,14 +375,12 @@ async function handleMessage(
     return;
   }
 
-  const parsed = mods.parseMoneyMessage(text);
+  const parsed = mods.parseMoneyMessage(body);
   if (!parsed) {
-    // Only reply on likely money attempts (contains digits)
-    if (/\d/.test(text)) {
-      await sock.sendMessage(jid, {
-        text: "Vira · format tidak dikenali. Contoh: makan 50rb",
-      });
-    }
+    // Prefixed but not understood — guide user (OpenClaw already skipped)
+    await sock.sendMessage(jid, {
+      text: `Vira · format tidak dikenali. Contoh: ${mods.formatPrefixExamples()}`,
+    });
     return;
   }
 
@@ -476,7 +508,14 @@ async function main() {
   mkdirSync(AUTH_ROOT, { recursive: true });
   await connectMongo();
   const mods = await loadAppModules();
-  logger.info("Vira worker online — waiting for desiredState=running");
+  const prefix = mods.getWaPrefix();
+  logger.info(
+    {
+      prefix: prefix || "(none)",
+      example: mods.formatPrefixExamples(),
+    },
+    "Vira worker online — waiting for desiredState=running"
+  );
 
   for (;;) {
     try {

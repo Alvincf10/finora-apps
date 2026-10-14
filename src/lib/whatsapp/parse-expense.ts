@@ -13,6 +13,7 @@ const EXPENSE_KEYWORDS: Array<{ keys: string[]; category: string }> = [
     keys: [
       "makan",
       "makanan",
+      "jajan",
       "food",
       "nasi",
       "ayam",

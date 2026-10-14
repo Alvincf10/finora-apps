@@ -239,11 +239,10 @@ export default function WhatsAppPage() {
 
           {session?.status === "connected" && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-              Vira aktif. Contoh: <strong>makan 50rb</strong> ·{" "}
-              <strong>isi bensin 200rb</strong> ·{" "}
-              <strong>isi flazz 100rb</strong> ·{" "}
-              <strong>bayar parkir 5rb</strong>. Ketik{" "}
-              <strong>help</strong> di WA untuk daftar lengkap.
+              Vira aktif (prefix <strong>finora </strong> supaya tidak bentrok
+              OpenClaw). Contoh: <strong>finora makan 50rb</strong> ·{" "}
+              <strong>finora total pengeluaran</strong>. Ketik{" "}
+              <strong>finora help</strong> di WA untuk daftar lengkap.
             </div>
           )}
         </CardContent>

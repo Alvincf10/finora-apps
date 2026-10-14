@@ -1,28 +1,41 @@
+import { getWaPrefix } from "@/lib/whatsapp/prefix";
+
 /** Reply when user sends help / bantuan / vira on WhatsApp. */
-export const VIRA_HELP_TEXT = `Vira · cara catat uang
-Format: deskripsi + jumlah (jumlah di akhir)
+export function getViraHelpText(): string {
+  const p = getWaPrefix();
+  const pre = p ? `${p} ` : "";
+
+  return `Vira · cara catat uang
+${
+  p
+    ? `Satu nomor dengan OpenClaw: selalu awali dengan "${p} " supaya Finora yang jawab.\n`
+    : ""
+}
+Format: ${pre}deskripsi + jumlah
 
 Expense:
-• makan 50rb
-• kopi 35k
-• gojek 25.000
-• isi bensin 200rb
-• bayar parkir 5rb
-• isi flazz 100rb
-• belanja 150rb
-• listrik 350rb
+• ${pre}makan 50rb
+• ${pre}kopi 35k
+• ${pre}gojek 25.000
+• ${pre}isi bensin 200rb
+• ${pre}bayar parkir 5rb
+• ${pre}isi flazz 100rb
+• ${pre}belanja 150rb
 
 Income:
-• gaji 10jt
-• freelance 2 juta
+• ${pre}gaji 10jt
+• ${pre}freelance 2 juta
 
 Cek total:
-• total pengeluaran
-• pengeluaran hari ini
-• total pemasukan
-• ringkasan
+• ${pre}total pengeluaran
+• ${pre}pengeluaran hari ini
+• ${pre}total pemasukan
+• ${pre}ringkasan
 
 Jumlah: 50rb / 35k / 25.000 / 1.5jt / 10 juta
-Awalan opsional: expense … / income …
 
-Ketik help kapan saja untuk pesan ini.`;
+Ketik ${pre}help untuk pesan ini.`;
+}
+
+/** @deprecated use getViraHelpText() */
+export const VIRA_HELP_TEXT = getViraHelpText();

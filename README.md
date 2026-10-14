@@ -106,27 +106,33 @@ Auth session tersimpan di `.wa-auth/` (diabaikan Git). QR yang expired diganti o
 
 Kirim ke chat diri sendiri (atau nomor yang diizinkan). Format: **deskripsi + jumlah** (jumlah di akhir).
 
+**Satu nomor dengan OpenClaw:** selalu awali perintah Finora dengan `finora ` (kata + spasi). Pesan tanpa prefix itu diabaikan Vira (biar OpenClaw yang jawab). Ubah/matikan lewat `WA_PREFIX` di `.env.local` (`WA_PREFIX=` = tanpa prefix).
+
 | Contoh | Arti |
 | --- | --- |
-| `makan 50rb` | Expense Food Rp50.000 |
-| `kopi 35k` | Expense Food Rp35.000 |
-| `gojek 25.000` | Expense Transport Rp25.000 |
-| `isi bensin 200rb` | Expense Fuel Rp200.000 |
-| `bayar parkir 5rb` | Expense Parking Rp5.000 |
-| `isi flazz 100rb` | Expense Parking (Flazz/e-toll) Rp100.000 |
-| `belanja 150rb` | Expense Lifestyle Rp150.000 |
-| `gaji 10jt` | Income Salary Rp10.000.000 |
-| `freelance 2 juta` | Income Freelance Rp2.000.000 |
-| `expense kopi 35k` | Paksa tipe expense |
-| `income project 500rb` | Paksa tipe income |
-| `total pengeluaran` | Total expense bulan ini |
-| `pengeluaran hari ini` | Total expense hari ini |
-| `total pemasukan` | Total income bulan ini |
-| `ringkasan` | Pengeluaran + pemasukan |
+| `finora makan 50rb` | Expense Food Rp50.000 |
+| `finora makan di soto belok 50rb` | Deskripsi lengkap + Food |
+| `finora kopi 35k` | Expense Food Rp35.000 |
+| `finora gojek 25.000` | Expense Transport Rp25.000 |
+| `finora isi bensin 200rb` | Expense Fuel Rp200.000 |
+| `finora bayar parkir 5rb` | Expense Parking Rp5.000 |
+| `finora isi flazz 100rb` | Expense Parking (Flazz/e-toll) |
+| `finora gaji 10jt` | Income Salary |
+| `finora total pengeluaran` | Total expense bulan ini |
+| `finora pengeluaran hari ini` | Total expense hari ini |
+| `finora ringkasan` | Pengeluaran + pemasukan |
+| `finora help` | Daftar contoh di WA |
 
-Jumlah yang dikenali: `50rb`, `50 ribu`, `35k`, `25.000`, `1.5jt`, `10 juta`.
+Juga diterima: `finora:makan 50rb`, `finora.makan 50rb`. Jumlah: `50rb`, `35k`, `25.000`, `1.5jt`, `10 juta`.
 
-Ketik `help`, `bantuan`, `vira`, atau `menu` di WA untuk daftar contoh yang sama.
+**OpenClaw (sisi lain):** biar tidak dobel jawab, ajarin / set OpenClaw agar **tidak membalas** pesan yang diawali `finora` (case-insensitive). Contoh instruksi sistem OpenClaw:
+
+```text
+Jika pesan user diawali "finora" (atau "finora:" / "finora."), JANGAN balas sama sekali.
+Pesan itu ditangani aplikasi Finora, bukan kamu.
+```
+
+Kalau OpenClaw punya filter/ignore-prefix di config, tambahkan `finora` di sana.
 
 > Port default app ini **3010** (3000 biasanya Umami; 3001–3003 sering bentrok).
 > `127.0.0.1:3010` juga bisa.
