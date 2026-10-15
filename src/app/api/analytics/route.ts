@@ -5,16 +5,31 @@ import {
   getSpendingAnalytics,
   parsePeriod,
 } from "@/lib/financial/phase2-service";
+import { getCashFlowSeries } from "@/lib/financial/summary";
 
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
-    const period = parsePeriod(new URL(request.url).searchParams);
-    const [profile, spending] = await Promise.all([
+    const searchParams = new URL(request.url).searchParams;
+    const period = parsePeriod(searchParams);
+    const monthsRaw = Number(searchParams.get("months") ?? 6);
+    const months = ([3, 6, 12] as const).includes(monthsRaw as 3 | 6 | 12)
+      ? (monthsRaw as 3 | 6 | 12)
+      : 6;
+
+    const [profile, spending, cashFlow] = await Promise.all([
       getFinancialProfile(userId, period),
-      getSpendingAnalytics(userId, period),
+      getSpendingAnalytics(userId, period, months),
+      getCashFlowSeries(userId, months),
     ]);
-    return ok({ profile, spending, period });
+
+    return ok({
+      profile,
+      spending,
+      cashFlow,
+      period,
+      months,
+    });
   } catch (error) {
     return handleError(error);
   }

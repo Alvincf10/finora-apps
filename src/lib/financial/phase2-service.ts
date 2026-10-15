@@ -24,7 +24,7 @@ import {
   weightedAverage3,
 } from "@/lib/financial/phase2-math";
 import { getBudgetOverview, getFinancialSummary } from "@/lib/financial/summary";
-import { percent } from "@/lib/money";
+import { formatMoney, percent } from "@/lib/money";
 import type {
   CategoryMonthlySpend,
   ExpenseClass,
@@ -34,6 +34,11 @@ import type {
   WhatIfInput,
 } from "@/lib/financial/phase2-types";
 import type { Currency } from "@/types";
+
+const TARGET_EMERGENCY_MONTHS = 3;
+const INCOME_CHANGE_THRESHOLD = 15;
+const DEBT_BURDEN_WARNING = 30;
+const DEBT_BURDEN_CRITICAL = 40;
 
 function periodKey(p: Period) {
   return `${p.year}-${String(p.month).padStart(2, "0")}`;
@@ -243,8 +248,13 @@ function stdStable(values: number[]): boolean {
   return Math.sqrt(variance) / m <= 0.15;
 }
 
-export async function getSpendingAnalytics(userId: string, current: Period) {
-  const data = await buildCategorySpendingSeries(userId, current, 6);
+export async function getSpendingAnalytics(
+  userId: string,
+  current: Period,
+  historyMonths = 6
+) {
+  const months = Math.min(Math.max(historyMonths, 3), 12);
+  const data = await buildCategorySpendingSeries(userId, current, months);
   const now = new Date();
   const isCurrentMonth =
     now.getFullYear() === current.year && now.getMonth() + 1 === current.month;
@@ -359,13 +369,20 @@ export async function generatePhase2Insights(
   period: Period
 ): Promise<InsightRecommendation[]> {
   const insights: InsightRecommendation[] = [];
-  const analytics = await getSpendingAnalytics(userId, period);
-  const budgets = await getBudgetOverview(userId, period);
-  const summary = await getFinancialSummary(userId, period);
-  const profile = await getFinancialProfile(userId, period);
+  const [analytics, budgets, summary, profile, debts, goals] =
+    await Promise.all([
+      getSpendingAnalytics(userId, period),
+      getBudgetOverview(userId, period),
+      getFinancialSummary(userId, period),
+      getFinancialProfile(userId, period),
+      Debt.find({ userId, status: "ACTIVE" }).lean(),
+      SavingsGoal.find({ userId, status: "ACTIVE" }).lean(),
+    ]);
+  const currency = summary.currency ?? profile.currency;
   const now = new Date();
   const elapsed = now.getDate();
   const dim = daysInMonth(period.year, period.month);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   for (const row of analytics) {
     const trendInsight = buildInsightFromTrend(
@@ -383,7 +400,7 @@ export async function generatePhase2Insights(
         type: "UNUSUAL_CATEGORY_SPENDING",
         priority: "HIGH",
         title: `Unusual ${row.categoryName} spending`,
-        message: `${row.categoryName} is above the anomaly threshold (${row.anomaly.threshold}).`,
+        message: `${row.categoryName} bulan ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
         categoryId: row.categoryId,
         currentValue: row.currentAmount,
         evidence: [
@@ -520,6 +537,253 @@ export async function generatePhase2Insights(
       actionType: "VIEW_BUDGET",
       period,
     });
+  }
+
+  // —— Debt payment risk ——
+  const incomeBase =
+    summary.income > 0 ? summary.income : profile.averageMonthlyIncome;
+  const totalDebtObligation = debts.reduce(
+    (sum, d) => sum + (d.plannedPayment ?? d.minimumPayment ?? 0),
+    0
+  );
+
+  for (const debt of debts) {
+    const debtId = debt._id.toString();
+    const obligation = debt.plannedPayment ?? debt.minimumPayment ?? 0;
+
+    if (debt.dueDate && new Date(debt.dueDate) < todayStart) {
+      insights.push({
+        type: "DEBT_PAYMENT_RISK",
+        priority: "HIGH",
+        title: `${debt.name} payment overdue`,
+        message: `Due date for ${debt.name} has passed while the debt is still active.`,
+        debtId,
+        currentValue: debt.remainingAmount,
+        evidence: [
+          {
+            metric: "debt_due_date",
+            current: debt.remainingAmount,
+            dueDate: debt.dueDate,
+          },
+        ],
+        actionType: "VIEW_DEBT",
+        period,
+      });
+    }
+
+    if (debt.remainingAmount > 0 && obligation <= 0) {
+      insights.push({
+        type: "DEBT_PAYMENT_RISK",
+        priority: "MEDIUM",
+        title: `${debt.name} has no payment plan`,
+        message: `${debt.name} still has a balance but no minimum/planned payment is set.`,
+        debtId,
+        currentValue: debt.remainingAmount,
+        evidence: [
+          {
+            metric: "debt_payment_missing",
+            current: debt.remainingAmount,
+          },
+        ],
+        actionType: "VIEW_DEBT",
+        period,
+      });
+    }
+  }
+
+  if (incomeBase > 0 && totalDebtObligation > 0) {
+    const burden = percent(totalDebtObligation, incomeBase);
+    if (burden >= DEBT_BURDEN_WARNING) {
+      insights.push({
+        type: "DEBT_PAYMENT_RISK",
+        priority: burden >= DEBT_BURDEN_CRITICAL ? "HIGH" : "MEDIUM",
+        title: "High debt payment burden",
+        message: `Planned debt payments are ${burden}% of income (${formatMoney(totalDebtObligation, currency)} / month).`,
+        currentValue: totalDebtObligation,
+        recommendedValue: Math.round(incomeBase * (DEBT_BURDEN_WARNING / 100)),
+        difference: totalDebtObligation - Math.round(incomeBase * (DEBT_BURDEN_WARNING / 100)),
+        evidence: [
+          {
+            metric: "debt_payment_ratio",
+            current: totalDebtObligation,
+            income: incomeBase,
+            changePercent: burden,
+          },
+        ],
+        actionType: "VIEW_DEBT",
+        period,
+      });
+    }
+  }
+
+  if (
+    profile.averageMonthlyIncome > 0 &&
+    totalDebtObligation >
+      profile.averageMonthlyIncome - profile.averageMonthlyExpense
+  ) {
+    const available =
+      profile.averageMonthlyIncome - profile.averageMonthlyExpense;
+    insights.push({
+      type: "DEBT_PAYMENT_RISK",
+      priority: "HIGH",
+      title: "Debt payments exceed spare cash flow",
+      message: `Average obligations (${formatMoney(totalDebtObligation, currency)}) are above spare cash flow (${formatMoney(available, currency)}).`,
+      currentValue: totalDebtObligation,
+      recommendedValue: Math.max(0, available),
+      difference: totalDebtObligation - available,
+      evidence: [
+        {
+          metric: "debt_vs_spare_cashflow",
+          current: totalDebtObligation,
+          average3m: available,
+          income: profile.averageMonthlyIncome,
+          expense: profile.averageMonthlyExpense,
+        },
+      ],
+      actionType: "SIMULATE",
+      period,
+    });
+  }
+
+  // —— Debt payoff scenarios (informative) ——
+  const payoffCandidates = debts
+    .filter((d) => d.remainingAmount > 0)
+    .sort((a, b) => b.remainingAmount - a.remainingAmount)
+    .slice(0, 2);
+
+  for (const debt of payoffCandidates) {
+    const base =
+      debt.plannedPayment ??
+      debt.minimumPayment ??
+      Math.ceil(debt.remainingAmount / 12);
+    if (base <= 0) continue;
+
+    const current = calculateDebtScenario(
+      debt.remainingAmount,
+      base,
+      debt.interestRate ?? null
+    );
+    const boosted = calculateDebtScenario(
+      debt.remainingAmount,
+      Math.round(base * 1.15),
+      debt.interestRate ?? null
+    );
+    if (
+      current.estimatedMonths != null &&
+      boosted.estimatedMonths != null &&
+      current.estimatedMonths - boosted.estimatedMonths >= 2
+    ) {
+      const monthsSaved = current.estimatedMonths - boosted.estimatedMonths;
+      insights.push({
+        type: "DEBT_PAYOFF_SCENARIO",
+        priority: "LOW",
+        title: `${debt.name}: faster payoff option`,
+        message: `Paying ~15% more (${formatMoney(Math.round(base * 1.15), currency)}/mo) could shorten payoff by ~${monthsSaved} months.`,
+        debtId: debt._id.toString(),
+        currentValue: base,
+        recommendedValue: Math.round(base * 1.15),
+        difference: monthsSaved,
+        evidence: [
+          {
+            metric: "debt_payoff_scenario",
+            currentMonths: current.estimatedMonths,
+            boostedMonths: boosted.estimatedMonths,
+            currentPayment: base,
+            boostedPayment: Math.round(base * 1.15),
+          },
+        ],
+        actionType: "SIMULATE",
+        period,
+      });
+    }
+  }
+
+  // —— Emergency fund gap ——
+  const emergencyGoal = goals.find((g) =>
+    g.name.toLowerCase().includes("emergency")
+  );
+  const essentialMonthly =
+    profile.averageFixedExpense || profile.averageMonthlyExpense;
+
+  if (!emergencyGoal && essentialMonthly > 0) {
+    insights.push({
+      type: "EMERGENCY_FUND_GAP",
+      priority: "MEDIUM",
+      title: "No emergency fund goal",
+      message: `Create an emergency goal covering ~${TARGET_EMERGENCY_MONTHS} months of essentials (${formatMoney(essentialMonthly * TARGET_EMERGENCY_MONTHS, currency)}).`,
+      recommendedValue: essentialMonthly * TARGET_EMERGENCY_MONTHS,
+      evidence: [
+        {
+          metric: "emergency_fund_missing",
+          essentialMonthly,
+          targetMonths: TARGET_EMERGENCY_MONTHS,
+        },
+      ],
+      actionType: "VIEW_GOALS",
+      period,
+    });
+  } else if (emergencyGoal && essentialMonthly > 0) {
+    const coverage = calculateEmergencyCoverage(
+      emergencyGoal.currentAmount,
+      essentialMonthly
+    );
+    if (coverage != null && coverage < TARGET_EMERGENCY_MONTHS) {
+      const gap = Math.max(
+        0,
+        essentialMonthly * TARGET_EMERGENCY_MONTHS - emergencyGoal.currentAmount
+      );
+      insights.push({
+        type: "EMERGENCY_FUND_GAP",
+        priority: coverage < 1 ? "HIGH" : "MEDIUM",
+        title: "Emergency fund below target",
+        message: `${emergencyGoal.name} covers ~${coverage} months of essentials; target is ${TARGET_EMERGENCY_MONTHS}+ months (gap ${formatMoney(gap, currency)}).`,
+        goalId: emergencyGoal._id.toString(),
+        currentValue: emergencyGoal.currentAmount,
+        recommendedValue: essentialMonthly * TARGET_EMERGENCY_MONTHS,
+        difference: gap,
+        evidence: [
+          {
+            metric: "emergency_coverage_months",
+            current: coverage,
+            essentialMonthly,
+            targetMonths: TARGET_EMERGENCY_MONTHS,
+            fund: emergencyGoal.currentAmount,
+          },
+        ],
+        actionType: "VIEW_GOALS",
+        period,
+      });
+    }
+  }
+
+  // —— Income change vs 3-month average ——
+  if (profile.averageMonthlyIncome > 0 && summary.income > 0) {
+    const incomeChange = percent(
+      summary.income - profile.averageMonthlyIncome,
+      profile.averageMonthlyIncome
+    );
+    if (Math.abs(incomeChange) >= INCOME_CHANGE_THRESHOLD) {
+      const up = incomeChange > 0;
+      insights.push({
+        type: "INCOME_CHANGE",
+        priority: up ? "LOW" : "MEDIUM",
+        title: up ? "Income above usual" : "Income below usual",
+        message: `Income is ${Math.abs(incomeChange)}% ${up ? "above" : "below"} the 3-month average (${formatMoney(summary.income, currency)} vs ${formatMoney(profile.averageMonthlyIncome, currency)}).`,
+        currentValue: summary.income,
+        recommendedValue: profile.averageMonthlyIncome,
+        difference: summary.income - profile.averageMonthlyIncome,
+        evidence: [
+          {
+            metric: "income_change",
+            current: summary.income,
+            average3m: profile.averageMonthlyIncome,
+            changePercent: incomeChange,
+          },
+        ],
+        actionType: "VIEW_FORECAST",
+        period,
+      });
+    }
   }
 
   const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;

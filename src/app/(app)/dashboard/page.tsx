@@ -411,7 +411,7 @@ export default function DashboardPage() {
         <h1 className="font-heading text-3xl font-semibold tracking-tight">
           Dashboard
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground sm:text-base">
           Cycle gaji {cycle?.cycle.label ?? "berikutnya"}, dihitung otomatis.
         </p>
       </div>
@@ -636,6 +636,17 @@ export default function DashboardPage() {
                   : formatMoney(phase2.forecastSavings, phase2.currency)}
               </CardTitle>
             </CardHeader>
+            <CardContent>
+              <Link
+                href="/forecast"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "touch-manipulation"
+                )}
+              >
+                Open forecast
+              </Link>
+            </CardContent>
           </Card>
         </div>
       ) : null}

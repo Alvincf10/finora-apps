@@ -118,6 +118,7 @@ export interface CashFlowForecast {
   projectedExpenses: number;
   projectedDebtPayment: number;
   projectedSavings: number;
+  startingBalance: number;
   projectedEndingBalance: number;
   assumptions: string[];
   confidence: Confidence;

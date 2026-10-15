@@ -1,3 +1,4 @@
+import { endOfDay, startOfDay } from "date-fns";
 import { ok, handleError } from "@/lib/api";
 import { requireUser } from "@/lib/session";
 import { createTransactionSchema } from "@/lib/validations";
@@ -14,7 +15,11 @@ export async function GET(request: Request) {
     const categoryId = searchParams.get("categoryId") ?? undefined;
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    const limit = Math.min(Number(searchParams.get("limit") ?? 50), 200);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") ?? 50) || 50, 1),
+      200
+    );
+    const skip = Math.max(Number(searchParams.get("skip") ?? 0) || 0, 0);
 
     const filter: Record<string, unknown> = { userId };
     if (type) filter.type = type;
@@ -22,8 +27,8 @@ export async function GET(request: Request) {
     if (categoryId) filter.categoryId = categoryId;
     if (from || to) {
       filter.date = {
-        ...(from ? { $gte: new Date(from) } : {}),
-        ...(to ? { $lte: new Date(to) } : {}),
+        ...(from ? { $gte: startOfDay(new Date(from)) } : {}),
+        ...(to ? { $lte: endOfDay(new Date(to)) } : {}),
       };
     }
     if (q) {
@@ -48,14 +53,24 @@ export async function GET(request: Request) {
       ];
     }
 
-    const transactions = await Transaction.find(filter)
-      .sort({ date: -1, createdAt: -1 })
-      .limit(limit)
-      .populate("accountId", "name currency")
-      .populate("categoryId", "name type")
-      .populate("counterpartyAccountId", "name");
+    const [items, total] = await Promise.all([
+      Transaction.find(filter)
+        .sort({ date: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("accountId", "name currency")
+        .populate("categoryId", "name type")
+        .populate("counterpartyAccountId", "name"),
+      Transaction.countDocuments(filter),
+    ]);
 
-    return ok(transactions);
+    return ok({
+      items,
+      total,
+      limit,
+      skip,
+      hasMore: skip + items.length < total,
+    });
   } catch (error) {
     return handleError(error);
   }

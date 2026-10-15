@@ -48,6 +48,8 @@ export default function AccountsPage() {
   const [editOpen, setEditOpen] = useState<string | null>(null);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
 
+  const editing = accounts.find((a) => a._id === editOpen) ?? null;
+
   async function load() {
     setAccounts(await api<Account[]>("/api/accounts"));
   }
@@ -124,12 +126,46 @@ export default function AccountsPage() {
     }
   }
 
+  function AccountActions({ account }: { account: Account }) {
+    return (
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="touch-manipulation"
+          onClick={() => setEditOpen(account._id)}
+        >
+          Edit
+        </Button>
+        {account.isActive ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="touch-manipulation"
+            onClick={() => archive(account._id)}
+          >
+            Archive
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="touch-manipulation"
+            onClick={() => restore(account._id)}
+          >
+            Restore
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="font-heading text-3xl font-semibold">Accounts</h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground sm:text-base">
             Set the current balance to restart tracking from a known amount.
           </p>
         </div>
@@ -140,7 +176,11 @@ export default function AccountsPage() {
             if (v) setFormCurrency("IDR");
           }}
         >
-          <DialogTrigger render={<Button />}>Add account</DialogTrigger>
+          <DialogTrigger
+            render={<Button className="w-full touch-manipulation sm:w-auto" />}
+          >
+            Add account
+          </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>New account</DialogTitle>
@@ -196,7 +236,31 @@ export default function AccountsPage() {
         </Dialog>
       </div>
 
-      <Card>
+      <div className="space-y-3 md:hidden">
+        {accounts.map((a) => (
+          <Card key={a._id}>
+            <CardContent className="space-y-3 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{a.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {a.type} · {a.currency}
+                  </p>
+                </div>
+                <Badge variant={a.isActive ? "secondary" : "outline"}>
+                  {a.isActive ? "Active" : "Archived"}
+                </Badge>
+              </div>
+              <p className="font-mono text-lg text-emerald-800 dark:text-emerald-300">
+                {formatMoney(a.currentBalance, a.currency)}
+              </p>
+              <AccountActions account={a} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="hidden md:block">
         <CardHeader>
           <CardTitle>Your accounts</CardTitle>
         </CardHeader>
@@ -225,93 +289,7 @@ export default function AccountsPage() {
                     {formatMoney(a.currentBalance, a.currency)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Dialog
-                        open={editOpen === a._id}
-                        onOpenChange={(v) => setEditOpen(v ? a._id : null)}
-                      >
-                        <DialogTrigger
-                          render={<Button variant="ghost" size="sm" />}
-                        >
-                          Edit
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Edit {a.name}</DialogTitle>
-                          </DialogHeader>
-                          <form
-                            key={
-                              a._id +
-                              String(a.currentBalance) +
-                              a.name +
-                              a.type
-                            }
-                            className="space-y-3"
-                            onSubmit={(e) => onEdit(e, a)}
-                          >
-                            <div className="space-y-2">
-                              <Label>Name</Label>
-                              <Input
-                                name="name"
-                                required
-                                defaultValue={a.name}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Type</Label>
-                              <select
-                                name="type"
-                                className="flex h-9 w-full rounded-md border px-3 text-sm"
-                                defaultValue={a.type}
-                              >
-                                <option value="CASH">Cash</option>
-                                <option value="BANK">Bank</option>
-                                <option value="E_WALLET">E-wallet</option>
-                                <option value="CREDIT_CARD">Credit card</option>
-                                <option value="OTHER">Other</option>
-                              </select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Current balance</Label>
-                              <CurrencyAmountInput
-                                name="currentBalance"
-                                currency={a.currency}
-                                defaultValue={fromMinorUnits(
-                                  a.currentBalance,
-                                  a.currency
-                                )}
-                                required
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Enter the balance you want as of your restart
-                                date (e.g. 12 Oct). Existing transactions stay;
-                                opening balance is adjusted so this matches.
-                              </p>
-                            </div>
-                            <Button type="submit" className="w-full">
-                              Save
-                            </Button>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
-                      {a.isActive ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => archive(a._id)}
-                        >
-                          Archive
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => restore(a._id)}
-                        >
-                          Restore
-                        </Button>
-                      )}
-                    </div>
+                    <AccountActions account={a} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -319,6 +297,72 @@ export default function AccountsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!editing}
+        onOpenChange={(v) => {
+          if (!v) setEditOpen(null);
+        }}
+      >
+        <DialogContent>
+          {editing ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Edit {editing.name}</DialogTitle>
+              </DialogHeader>
+              <form
+                key={
+                  editing._id +
+                  String(editing.currentBalance) +
+                  editing.name +
+                  editing.type
+                }
+                className="space-y-3"
+                onSubmit={(e) => onEdit(e, editing)}
+              >
+                <div className="space-y-2">
+                  <Label>Name</Label>
+                  <Input name="name" required defaultValue={editing.name} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <select
+                    name="type"
+                    className="flex h-9 w-full rounded-md border px-3 text-sm"
+                    defaultValue={editing.type}
+                  >
+                    <option value="CASH">Cash</option>
+                    <option value="BANK">Bank</option>
+                    <option value="E_WALLET">E-wallet</option>
+                    <option value="CREDIT_CARD">Credit card</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Current balance</Label>
+                  <CurrencyAmountInput
+                    name="currentBalance"
+                    currency={editing.currency}
+                    defaultValue={fromMinorUnits(
+                      editing.currentBalance,
+                      editing.currency
+                    )}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter the balance you want as of your restart date (e.g. 12
+                    Oct). Existing transactions stay; opening balance is
+                    adjusted so this matches.
+                  </p>
+                </div>
+                <Button type="submit" className="w-full">
+                  Save
+                </Button>
+              </form>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

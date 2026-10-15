@@ -121,10 +121,35 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
   }
-  html {
-    @apply font-sans;
+  /* Larger tap targets & readable inputs on iOS */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Standalone / Add to Home Screen: fill the screen cleanly */
+@media all and (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+}
+
+/* Soften page titles on narrow phones without editing every page */
+@media (max-width: 639px) {
+  h1.font-heading.text-3xl {
+    font-size: 1.5rem;
+    line-height: 2rem;
   }
 }

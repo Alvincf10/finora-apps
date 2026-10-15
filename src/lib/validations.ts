@@ -163,6 +163,43 @@ export const updateFixedCostSchema = createFixedCostSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
 
+export const createRecurringSchema = z
+  .object({
+    type: z.enum(["INCOME", "EXPENSE"]),
+    amount: z.number().int().positive(),
+    currency: currencySchema,
+    accountId: z.string().min(1),
+    categoryId: z.string().min(1),
+    description: z.string().max(500).optional(),
+    frequency: z.enum(["MONTHLY", "WEEKLY"]).default("MONTHLY"),
+    dayOfMonth: z.number().int().min(1).max(31).optional(),
+    nextOccurrence: z.string().or(z.date()).optional(),
+    endDate: z.string().or(z.date()).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.frequency === "MONTHLY" && data.dayOfMonth == null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "dayOfMonth is required for monthly recurring",
+        path: ["dayOfMonth"],
+      });
+    }
+  });
+
+export const updateRecurringSchema = z.object({
+  type: z.enum(["INCOME", "EXPENSE"]).optional(),
+  amount: z.number().int().positive().optional(),
+  currency: currencySchema.optional(),
+  accountId: z.string().min(1).optional(),
+  categoryId: z.string().min(1).optional(),
+  description: z.string().max(500).nullable().optional(),
+  frequency: z.enum(["MONTHLY", "WEEKLY"]).optional(),
+  dayOfMonth: z.number().int().min(1).max(31).nullable().optional(),
+  nextOccurrence: z.string().or(z.date()).optional(),
+  endDate: z.string().or(z.date()).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
 export const whatsappActionSchema = z.object({
   action: z.enum(["start", "stop", "logout"]),
 });

@@ -32,6 +32,7 @@ const TransactionSchema = new Schema(
     debtId: { type: Schema.Types.ObjectId, ref: "Debt" },
     goalId: { type: Schema.Types.ObjectId, ref: "SavingsGoal" },
     recurring: { type: Boolean, default: false },
+    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringTransaction" },
   },
   { timestamps: true }
 );
@@ -45,6 +46,11 @@ TransactionSchema.index({ transferId: 1 });
 export type TransactionDocument = InferSchemaType<typeof TransactionSchema> & {
   _id: mongoose.Types.ObjectId;
 };
+
+// HMR can keep an older compiled model without recurringId.
+if (models.Transaction && !models.Transaction.schema.path("recurringId")) {
+  delete models.Transaction;
+}
 
 export const Transaction =
   models.Transaction || model("Transaction", TransactionSchema);

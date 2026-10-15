@@ -111,7 +111,7 @@ export default function FixedCostsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-heading text-3xl font-semibold">Fixed costs</h1>
           <p className="text-muted-foreground">

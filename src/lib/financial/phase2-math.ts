@@ -92,19 +92,30 @@ export function detectAnomaly(
   currentAmount: number,
   historicalAmounts: number[]
 ): { isAnomaly: boolean; reason: string; average: number; threshold: number } {
-  if (historicalAmounts.length < 2) {
+  const positiveHistory = historicalAmounts.filter((a) => a > 0);
+
+  // Need a real baseline — zero-padded months must not flag first spends.
+  if (positiveHistory.length < 2) {
     return {
       isAnomaly: false,
       reason: "Insufficient historical periods",
-      average: mean(historicalAmounts),
+      average: Math.round(mean(positiveHistory)),
       threshold: 0,
     };
   }
 
-  const average = mean(historicalAmounts);
-  const sd = stdDev(historicalAmounts);
-  const threshold =
-    sd > 0 ? average + 2 * sd : average * 1.5;
+  const average = mean(positiveHistory);
+  if (average <= 0) {
+    return {
+      isAnomaly: false,
+      reason: "No historical baseline",
+      average: 0,
+      threshold: 0,
+    };
+  }
+
+  const sd = stdDev(positiveHistory);
+  const threshold = sd > 0 ? average + 2 * sd : average * 1.5;
   const isAnomaly = currentAmount > threshold;
 
   return {
@@ -400,6 +411,7 @@ export function forecastMonthlyCashflow(input: {
     projectedExpenses: input.projectedExpenses,
     projectedDebtPayment: input.projectedDebtPayment,
     projectedSavings,
+    startingBalance: input.startingBalance,
     projectedEndingBalance,
     assumptions: [
       "Forecast assumes spending remains similar to the previous 3 months (weighted).",
