@@ -206,9 +206,9 @@ export const whatsappActionSchema = z.object({
 
 export const updateWhatsappSchema = z.object({
   defaultAccountId: z.string().min(1).nullable().optional(),
+  /** Required digits-only allowlist; clearing is not allowed. */
   allowedFrom: z
     .string()
     .regex(/^\d{8,20}$/, "allowedFrom must be digits only (e.g. 62812...)")
-    .nullable()
     .optional(),
 });

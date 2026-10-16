@@ -10,6 +10,10 @@ import {
   serializeWhatsAppSession,
 } from "@/lib/whatsapp/session";
 
+function hasAllowedFrom(value: string | null | undefined): boolean {
+  return Boolean(value && /^\d{8,20}$/.test(value));
+}
+
 export async function GET() {
   try {
     const { userId } = await requireUser();
@@ -29,6 +33,12 @@ export async function POST(request: Request) {
     const session = await getOrCreateWhatsAppSession(userId);
 
     if (body.action === "start") {
+      if (!hasAllowedFrom(session.allowedFrom)) {
+        throw new Error("ALLOWED_FROM_REQUIRED");
+      }
+      if (!session.defaultAccountId) {
+        throw new Error("DEFAULT_ACCOUNT_REQUIRED");
+      }
       session.desiredState = "running";
       session.clearAuthRequested = false;
       session.lastError = null;
@@ -82,6 +92,16 @@ export async function PATCH(request: Request) {
 
     if (body.allowedFrom !== undefined) {
       session.set("allowedFrom", body.allowedFrom);
+      // Clearing allowlist while running must stop the worker
+      if (!hasAllowedFrom(body.allowedFrom) && session.desiredState === "running") {
+        session.desiredState = "stopped";
+        session.qrData = null;
+        if (session.status !== "connected") {
+          session.status = "disconnected";
+        }
+        session.lastError =
+          "Vira dihentikan: nomor pengirim diizinkan wajib diisi.";
+      }
     }
 
     await session.save();

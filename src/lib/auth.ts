@@ -5,6 +5,7 @@ import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { loginSchema } from "@/lib/validations";
 import { authConfig } from "@/lib/auth.config";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -19,6 +20,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
+
+        const emailKey = parsed.data.email.toLowerCase();
+        if (!checkRateLimit(`login:email:${emailKey}`, 8, 15 * 60_000)) {
+          return null;
+        }
 
         await connectDB();
         const user = await User.findOne({ email: parsed.data.email });

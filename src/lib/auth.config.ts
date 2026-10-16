@@ -10,8 +10,11 @@ export const authConfig = {
     authorized({ auth, request }) {
       const isLoggedIn = !!auth?.user;
       const { pathname } = request.nextUrl;
-      const isAuthPage =
-        pathname.startsWith("/login") || pathname.startsWith("/register");
+      if (pathname.startsWith("/register")) {
+        return Response.redirect(new URL("/login", request.nextUrl));
+      }
+
+      const isAuthPage = pathname.startsWith("/login");
       const isProtected =
         pathname.startsWith("/dashboard") ||
         pathname.startsWith("/transactions") ||
@@ -24,7 +27,10 @@ export const authConfig = {
         pathname.startsWith("/insights") ||
         pathname.startsWith("/simulator") ||
         pathname.startsWith("/whatsapp") ||
-        pathname.startsWith("/settings");
+        pathname.startsWith("/settings") ||
+        pathname.startsWith("/alerts") ||
+        pathname.startsWith("/forecast") ||
+        pathname.startsWith("/recurring");
 
       if (isAuthPage) {
         if (isLoggedIn) {

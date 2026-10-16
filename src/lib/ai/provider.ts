@@ -1,3 +1,5 @@
+import { checkRateLimit } from "@/lib/rate-limit";
+
 export interface AIRequest {
   system: string;
   prompt: string;
@@ -77,22 +79,12 @@ export function getAIProvider(): AIProvider {
   return new OpenRouterProvider();
 }
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
 export function checkAIRateLimit(
   userId: string,
   limit = 10,
   windowMs = 60_000
 ): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-  if (!entry || entry.resetAt < now) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= limit) return false;
-  entry.count += 1;
-  return true;
+  return checkRateLimit(`ai:${userId}`, limit, windowMs);
 }
 
 export const FINANCIAL_AI_SYSTEM = `You explain personal finance metrics based ONLY on the structured JSON context provided.

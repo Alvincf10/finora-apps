@@ -122,11 +122,19 @@ export default function WhatsAppPage() {
       const fd = new FormData(form);
       const defaultAccountId = String(fd.get("defaultAccountId") || "");
       const from = allowedFrom.replace(/\D/g, "");
+      if (!from || from.length < 8) {
+        toast.error("Nomor pengirim diizinkan wajib diisi (min. 8 digit)");
+        return;
+      }
+      if (!defaultAccountId) {
+        toast.error("Pilih rekening default");
+        return;
+      }
       const wa = await api<WaSession>("/api/whatsapp", {
         method: "PATCH",
         body: JSON.stringify({
-          defaultAccountId: defaultAccountId || null,
-          allowedFrom: from || null,
+          defaultAccountId,
+          allowedFrom: from,
         }),
       });
       setSession(wa);
@@ -171,8 +179,20 @@ export default function WhatsAppPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button
-              disabled={busy || session?.desiredState === "running"}
+              disabled={
+                busy ||
+                session?.desiredState === "running" ||
+                !session?.allowedFrom ||
+                !session?.defaultAccountId
+              }
               onClick={() => action("start")}
+              title={
+                !session?.allowedFrom
+                  ? "Isi nomor pengirim diizinkan dulu"
+                  : !session?.defaultAccountId
+                    ? "Pilih rekening default dulu"
+                    : undefined
+              }
             >
               Connect
             </Button>
@@ -252,7 +272,7 @@ export default function WhatsAppPage() {
         <CardHeader>
           <CardTitle>Pengaturan</CardTitle>
           <CardDescription>
-            Rekening default wajib diisi sebelum Vira bisa mencatat transaksi.
+            Rekening default dan nomor pengirim wajib diisi sebelum Connect.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -264,6 +284,7 @@ export default function WhatsAppPage() {
                 name="defaultAccountId"
                 defaultValue={session?.defaultAccountId ?? ""}
                 key={session?.defaultAccountId ?? "none"}
+                required
                 className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
               >
                 <option value="">— pilih rekening —</option>
@@ -276,17 +297,20 @@ export default function WhatsAppPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="allowedFrom">
-                Nomor pengirim diizinkan (opsional)
+                Nomor pengirim diizinkan (wajib)
               </Label>
               <Input
                 id="allowedFrom"
                 value={allowedFrom}
                 onChange={(e) => setAllowedFrom(e.target.value)}
                 placeholder="62812xxxxxxxx"
+                required
+                minLength={8}
               />
               <p className="text-xs text-muted-foreground">
-                Kosongkan untuk terima dari nomor yang sama (fromMe) atau nomor
-                terhubung. Isi jika Vira pakai nomor terpisah.
+                Hanya nomor ini yang boleh mengirim perintah{" "}
+                <code className="text-[11px]">finora …</code>. Contoh:{" "}
+                <code className="text-[11px]">62812xxxxxxxx</code>.
               </p>
             </div>
             <Button type="submit" disabled={busy || !session}>

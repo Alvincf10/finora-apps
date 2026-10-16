@@ -27,7 +27,7 @@ const WhatsAppSessionSchema = new Schema(
       ref: "Account",
       default: null,
     },
-    /** E.164-ish digits only, e.g. 62812... Empty = allow self (fromMe) + connected number. */
+    /** E.164-ish digits only, e.g. 62812... Required before Vira may run. */
     allowedFrom: { type: String, default: null },
     lastError: { type: String, default: null },
     lastMessageAt: { type: Date, default: null },

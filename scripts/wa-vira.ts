@@ -295,18 +295,20 @@ function isAllowedSender(
   const allowed = digitsOnly(session.allowedFrom);
   const self = digitsOnly(session.phoneNumber);
 
+  // Hard requirement: allowlist must be configured. Without it, ignore all commands.
+  if (!allowed) return false;
+
   if (msg.key.fromMe) {
-    // Note-to-self
+    if (!hasFinoraPrefix) return false;
+    // Note-to-self on the linked phone
     if (self && remote === self) return true;
-    // Same phone, chatting the OpenClaw/Vira contact — allow prefixed commands only
-    if (hasFinoraPrefix) return true;
+    // Typing into a chat with the allowlisted number
+    if (remote === allowed) return true;
     return false;
   }
 
-  // Incoming DM to the bot number
-  if (allowed) return remote === allowed;
-  // No allowlist set: accept any private DM (single-user bot). Set allowedFrom to lock it down.
-  return true;
+  // Incoming DM — must match allowlist exactly
+  return remote === allowed;
 }
 
 async function handleMessage(
@@ -326,6 +328,11 @@ async function handleMessage(
 
   const session = await mods.WhatsAppSession.findOne({ userId });
   if (!session || session.status !== "connected") return;
+
+  if (!digitsOnly(session.allowedFrom)) {
+    logger.warn({ userId }, "ignoring message — allowedFrom not configured");
+    return;
+  }
 
   // Shared number with OpenClaw: only handle messages with Finora prefix (default "finora ").
   const stripped = mods.stripWaPrefix(text);
@@ -499,6 +506,16 @@ async function tick(mods: AppModules) {
       !active.has(userId) &&
       !starting.has(userId)
     ) {
+      if (!digitsOnly(session.allowedFrom)) {
+        await patchSession(mods.WhatsAppSession, userId, {
+          desiredState: "stopped",
+          status: "disconnected",
+          qrData: null,
+          lastError:
+            "allowedFrom wajib diisi sebelum Vira boleh connect.",
+        });
+        continue;
+      }
       await startSocket(userId, mods);
     }
   }
