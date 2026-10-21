@@ -205,6 +205,7 @@ async function startSocket(userId: string, mods: AppModules) {
           qrData: null,
           phoneNumber: phone || null,
           lastError: null,
+          lastHeartbeatAt: new Date(),
         });
         logger.info({ userId, phone }, "WhatsApp connected");
       }
@@ -517,6 +518,13 @@ async function tick(mods: AppModules) {
         continue;
       }
       await startSocket(userId, mods);
+    }
+
+    // Heartbeat while socket is live so the web UI can detect a dead worker.
+    if (active.has(userId) && session.desiredState === "running") {
+      await patchSession(mods.WhatsAppSession, userId, {
+        lastHeartbeatAt: new Date(),
+      });
     }
   }
 }

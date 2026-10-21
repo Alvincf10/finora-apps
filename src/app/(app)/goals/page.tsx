@@ -9,6 +9,7 @@ import {
   simulateDailySavings,
 } from "@/lib/financial/goal-simulation";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,16 +48,27 @@ type Account = {
   isActive: boolean;
 };
 
-function formatDuration(days: number) {
-  if (days <= 0) return "Already reached";
-  if (days === 1) return "1 day";
-  if (days < 14) return `${days} days`;
-  if (days < 60) return `${Math.ceil(days / 7)} weeks (${days} days)`;
+function formatDuration(
+  days: number,
+  t: (key: string, params?: Record<string, string | number>) => string
+) {
+  if (days <= 0) return t("goals.alreadyReached");
+  if (days === 1) return t("goals.durationDay");
+  if (days < 14) return t("goals.durationDays", { days });
+  if (days < 60) {
+    return t("goals.durationWeeks", {
+      weeks: Math.ceil(days / 7),
+      days,
+    });
+  }
   const months = Math.ceil(days / 30);
-  return `${months} month${months === 1 ? "" : "s"} (${days} days)`;
+  return months === 1
+    ? t("goals.durationMonth", { months, days })
+    : t("goals.durationMonths", { months, days });
 }
 
 function GoalSimulator({ goal }: { goal: Goal }) {
+  const { t, intlLocale } = useI18n();
   const [dailyMajor, setDailyMajor] = useState(0);
   const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
   const sim = simulateDailySavings(
@@ -70,96 +82,107 @@ function GoalSimulator({ goal }: { goal: Goal }) {
     goal.targetDate
   );
 
+  const dateOpts: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  };
+
   return (
     <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
       <div>
-        <p className="text-sm font-medium">Savings simulator</p>
+        <p className="text-sm font-medium">{t("goals.simulatorTitle")}</p>
         <p className="text-xs text-muted-foreground">
-          Remaining{" "}
+          {t("goals.remainingLabel")}{" "}
           <span className="font-mono">
-            {formatMoney(remaining, goal.currency)}
+            {formatMoney(remaining, goal.currency, intlLocale)}
           </span>
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">If I save this much every day</Label>
+        <Label className="text-xs">{t("goals.dailySaveLabel")}</Label>
         <CurrencyAmountInput
           currency={goal.currency}
           value={dailyMajor}
           onValueChange={setDailyMajor}
           allowEmpty
-          placeholder="Daily amount"
+          placeholder={t("goals.dailyPlaceholder")}
         />
       </div>
 
       {dailyMajor > 0 && remaining > 0 ? (
         <div className="space-y-1 text-sm">
           <p>
-            Reach target in{" "}
-            <span className="font-medium">{formatDuration(sim.daysNeeded)}</span>
+            {t("goals.reachIn", {
+              duration: formatDuration(sim.daysNeeded, t),
+            })}
           </p>
           {sim.reachDate ? (
             <p className="text-xs text-muted-foreground">
-              Estimated date:{" "}
-              {new Date(sim.reachDate).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
+              {t("goals.estimatedDate", {
+                date: new Date(sim.reachDate).toLocaleDateString(
+                  intlLocale,
+                  dateOpts
+                ),
               })}
             </p>
           ) : null}
         </div>
       ) : remaining <= 0 ? (
-        <p className="text-sm text-muted-foreground">Goal already completed.</p>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Enter a daily amount to see how long it takes.
+        <p className="text-sm text-muted-foreground">
+          {t("goals.alreadyCompleted")}
         </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">{t("goals.enterDaily")}</p>
       )}
 
       <div className="border-t pt-3">
-        <p className="mb-2 text-sm font-medium">Ideal savings pace</p>
+        <p className="mb-2 text-sm font-medium">{t("goals.idealPace")}</p>
         {ideal.isOverdue ? (
           <p className="mb-3 text-xs text-rose-700 dark:text-rose-400">
-            Target date already passed. Edit the date or use a horizon below.
+            {t("goals.overdueHint")}
           </p>
         ) : ideal.hasTargetDate && ideal.idealDaily != null ? (
           <div className="mb-3 space-y-1 text-sm">
             <p className="text-xs text-muted-foreground">
-              To hit target by{" "}
-              {goal.targetDate
-                ? new Date(goal.targetDate).toLocaleDateString("id-ID", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })
-                : "—"}{" "}
-              ({ideal.daysLeft} day{ideal.daysLeft === 1 ? "" : "s"} left)
+              {t("goals.hitBy", {
+                date: goal.targetDate
+                  ? new Date(goal.targetDate).toLocaleDateString(
+                      intlLocale,
+                      dateOpts
+                    )
+                  : "—",
+                days:
+                  ideal.daysLeft === 1
+                    ? t("goals.daysLeftOne")
+                    : t("goals.daysLeftMany", {
+                        days: ideal.daysLeft ?? 0,
+                      }),
+              })}
             </p>
             <div className="flex justify-between">
-              <span>Per day</span>
+              <span>{t("goals.perDay")}</span>
               <span className="font-mono">
-                {formatMoney(ideal.idealDaily, goal.currency)}
+                {formatMoney(ideal.idealDaily, goal.currency, intlLocale)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Per week</span>
+              <span>{t("goals.perWeek")}</span>
               <span className="font-mono">
-                {formatMoney(ideal.idealWeekly ?? 0, goal.currency)}
+                {formatMoney(ideal.idealWeekly ?? 0, goal.currency, intlLocale)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Per month</span>
+              <span>{t("goals.perMonth")}</span>
               <span className="font-mono">
-                {formatMoney(ideal.idealMonthly ?? 0, goal.currency)}
+                {formatMoney(ideal.idealMonthly ?? 0, goal.currency, intlLocale)}
               </span>
             </div>
           </div>
         ) : (
           <p className="mb-3 text-xs text-muted-foreground">
-            Set a target date on the goal for a deadline-based pace. Suggested
-            horizons:
+            {t("goals.noTargetDateHint")}
           </p>
         )}
         <div className="space-y-2">
@@ -170,8 +193,10 @@ function GoalSimulator({ goal }: { goal: Goal }) {
             >
               <span className="text-muted-foreground">{h.label}</span>
               <span className="font-mono">
-                {formatMoney(h.daily, goal.currency)}/day ·{" "}
-                {formatMoney(h.monthly, goal.currency)}/mo
+                {formatMoney(h.daily, goal.currency, intlLocale)}
+                {t("common.perDay")} ·{" "}
+                {formatMoney(h.monthly, goal.currency, intlLocale)}
+                {t("common.perMonth")}
               </span>
             </div>
           ))}
@@ -187,6 +212,7 @@ function toDateInput(value?: string) {
 }
 
 export default function GoalsPage() {
+  const { t, intlLocale } = useI18n();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [open, setOpen] = useState(false);
@@ -221,11 +247,11 @@ export default function GoalsPage() {
           targetDate: form.get("targetDate") || undefined,
         }),
       });
-      toast.success("Goal created");
+      toast.success(t("goals.created"));
       setOpen(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -244,11 +270,11 @@ export default function GoalsPage() {
           targetDate: form.get("targetDate") || undefined,
         }),
       });
-      toast.success("Goal updated");
+      toast.success(t("goals.updated"));
       setEditOpen(null);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -266,11 +292,11 @@ export default function GoalsPage() {
           date: form.get("date") || undefined,
         }),
       });
-      toast.success("Contribution added");
+      toast.success(t("goals.contributionAdded"));
       setContributeOpen(null);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -278,10 +304,10 @@ export default function GoalsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Goals</h1>
-          <p className="text-muted-foreground">
-            Savings targets, progress, and pace simulator.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("goals.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("goals.subtitle")}</p>
         </div>
         <Dialog
           open={open}
@@ -290,19 +316,23 @@ export default function GoalsPage() {
             if (v) setFormCurrency("IDR");
           }}
         >
-          <DialogTrigger render={<Button />}>Add goal</DialogTrigger>
+          <DialogTrigger render={<Button />}>{t("goals.add")}</DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>New savings goal</DialogTitle>
+              <DialogTitle>{t("goals.newGoal")}</DialogTitle>
             </DialogHeader>
             <form className="space-y-3" onSubmit={onCreate}>
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input name="name" required placeholder="Emergency Fund" />
+                <Label>{t("common.name")}</Label>
+                <Input
+                  name="name"
+                  required
+                  placeholder={t("goals.namePlaceholder")}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Target</Label>
+                  <Label>{t("goals.target")}</Label>
                   <CurrencyAmountInput
                     name="targetAmount"
                     currency={formCurrency}
@@ -310,7 +340,7 @@ export default function GoalsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
+                  <Label>{t("common.currency")}</Label>
                   <select
                     name="currency"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -325,11 +355,11 @@ export default function GoalsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Target date</Label>
+                <Label>{t("goals.targetDate")}</Label>
                 <Input name="targetDate" type="date" />
               </div>
               <Button type="submit" className="w-full">
-                Create
+                {t("common.create")}
               </Button>
             </form>
           </DialogContent>
@@ -348,11 +378,15 @@ export default function GoalsPage() {
                 </CardTitle>
                 {goal.targetDate ? (
                   <CardDescription>
-                    Target{" "}
-                    {new Date(goal.targetDate).toLocaleDateString("id-ID", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
+                    {t("goals.targetPrefix", {
+                      date: new Date(goal.targetDate).toLocaleDateString(
+                        intlLocale,
+                        {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        }
+                      ),
                     })}
                   </CardDescription>
                 ) : null}
@@ -361,10 +395,10 @@ export default function GoalsPage() {
                 <Progress value={Math.min(progress, 100)} />
                 <div className="flex justify-between text-sm">
                   <span className="font-mono">
-                    {formatMoney(goal.currentAmount, goal.currency)}
+                    {formatMoney(goal.currentAmount, goal.currency, intlLocale)}
                   </span>
                   <span className="font-mono text-muted-foreground">
-                    {formatMoney(goal.targetAmount, goal.currency)}
+                    {formatMoney(goal.targetAmount, goal.currency, intlLocale)}
                   </span>
                 </div>
 
@@ -376,11 +410,13 @@ export default function GoalsPage() {
                     <DialogTrigger
                       render={<Button variant="outline" className="flex-1" />}
                     >
-                      Edit
+                      {t("common.edit")}
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Edit {goal.name}</DialogTitle>
+                        <DialogTitle>
+                          {t("common.editNamed", { name: goal.name })}
+                        </DialogTitle>
                       </DialogHeader>
                       <form
                         key={
@@ -393,7 +429,7 @@ export default function GoalsPage() {
                         onSubmit={(e) => onEdit(e, goal)}
                       >
                         <div className="space-y-2">
-                          <Label>Name</Label>
+                          <Label>{t("common.name")}</Label>
                           <Input
                             name="name"
                             required
@@ -401,7 +437,7 @@ export default function GoalsPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Target amount</Label>
+                          <Label>{t("goals.targetAmount")}</Label>
                           <CurrencyAmountInput
                             name="targetAmount"
                             currency={goal.currency}
@@ -413,7 +449,7 @@ export default function GoalsPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Target date</Label>
+                          <Label>{t("goals.targetDate")}</Label>
                           <Input
                             name="targetDate"
                             type="date"
@@ -421,7 +457,7 @@ export default function GoalsPage() {
                           />
                         </div>
                         <Button type="submit" className="w-full">
-                          Save changes
+                          {t("common.saveChanges")}
                         </Button>
                       </form>
                     </DialogContent>
@@ -438,18 +474,20 @@ export default function GoalsPage() {
                           <Button variant="outline" className="flex-1" />
                         }
                       >
-                        Add contribution
+                        {t("goals.contribute")}
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Contribute to {goal.name}</DialogTitle>
+                          <DialogTitle>
+                            {t("goals.contributeTo", { name: goal.name })}
+                          </DialogTitle>
                         </DialogHeader>
                         <form
                           className="space-y-3"
                           onSubmit={(e) => onContribute(e, goal._id)}
                         >
                           <div className="space-y-2">
-                            <Label>From account</Label>
+                            <Label>{t("goals.fromAccount")}</Label>
                             <select
                               name="accountId"
                               className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -465,7 +503,7 @@ export default function GoalsPage() {
                             </select>
                           </div>
                           <div className="space-y-2">
-                            <Label>Amount</Label>
+                            <Label>{t("common.amount")}</Label>
                             <CurrencyAmountInput
                               name="amount"
                               currency={goal.currency}
@@ -473,7 +511,7 @@ export default function GoalsPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>Date</Label>
+                            <Label>{t("common.date")}</Label>
                             <Input
                               name="date"
                               type="date"
@@ -483,7 +521,7 @@ export default function GoalsPage() {
                             />
                           </div>
                           <Button type="submit" className="w-full">
-                            Save
+                            {t("common.save")}
                           </Button>
                         </form>
                       </DialogContent>

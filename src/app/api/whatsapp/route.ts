@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     } else if (body.action === "stop") {
       session.desiredState = "stopped";
       session.qrData = null;
+      session.lastHeartbeatAt = null;
       if (session.status !== "connected") {
         session.status = "disconnected";
       }
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       session.qrUpdatedAt = null;
       session.phoneNumber = null;
       session.lastError = null;
+      session.lastHeartbeatAt = null;
     }
 
     await session.save();

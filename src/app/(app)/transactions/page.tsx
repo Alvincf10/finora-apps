@@ -30,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useI18n } from "@/components/i18n-provider";
 
 type Account = {
   _id: string;
@@ -101,7 +102,18 @@ function listParams(filters: {
   return params;
 }
 
+function typeLabel(
+  type: string,
+  t: (key: string) => string
+) {
+  if (type === "INCOME") return t("transactions.income");
+  if (type === "EXPENSE") return t("transactions.expense");
+  if (type === "TRANSFER") return t("transactions.transfer");
+  return type;
+}
+
 export default function TransactionsPage() {
+  const { t, intlLocale } = useI18n();
   const [txs, setTxs] = useState<Tx[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -131,6 +143,9 @@ export default function TransactionsPage() {
   const [editDescription, setEditDescription] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const money = (amount: number, currency: Currency) =>
+    formatMoney(amount, currency, intlLocale);
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -148,7 +163,7 @@ export default function TransactionsPage() {
         setTotal(data.total);
         setHasMore(data.hasMore);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Failed");
+        toast.error(e instanceof Error ? e.message : t("common.failed"));
       } finally {
         setLoading(false);
       }
@@ -212,7 +227,7 @@ export default function TransactionsPage() {
       setTotal(data.total);
       setHasMore(data.hasMore);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
+      toast.error(e instanceof Error ? e.message : t("common.failed"));
     } finally {
       if (append) setLoadingMore(false);
       else setLoading(false);
@@ -239,7 +254,7 @@ export default function TransactionsPage() {
     const major = Number(form.get("amount"));
     const accountIdValue = String(form.get("accountId") || "");
     if (!accountIdValue) {
-      toast.error("Pilih akun dulu");
+      toast.error(t("transactions.selectAccountFirst"));
       return;
     }
 
@@ -263,17 +278,19 @@ export default function TransactionsPage() {
           date: form.get("date"),
         }),
       });
-      toast.success("Transaction saved");
+      toast.success(t("transactions.created"));
       setOpen(false);
       await refreshList();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(
+        error instanceof Error ? error.message : t("common.failed")
+      );
     }
   }
 
   function openEdit(tx: Tx) {
     if (tx.type === "TRANSFER") {
-      toast.error("Transfer tidak bisa diedit — hapus lalu buat ulang");
+      toast.error(t("transactions.transferNoEdit"));
       return;
     }
     setEditing(tx);
@@ -299,12 +316,14 @@ export default function TransactionsPage() {
           date: editDate,
         }),
       });
-      toast.success("Transaction updated");
+      toast.success(t("transactions.updated"));
       setEditOpen(false);
       setEditing(null);
       await refreshList();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(
+        error instanceof Error ? error.message : t("common.failed")
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -313,10 +332,12 @@ export default function TransactionsPage() {
   async function onDelete(id: string) {
     try {
       await api(`/api/transactions/${id}`, { method: "DELETE" });
-      toast.success("Deleted");
+      toast.success(t("transactions.deleted"));
       await refreshList();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(
+        error instanceof Error ? error.message : t("common.failed")
+      );
     }
   }
 
@@ -324,9 +345,11 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-heading text-3xl font-semibold">Transactions</h1>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("transactions.title")}
+          </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Income, expenses, and transfers.
+            {t("transactions.subtitle")}
           </p>
         </div>
         <Dialog
@@ -343,7 +366,9 @@ export default function TransactionsPage() {
                 setAccounts(accountList);
                 resetFormDefaults(accountList);
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Failed");
+                toast.error(
+                  e instanceof Error ? e.message : t("common.failed")
+                );
               }
             })();
           }}
@@ -351,11 +376,11 @@ export default function TransactionsPage() {
           <DialogTrigger
             render={<Button className="w-full touch-manipulation sm:w-auto" />}
           >
-            Add transaction
+            {t("transactions.add")}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>New transaction</DialogTitle>
+              <DialogTitle>{t("transactions.newTransaction")}</DialogTitle>
             </DialogHeader>
             <form
               key={open ? "open" : "closed"}
@@ -363,21 +388,21 @@ export default function TransactionsPage() {
               onSubmit={onCreate}
             >
               <div className="space-y-2">
-                <Label>Type</Label>
+                <Label>{t("common.type")}</Label>
                 <select
                   name="type"
                   className="flex h-9 w-full rounded-md border px-3 text-sm"
                   value={formType}
                   onChange={(e) => setFormType(e.target.value as TxType)}
                 >
-                  <option value="INCOME">Income</option>
-                  <option value="EXPENSE">Expense</option>
-                  <option value="TRANSFER">Transfer</option>
+                  <option value="INCOME">{t("transactions.income")}</option>
+                  <option value="EXPENSE">{t("transactions.expense")}</option>
+                  <option value="TRANSFER">{t("transactions.transfer")}</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Amount</Label>
+                  <Label>{t("common.amount")}</Label>
                   <CurrencyAmountInput
                     name="amount"
                     currency={formCurrency}
@@ -385,7 +410,7 @@ export default function TransactionsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
+                  <Label>{t("common.currency")}</Label>
                   <select
                     name="currency"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -401,7 +426,9 @@ export default function TransactionsPage() {
               </div>
               <div className="space-y-2">
                 <Label>
-                  {formType === "TRANSFER" ? "From account" : "Account"}
+                  {formType === "TRANSFER"
+                    ? t("transactions.fromAccount")
+                    : t("common.account")}
                 </Label>
                 <select
                   name="accountId"
@@ -416,7 +443,7 @@ export default function TransactionsPage() {
                   }}
                 >
                   <option value="" disabled>
-                    Pilih akun…
+                    {t("transactions.selectAccount")}
                   </option>
                   {accounts.map((a) => (
                     <option key={a._id} value={a._id}>
@@ -426,13 +453,13 @@ export default function TransactionsPage() {
                 </select>
                 {accounts.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Belum ada akun aktif. Buat dulu di halaman Accounts.
+                    {t("transactions.noActiveAccounts")}
                   </p>
                 ) : null}
               </div>
               {formType === "TRANSFER" ? (
                 <div className="space-y-2">
-                  <Label>To account</Label>
+                  <Label>{t("transactions.toAccount")}</Label>
                   <select
                     name="toAccountId"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -440,7 +467,7 @@ export default function TransactionsPage() {
                     defaultValue=""
                   >
                     <option value="" disabled>
-                      Pilih akun tujuan…
+                      {t("transactions.selectToAccount")}
                     </option>
                     {accounts
                       .filter((a) => a._id !== formAccountId)
@@ -453,7 +480,7 @@ export default function TransactionsPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label>{t("common.category")}</Label>
                   <select
                     name="categoryId"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -461,7 +488,7 @@ export default function TransactionsPage() {
                     defaultValue=""
                   >
                     <option value="" disabled>
-                      Pilih kategori…
+                      {t("transactions.selectCategory")}
                     </option>
                     {categoryOptions.map((c) => (
                       <option key={c._id} value={c._id}>
@@ -471,14 +498,18 @@ export default function TransactionsPage() {
                   </select>
                   {categoryOptions.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Belum ada kategori{" "}
-                      {formType === "INCOME" ? "income" : "expense"}.
+                      {t("transactions.noCategoriesForType", {
+                        type:
+                          formType === "INCOME"
+                            ? t("transactions.income").toLowerCase()
+                            : t("transactions.expense").toLowerCase(),
+                      })}
                     </p>
                   ) : null}
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Date</Label>
+                <Label>{t("common.date")}</Label>
                 <Input
                   name="date"
                   type="date"
@@ -487,11 +518,14 @@ export default function TransactionsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Description</Label>
-                <Input name="description" placeholder="Opsional" />
+                <Label>{t("common.description")}</Label>
+                <Input
+                  name="description"
+                  placeholder={t("transactions.optionalPlaceholder")}
+                />
               </div>
               <Button type="submit" className="w-full">
-                Save
+                {t("common.save")}
               </Button>
             </form>
           </DialogContent>
@@ -500,18 +534,20 @@ export default function TransactionsPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-4">
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>{t("transactions.filters")}</CardTitle>
           <p className="text-sm text-muted-foreground tabular-nums">
-            {loading ? "Loading…" : `${total} transaksi`}
+            {loading
+              ? t("common.loading")
+              : t("transactions.countLabel", { count: total })}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="filter-q">Search</Label>
+              <Label htmlFor="filter-q">{t("common.search")}</Label>
               <Input
                 id="filter-q"
-                placeholder="Description…"
+                placeholder={t("transactions.searchPlaceholder")}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => {
@@ -520,7 +556,7 @@ export default function TransactionsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="filter-type">Type</Label>
+              <Label htmlFor="filter-type">{t("common.type")}</Label>
               <select
                 id="filter-type"
                 className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm"
@@ -530,21 +566,21 @@ export default function TransactionsPage() {
                   setCategoryId("");
                 }}
               >
-                <option value="">All types</option>
-                <option value="INCOME">Income</option>
-                <option value="EXPENSE">Expense</option>
-                <option value="TRANSFER">Transfer</option>
+                <option value="">{t("transactions.allTypes")}</option>
+                <option value="INCOME">{t("transactions.income")}</option>
+                <option value="EXPENSE">{t("transactions.expense")}</option>
+                <option value="TRANSFER">{t("transactions.transfer")}</option>
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="filter-account">Account</Label>
+              <Label htmlFor="filter-account">{t("common.account")}</Label>
               <select
                 id="filter-account"
                 className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
               >
-                <option value="">All accounts</option>
+                <option value="">{t("transactions.allAccounts")}</option>
                 {accounts.map((a) => (
                   <option key={a._id} value={a._id}>
                     {a.name}
@@ -553,7 +589,7 @@ export default function TransactionsPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="filter-category">Category</Label>
+              <Label htmlFor="filter-category">{t("common.category")}</Label>
               <select
                 id="filter-category"
                 className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm disabled:opacity-50"
@@ -561,7 +597,7 @@ export default function TransactionsPage() {
                 onChange={(e) => setCategoryId(e.target.value)}
                 disabled={type === "TRANSFER"}
               >
-                <option value="">All categories</option>
+                <option value="">{t("transactions.allCategories")}</option>
                 {filterCategoryOptions.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.name}
@@ -570,7 +606,7 @@ export default function TransactionsPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="filter-from">From</Label>
+              <Label htmlFor="filter-from">{t("common.from")}</Label>
               <Input
                 id="filter-from"
                 type="date"
@@ -579,7 +615,7 @@ export default function TransactionsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="filter-to">To</Label>
+              <Label htmlFor="filter-to">{t("common.to")}</Label>
               <Input
                 id="filter-to"
                 type="date"
@@ -596,7 +632,7 @@ export default function TransactionsPage() {
               onClick={() => void applyFilters()}
               disabled={loading}
             >
-              Apply
+              {t("transactions.apply")}
             </Button>
             <Button
               variant="ghost"
@@ -622,7 +658,9 @@ export default function TransactionsPage() {
                     setTotal(data.total);
                     setHasMore(data.hasMore);
                   } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Failed");
+                    toast.error(
+                      e instanceof Error ? e.message : t("common.failed")
+                    );
                   } finally {
                     setLoading(false);
                   }
@@ -630,7 +668,7 @@ export default function TransactionsPage() {
               }}
               disabled={loading}
             >
-              Clear
+              {t("transactions.clear")}
             </Button>
           </div>
         </CardContent>
@@ -641,7 +679,7 @@ export default function TransactionsPage() {
         {txs.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              {loading ? "Memuat…" : "Belum ada transaksi."}
+              {loading ? t("common.loading") : t("transactions.empty")}
             </CardContent>
           </Card>
         ) : (
@@ -651,7 +689,8 @@ export default function TransactionsPage() {
                 <div className="min-w-0 space-y-1">
                   <p className="truncate font-medium">{txLabel(tx)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(tx.date).toLocaleDateString()} · {tx.type}
+                    {new Date(tx.date).toLocaleDateString(intlLocale)} ·{" "}
+                    {typeLabel(tx.type, t)}
                     {tx.accountId?.name ? ` · ${tx.accountId.name}` : ""}
                     {tx.categoryId?.name ? ` · ${tx.categoryId.name}` : ""}
                   </p>
@@ -669,7 +708,7 @@ export default function TransactionsPage() {
                       : tx.type === "EXPENSE"
                         ? "−"
                         : ""}
-                    {formatMoney(tx.amount, tx.currency)}
+                    {money(tx.amount, tx.currency)}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
@@ -680,7 +719,7 @@ export default function TransactionsPage() {
                       className="touch-manipulation"
                       onClick={() => openEdit(tx)}
                     >
-                      Edit
+                      {t("common.edit")}
                     </Button>
                   ) : null}
                   <Button
@@ -689,7 +728,7 @@ export default function TransactionsPage() {
                     className="touch-manipulation"
                     onClick={() => onDelete(tx._id)}
                   >
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </div>
               </CardContent>
@@ -704,12 +743,14 @@ export default function TransactionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>{t("common.date")}</TableHead>
+                <TableHead>{t("common.type")}</TableHead>
+                <TableHead>{t("common.description")}</TableHead>
+                <TableHead>{t("common.category")}</TableHead>
+                <TableHead>{t("common.account")}</TableHead>
+                <TableHead className="text-right">
+                  {t("common.amount")}
+                </TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -720,21 +761,21 @@ export default function TransactionsPage() {
                     colSpan={7}
                     className="py-8 text-center text-muted-foreground"
                   >
-                    {loading ? "Memuat…" : "Belum ada transaksi."}
+                    {loading ? t("common.loading") : t("transactions.empty")}
                   </TableCell>
                 </TableRow>
               ) : (
                 txs.map((tx) => (
                   <TableRow key={tx._id}>
                     <TableCell>
-                      {new Date(tx.date).toLocaleDateString()}
+                      {new Date(tx.date).toLocaleDateString(intlLocale)}
                     </TableCell>
-                    <TableCell>{tx.type}</TableCell>
+                    <TableCell>{typeLabel(tx.type, t)}</TableCell>
                     <TableCell>{txLabel(tx)}</TableCell>
                     <TableCell>{tx.categoryId?.name ?? "—"}</TableCell>
                     <TableCell>{tx.accountId?.name}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatMoney(tx.amount, tx.currency)}
+                      {money(tx.amount, tx.currency)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -744,7 +785,7 @@ export default function TransactionsPage() {
                             size="sm"
                             onClick={() => openEdit(tx)}
                           >
-                            Edit
+                            {t("common.edit")}
                           </Button>
                         ) : null}
                         <Button
@@ -752,7 +793,7 @@ export default function TransactionsPage() {
                           size="sm"
                           onClick={() => onDelete(tx._id)}
                         >
-                          Delete
+                          {t("common.delete")}
                         </Button>
                       </div>
                     </TableCell>
@@ -773,8 +814,11 @@ export default function TransactionsPage() {
             onClick={() => void loadMore()}
           >
             {loadingMore
-              ? "Loading…"
-              : `Load more (${txs.length} of ${total})`}
+              ? t("common.loading")
+              : t("transactions.loadMoreCount", {
+                  shown: txs.length,
+                  total,
+                })}
           </Button>
         </div>
       ) : null}
@@ -788,15 +832,16 @@ export default function TransactionsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit transaction</DialogTitle>
+            <DialogTitle>{t("transactions.editTransaction")}</DialogTitle>
           </DialogHeader>
           {editing ? (
             <form className="space-y-3" onSubmit={onEdit}>
               <p className="text-sm text-muted-foreground">
-                {editing.type} · {editing.accountId?.name ?? "Account"}
+                {typeLabel(editing.type, t)} ·{" "}
+                {editing.accountId?.name ?? t("common.account")}
               </p>
               <div className="space-y-2">
-                <Label>Amount</Label>
+                <Label>{t("common.amount")}</Label>
                 <CurrencyAmountInput
                   currency={editCurrency}
                   value={editAmountMajor}
@@ -805,7 +850,7 @@ export default function TransactionsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Category</Label>
+                <Label>{t("common.category")}</Label>
                 <select
                   className="flex h-9 w-full rounded-md border px-3 text-sm"
                   required
@@ -813,7 +858,7 @@ export default function TransactionsPage() {
                   onChange={(e) => setEditCategoryId(e.target.value)}
                 >
                   <option value="" disabled>
-                    Pilih kategori…
+                    {t("transactions.selectCategory")}
                   </option>
                   {editCategoryOptions.map((c) => (
                     <option key={c._id} value={c._id}>
@@ -823,7 +868,7 @@ export default function TransactionsPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>Date</Label>
+                <Label>{t("common.date")}</Label>
                 <Input
                   type="date"
                   required
@@ -832,15 +877,17 @@ export default function TransactionsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Description</Label>
+                <Label>{t("common.description")}</Label>
                 <Input
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Opsional"
+                  placeholder={t("transactions.optionalPlaceholder")}
                 />
               </div>
               <Button type="submit" className="w-full" disabled={savingEdit}>
-                {savingEdit ? "Saving…" : "Save changes"}
+                {savingEdit
+                  ? t("common.saving")
+                  : t("transactions.saveChanges")}
               </Button>
             </form>
           ) : null}

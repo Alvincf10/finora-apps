@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CurrencyAmountInput } from "@/components/currency-amount-input";
 import {
@@ -51,6 +51,7 @@ type DebtPack = {
 };
 
 export default function SimulatorPage() {
+  const { t, intlLocale } = useI18n();
   const [income, setIncome] = useState(0);
   const [expenses, setExpenses] = useState(0);
   const [debtPayment, setDebtPayment] = useState(0);
@@ -87,29 +88,27 @@ export default function SimulatorPage() {
       });
       setResult(data);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-3xl font-semibold">What-If Simulator</h1>
-        <p className="text-muted-foreground">
-          Explore scenarios without mutating real transactions or budgets.
-        </p>
+        <h1 className="font-heading text-3xl font-semibold">
+          {t("simulator.title")}
+        </h1>
+        <p className="text-muted-foreground">{t("simulator.subtitle")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Scenario inputs</CardTitle>
-          <CardDescription>
-            Leave blank to keep the current-month baseline for that field.
-          </CardDescription>
+          <CardTitle>{t("simulator.inputs")}</CardTitle>
+          <CardDescription>{t("simulator.inputsDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Currency</Label>
+            <Label>{t("common.currency")}</Label>
             <select
               className="flex h-9 w-full rounded-md border px-3 text-sm"
               value={currency}
@@ -120,7 +119,7 @@ export default function SimulatorPage() {
             </select>
           </div>
           <div className="space-y-2">
-            <Label>Income override</Label>
+            <Label>{t("simulator.incomeOverride")}</Label>
             <CurrencyAmountInput
               key={`income-${currency}`}
               currency={currency}
@@ -132,7 +131,7 @@ export default function SimulatorPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Total expenses override</Label>
+            <Label>{t("simulator.expensesOverride")}</Label>
             <CurrencyAmountInput
               key={`expenses-${currency}`}
               currency={currency}
@@ -144,7 +143,7 @@ export default function SimulatorPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Debt payment override</Label>
+            <Label>{t("simulator.debtOverride")}</Label>
             <CurrencyAmountInput
               key={`debt-${currency}`}
               currency={currency}
@@ -156,7 +155,7 @@ export default function SimulatorPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Savings override</Label>
+            <Label>{t("simulator.savingsOverride")}</Label>
             <CurrencyAmountInput
               key={`savings-${currency}`}
               currency={currency}
@@ -169,7 +168,7 @@ export default function SimulatorPage() {
           </div>
           <div className="flex items-end">
             <Button onClick={run} className="w-full">
-              Run simulation
+              {t("simulator.run")}
             </Button>
           </div>
         </CardContent>
@@ -178,30 +177,30 @@ export default function SimulatorPage() {
       {result ? (
         <Card>
           <CardHeader>
-            <CardTitle>Simulation result</CardTitle>
+            <CardTitle>{t("simulator.result")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              Cash flow:{" "}
+              {t("simulator.cashFlow")}{" "}
               <span className="font-mono">
-                {formatMoney(result.cashFlow, currency)}
+                {formatMoney(result.cashFlow, currency, intlLocale)}
               </span>
             </p>
             <p>
-              Savings:{" "}
+              {t("simulator.savings")}{" "}
               <span className="font-mono">
-                {formatMoney(result.savings, currency)}
+                {formatMoney(result.savings, currency, intlLocale)}
               </span>
             </p>
             <p>
-              Ending balance delta:{" "}
+              {t("simulator.endingDelta")}{" "}
               <span className="font-mono">
-                {formatMoney(result.endingBalance, currency)}
+                {formatMoney(result.endingBalance, currency, intlLocale)}
               </span>
             </p>
             <p>
-              Debt payoff months:{" "}
-              {result.debtPayoffMonths ?? "n/a"}
+              {t("simulator.debtPayoffMonths")}{" "}
+              {result.debtPayoffMonths ?? t("common.na")}
             </p>
             <div className="pt-2 text-muted-foreground">
               {result.assumptions.map((a) => (
@@ -216,30 +215,43 @@ export default function SimulatorPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Debt scenarios</CardTitle>
-              <CardDescription>Presented objectively — no “best” pick.</CardDescription>
+              <CardTitle>{t("simulator.debtScenarios")}</CardTitle>
+              <CardDescription>
+                {t("simulator.debtScenariosDesc")}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {pack.debts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active debts.</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("simulator.noActiveDebts")}
+                </p>
               ) : (
                 pack.debts.map((d) => (
                   <div key={d.debtId} className="rounded-lg border p-3 text-sm">
                     <p className="font-medium">{d.name}</p>
                     <p className="text-muted-foreground">
-                      Remaining {formatMoney(d.remainingAmount, d.currency)}
+                      {t("simulator.remaining", {
+                        amount: formatMoney(
+                          d.remainingAmount,
+                          d.currency,
+                          intlLocale
+                        ),
+                      })}
                       {d.interestRate == null
-                        ? " · interest rate missing"
+                        ? t("simulator.interestMissing")
                         : ` · ${d.interestRate}%`}
                     </p>
                     <div className="mt-2 space-y-1">
                       {d.scenarios.map((s) => (
                         <p key={s.label}>
-                          {s.label}: {formatMoney(s.monthlyPayment, d.currency)}
+                          {s.label}:{" "}
+                          {formatMoney(s.monthlyPayment, d.currency, intlLocale)}
                           {" → "}
                           {s.estimatedMonths != null
-                            ? `${s.estimatedMonths} months`
-                            : s.note ?? "n/a"}
+                            ? t("simulator.months", {
+                                count: s.estimatedMonths,
+                              })
+                            : s.note ?? t("common.na")}
                         </p>
                       ))}
                     </div>
@@ -251,7 +263,7 @@ export default function SimulatorPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Emergency fund</CardTitle>
+              <CardTitle>{t("simulator.emergencyFund")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {pack.emergency.emergencyFund ? (
@@ -260,23 +272,30 @@ export default function SimulatorPage() {
                   <p className="font-mono">
                     {formatMoney(
                       pack.emergency.emergencyFund.currentAmount,
-                      pack.emergency.emergencyFund.currency
+                      pack.emergency.emergencyFund.currency,
+                      intlLocale
                     )}
                   </p>
                   <p>
-                    Essential monthly:{" "}
-                    {formatMoney(pack.emergency.essentialMonthlyExpenses, currency)}
+                    {t("simulator.essentialMonthly")}{" "}
+                    {formatMoney(
+                      pack.emergency.essentialMonthlyExpenses,
+                      currency,
+                      intlLocale
+                    )}
                   </p>
                   <p>
-                    Coverage:{" "}
+                    {t("simulator.coverage")}{" "}
                     {pack.emergency.coverageMonths != null
-                      ? `${pack.emergency.coverageMonths} months`
-                      : "n/a"}
+                      ? t("simulator.months", {
+                          count: pack.emergency.coverageMonths,
+                        })
+                      : t("common.na")}
                   </p>
                 </>
               ) : (
                 <p className="text-muted-foreground">
-                  No goal named like “Emergency Fund”.
+                  {t("simulator.noEmergencyGoal")}
                 </p>
               )}
             </CardContent>

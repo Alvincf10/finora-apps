@@ -399,7 +399,7 @@ export async function generatePhase2Insights(
       insights.push({
         type: "UNUSUAL_CATEGORY_SPENDING",
         priority: "HIGH",
-        title: `Unusual ${row.categoryName} spending`,
+        title: `Belanja ${row.categoryName} tidak wajar`,
         message: `${row.categoryName} bulan ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
         categoryId: row.categoryId,
         currentValue: row.currentAmount,
@@ -422,8 +422,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "BUDGET_OVERFLOW",
         priority: "HIGH",
-        title: `${b.categoryName} over budget`,
-        message: `Spending exceeded the ${b.categoryName} budget.`,
+        title: `${b.categoryName} melebihi budget`,
+        message: `Pengeluaran ${b.categoryName} sudah melewati budget ${formatMoney(b.budgetAmount, currency)}.`,
         categoryId: b.categoryId,
         currentValue: b.actualAmount,
         recommendedValue: b.budgetAmount,
@@ -436,15 +436,15 @@ export async function generatePhase2Insights(
             changePercent: b.utilizationPercentage,
           },
         ],
-        actionType: "VIEW_BUDGET",
+        actionType: "VIEW_BUDGET_REC",
         period,
       });
     } else if (b.utilizationPercentage >= 80) {
       insights.push({
         type: "BUDGET_WARNING",
         priority: "MEDIUM",
-        title: `${b.categoryName} budget warning`,
-        message: `${b.categoryName} is at ${b.utilizationPercentage}% of budget.`,
+        title: `Peringatan budget ${b.categoryName}`,
+        message: `${b.categoryName} sudah memakai ${b.utilizationPercentage}% dari budget.`,
         categoryId: b.categoryId,
         currentValue: b.actualAmount,
         recommendedValue: b.budgetAmount,
@@ -456,21 +456,22 @@ export async function generatePhase2Insights(
             changePercent: b.utilizationPercentage,
           },
         ],
-        actionType: "VIEW_BUDGET",
+        actionType: "VIEW_BUDGET_REC",
         period,
       });
     } else {
       const projected = projectCategorySpend(b.actualAmount, elapsed, dim);
       if (projected > b.budgetAmount) {
+        const overBy = projected - b.budgetAmount;
         insights.push({
           type: "PROJECTED_BUDGET_OVERFLOW",
           priority: "HIGH",
-          title: `Projected ${b.categoryName} overflow`,
-          message: `Current pace projects ~${projected - b.budgetAmount} over budget by month end.`,
+          title: `Proyeksi ${b.categoryName} overflow`,
+          message: `Dengan laju sekarang, ${b.categoryName} diproyeksikan ~${formatMoney(overBy, currency)} di atas budget di akhir bulan.`,
           categoryId: b.categoryId,
           currentValue: b.actualAmount,
           recommendedValue: b.budgetAmount,
-          difference: projected - b.budgetAmount,
+          difference: overBy,
           evidence: [
             {
               metric: "projected_spend",
@@ -479,7 +480,7 @@ export async function generatePhase2Insights(
               budget: b.budgetAmount,
             },
           ],
-          actionType: "VIEW_BUDGET",
+          actionType: "VIEW_BUDGET_REC",
           period,
         });
       }
@@ -490,8 +491,8 @@ export async function generatePhase2Insights(
     insights.push({
       type: "SAVINGS_TARGET_RISK",
       priority: "MEDIUM",
-      title: "Low savings rate",
-      message: `Savings rate is ${summary.savingsRate}% this month.`,
+      title: "Rasio tabungan rendah",
+      message: `Rasio tabungan bulan ini ${summary.savingsRate}% — di bawah ambang 10%.`,
       currentValue: summary.savings,
       evidence: [{ metric: "savings_rate", current: summary.savingsRate }],
       actionType: "SIMULATE",
@@ -504,8 +505,8 @@ export async function generatePhase2Insights(
     insights.push({
       type: "SAVINGS_OPPORTUNITY",
       priority: "LOW",
-      title: "Savings opportunity",
-      message: `Average cash flow suggests approximately ${spare} additional savings capacity.`,
+      title: "Peluang menabung",
+      message: `Arus kas rata-rata menyisakan kapasitas tabungan sekitar ${formatMoney(spare, currency)}.`,
       recommendedValue: spare,
       evidence: [
         {
@@ -523,8 +524,8 @@ export async function generatePhase2Insights(
     insights.push({
       type: "CASHFLOW_RISK",
       priority: "HIGH",
-      title: "Negative cash flow",
-      message: "Expenses exceed income this month.",
+      title: "Arus kas negatif",
+      message: "Pengeluaran melebihi pemasukan bulan ini.",
       currentValue: summary.netCashFlow,
       evidence: [
         {
@@ -534,7 +535,7 @@ export async function generatePhase2Insights(
           expense: summary.expense,
         },
       ],
-      actionType: "VIEW_BUDGET",
+      actionType: "VIEW_BUDGET_REC",
       period,
     });
   }
@@ -555,8 +556,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "DEBT_PAYMENT_RISK",
         priority: "HIGH",
-        title: `${debt.name} payment overdue`,
-        message: `Due date for ${debt.name} has passed while the debt is still active.`,
+        title: `Cicilan ${debt.name} terlambat`,
+        message: `Tanggal jatuh tempo ${debt.name} sudah lewat dan hutang masih aktif.`,
         debtId,
         currentValue: debt.remainingAmount,
         evidence: [
@@ -575,8 +576,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "DEBT_PAYMENT_RISK",
         priority: "MEDIUM",
-        title: `${debt.name} has no payment plan`,
-        message: `${debt.name} still has a balance but no minimum/planned payment is set.`,
+        title: `${debt.name} belum ada rencana cicilan`,
+        message: `${debt.name} masih punya sisa saldonya, tapi minimum/rencana cicilan belum diisi.`,
         debtId,
         currentValue: debt.remainingAmount,
         evidence: [
@@ -597,8 +598,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "DEBT_PAYMENT_RISK",
         priority: burden >= DEBT_BURDEN_CRITICAL ? "HIGH" : "MEDIUM",
-        title: "High debt payment burden",
-        message: `Planned debt payments are ${burden}% of income (${formatMoney(totalDebtObligation, currency)} / month).`,
+        title: "Beban cicilan tinggi",
+        message: `Rencana cicilan hutang ${burden}% dari income (${formatMoney(totalDebtObligation, currency)} / bulan).`,
         currentValue: totalDebtObligation,
         recommendedValue: Math.round(incomeBase * (DEBT_BURDEN_WARNING / 100)),
         difference: totalDebtObligation - Math.round(incomeBase * (DEBT_BURDEN_WARNING / 100)),
@@ -626,8 +627,8 @@ export async function generatePhase2Insights(
     insights.push({
       type: "DEBT_PAYMENT_RISK",
       priority: "HIGH",
-      title: "Debt payments exceed spare cash flow",
-      message: `Average obligations (${formatMoney(totalDebtObligation, currency)}) are above spare cash flow (${formatMoney(available, currency)}).`,
+      title: "Cicilan melebihi sisa arus kas",
+      message: `Kewajiban rata-rata (${formatMoney(totalDebtObligation, currency)}) di atas sisa arus kas (${formatMoney(available, currency)}).`,
       currentValue: totalDebtObligation,
       recommendedValue: Math.max(0, available),
       difference: totalDebtObligation - available,
@@ -677,8 +678,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "DEBT_PAYOFF_SCENARIO",
         priority: "LOW",
-        title: `${debt.name}: faster payoff option`,
-        message: `Paying ~15% more (${formatMoney(Math.round(base * 1.15), currency)}/mo) could shorten payoff by ~${monthsSaved} months.`,
+        title: `${debt.name}: opsi lunas lebih cepat`,
+        message: `Naikkan cicilan ~15% (${formatMoney(Math.round(base * 1.15), currency)}/bln) bisa mempercepat pelunasan ~${monthsSaved} bulan.`,
         debtId: debt._id.toString(),
         currentValue: base,
         recommendedValue: Math.round(base * 1.15),
@@ -709,8 +710,8 @@ export async function generatePhase2Insights(
     insights.push({
       type: "EMERGENCY_FUND_GAP",
       priority: "MEDIUM",
-      title: "No emergency fund goal",
-      message: `Create an emergency goal covering ~${TARGET_EMERGENCY_MONTHS} months of essentials (${formatMoney(essentialMonthly * TARGET_EMERGENCY_MONTHS, currency)}).`,
+      title: "Belum ada tujuan dana darurat",
+      message: `Buat goal dana darurat setara ~${TARGET_EMERGENCY_MONTHS} bulan essentials (${formatMoney(essentialMonthly * TARGET_EMERGENCY_MONTHS, currency)}).`,
       recommendedValue: essentialMonthly * TARGET_EMERGENCY_MONTHS,
       evidence: [
         {
@@ -735,8 +736,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "EMERGENCY_FUND_GAP",
         priority: coverage < 1 ? "HIGH" : "MEDIUM",
-        title: "Emergency fund below target",
-        message: `${emergencyGoal.name} covers ~${coverage} months of essentials; target is ${TARGET_EMERGENCY_MONTHS}+ months (gap ${formatMoney(gap, currency)}).`,
+        title: "Dana darurat di bawah target",
+        message: `${emergencyGoal.name} menutup ~${coverage} bulan essentials; target ${TARGET_EMERGENCY_MONTHS}+ bulan (selisih ${formatMoney(gap, currency)}).`,
         goalId: emergencyGoal._id.toString(),
         currentValue: emergencyGoal.currentAmount,
         recommendedValue: essentialMonthly * TARGET_EMERGENCY_MONTHS,
@@ -767,8 +768,8 @@ export async function generatePhase2Insights(
       insights.push({
         type: "INCOME_CHANGE",
         priority: up ? "LOW" : "MEDIUM",
-        title: up ? "Income above usual" : "Income below usual",
-        message: `Income is ${Math.abs(incomeChange)}% ${up ? "above" : "below"} the 3-month average (${formatMoney(summary.income, currency)} vs ${formatMoney(profile.averageMonthlyIncome, currency)}).`,
+        title: up ? "Income di atas biasanya" : "Income di bawah biasanya",
+        message: `Income ${Math.abs(incomeChange)}% ${up ? "di atas" : "di bawah"} rata-rata 3 bulan (${formatMoney(summary.income, currency)} vs ${formatMoney(profile.averageMonthlyIncome, currency)}).`,
         currentValue: summary.income,
         recommendedValue: profile.averageMonthlyIncome,
         difference: summary.income - profile.averageMonthlyIncome,

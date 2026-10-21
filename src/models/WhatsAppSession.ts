@@ -31,6 +31,8 @@ const WhatsAppSessionSchema = new Schema(
     allowedFrom: { type: String, default: null },
     lastError: { type: String, default: null },
     lastMessageAt: { type: Date, default: null },
+    /** Worker heartbeat so the web UI can detect a dead Vira process. */
+    lastHeartbeatAt: { type: Date, default: null },
     /** Worker clears Baileys auth folder when true, then resets flag. */
     clearAuthRequested: { type: Boolean, default: false },
   },

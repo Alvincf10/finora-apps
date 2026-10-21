@@ -5,6 +5,7 @@ import {
   parsePeriod,
   persistInsights,
 } from "@/lib/financial/phase2-service";
+import { evaluateWealthLadder } from "@/lib/financial/wealth-ladder";
 import { FinancialRecommendation } from "@/models/FinancialRecommendation";
 import { z } from "zod";
 
@@ -15,10 +16,12 @@ export async function GET(request: Request) {
     const period = parsePeriod(searchParams);
     const refresh = searchParams.get("refresh") === "1";
 
+    const ladder = await evaluateWealthLadder(userId, period);
+
     if (refresh) {
       const insights = await generatePhase2Insights(userId, period);
       const saved = await persistInsights(userId, period, insights);
-      return ok(saved);
+      return ok({ insights: saved, ladder });
     }
 
     const existing = await FinancialRecommendation.find({
@@ -31,10 +34,10 @@ export async function GET(request: Request) {
     if (existing.length === 0) {
       const insights = await generatePhase2Insights(userId, period);
       const saved = await persistInsights(userId, period, insights);
-      return ok(saved);
+      return ok({ insights: saved, ladder });
     }
 
-    return ok(existing);
+    return ok({ insights: existing, ladder });
   } catch (error) {
     return handleError(error);
   }

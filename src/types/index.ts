@@ -13,6 +13,8 @@ export type CategoryType = "INCOME" | "EXPENSE";
 
 export type DebtStatus = "ACTIVE" | "PAID" | "CANCELLED";
 
+export type DebtKind = "CONSUMER" | "MORTGAGE" | "OTHER";
+
 export type GoalStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
 
 export type RecommendationSeverity = "INFO" | "WARNING" | "CRITICAL";

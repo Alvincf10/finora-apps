@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,7 @@ type Account = {
 };
 
 export default function AccountsPage() {
+  const { t, intlLocale } = useI18n();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
@@ -72,11 +74,11 @@ export default function AccountsPage() {
           initialBalance: toMinorUnits(Number(form.get("initialBalance")), currency),
         }),
       });
-      toast.success("Account created");
+      toast.success(t("accounts.created"));
       setOpen(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -95,21 +97,21 @@ export default function AccountsPage() {
           ),
         }),
       });
-      toast.success("Account updated");
+      toast.success(t("accounts.updated"));
       setEditOpen(null);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
   async function archive(id: string) {
     try {
       await api(`/api/accounts/${id}`, { method: "DELETE" });
-      toast.success("Account archived");
+      toast.success(t("accounts.archivedToast"));
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -119,10 +121,10 @@ export default function AccountsPage() {
         method: "PATCH",
         body: JSON.stringify({ isActive: true }),
       });
-      toast.success("Account restored");
+      toast.success(t("accounts.restoredToast"));
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -135,7 +137,7 @@ export default function AccountsPage() {
           className="touch-manipulation"
           onClick={() => setEditOpen(account._id)}
         >
-          Edit
+          {t("common.edit")}
         </Button>
         {account.isActive ? (
           <Button
@@ -144,7 +146,7 @@ export default function AccountsPage() {
             className="touch-manipulation"
             onClick={() => archive(account._id)}
           >
-            Archive
+            {t("accounts.archive")}
           </Button>
         ) : (
           <Button
@@ -153,20 +155,32 @@ export default function AccountsPage() {
             className="touch-manipulation"
             onClick={() => restore(account._id)}
           >
-            Restore
+            {t("accounts.restore")}
           </Button>
         )}
       </div>
     );
   }
 
+  const typeOptions = (
+    <>
+      <option value="CASH">{t("accounts.typeCash")}</option>
+      <option value="BANK">{t("accounts.typeBank")}</option>
+      <option value="E_WALLET">{t("accounts.typeEWallet")}</option>
+      <option value="CREDIT_CARD">{t("accounts.typeCreditCard")}</option>
+      <option value="OTHER">{t("accounts.typeOther")}</option>
+    </>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-heading text-3xl font-semibold">Accounts</h1>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("accounts.title")}
+          </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Set the current balance to restart tracking from a known amount.
+            {t("accounts.subtitle")}
           </p>
         </div>
         <Dialog
@@ -179,34 +193,34 @@ export default function AccountsPage() {
           <DialogTrigger
             render={<Button className="w-full touch-manipulation sm:w-auto" />}
           >
-            Add account
+            {t("accounts.add")}
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>New account</DialogTitle>
+              <DialogTitle>{t("accounts.newAccount")}</DialogTitle>
             </DialogHeader>
             <form className="space-y-3" onSubmit={onCreate}>
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input name="name" required placeholder="BCA / Cash / Bank Austria" />
+                <Label>{t("common.name")}</Label>
+                <Input
+                  name="name"
+                  required
+                  placeholder={t("accounts.namePlaceholder")}
+                />
               </div>
               <div className="space-y-2">
-                <Label>Type</Label>
+                <Label>{t("common.type")}</Label>
                 <select
                   name="type"
                   className="flex h-9 w-full rounded-md border px-3 text-sm"
                   defaultValue="BANK"
                 >
-                  <option value="CASH">Cash</option>
-                  <option value="BANK">Bank</option>
-                  <option value="E_WALLET">E-wallet</option>
-                  <option value="CREDIT_CARD">Credit card</option>
-                  <option value="OTHER">Other</option>
+                  {typeOptions}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Currency</Label>
+                  <Label>{t("common.currency")}</Label>
                   <select
                     name="currency"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -220,7 +234,7 @@ export default function AccountsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Initial balance</Label>
+                  <Label>{t("accounts.initialBalance")}</Label>
                   <CurrencyAmountInput
                     name="initialBalance"
                     currency={formCurrency}
@@ -229,7 +243,7 @@ export default function AccountsPage() {
                 </div>
               </div>
               <Button type="submit" className="w-full">
-                Create
+                {t("common.create")}
               </Button>
             </form>
           </DialogContent>
@@ -248,11 +262,11 @@ export default function AccountsPage() {
                   </p>
                 </div>
                 <Badge variant={a.isActive ? "secondary" : "outline"}>
-                  {a.isActive ? "Active" : "Archived"}
+                  {a.isActive ? t("common.active") : t("common.archived")}
                 </Badge>
               </div>
               <p className="font-mono text-lg text-emerald-800 dark:text-emerald-300">
-                {formatMoney(a.currentBalance, a.currency)}
+                {formatMoney(a.currentBalance, a.currency, intlLocale)}
               </p>
               <AccountActions account={a} />
             </CardContent>
@@ -262,16 +276,16 @@ export default function AccountsPage() {
 
       <Card className="hidden md:block">
         <CardHeader>
-          <CardTitle>Your accounts</CardTitle>
+          <CardTitle>{t("accounts.yourAccounts")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
+                <TableHead>{t("common.name")}</TableHead>
+                <TableHead>{t("common.type")}</TableHead>
+                <TableHead>{t("common.status")}</TableHead>
+                <TableHead className="text-right">{t("accounts.balance")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -282,11 +296,11 @@ export default function AccountsPage() {
                   <TableCell>{a.type}</TableCell>
                   <TableCell>
                     <Badge variant={a.isActive ? "secondary" : "outline"}>
-                      {a.isActive ? "Active" : "Archived"}
+                      {a.isActive ? t("common.active") : t("common.archived")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatMoney(a.currentBalance, a.currency)}
+                    {formatMoney(a.currentBalance, a.currency, intlLocale)}
                   </TableCell>
                   <TableCell className="text-right">
                     <AccountActions account={a} />
@@ -308,7 +322,9 @@ export default function AccountsPage() {
           {editing ? (
             <>
               <DialogHeader>
-                <DialogTitle>Edit {editing.name}</DialogTitle>
+                <DialogTitle>
+                  {t("common.editNamed", { name: editing.name })}
+                </DialogTitle>
               </DialogHeader>
               <form
                 key={
@@ -321,25 +337,21 @@ export default function AccountsPage() {
                 onSubmit={(e) => onEdit(e, editing)}
               >
                 <div className="space-y-2">
-                  <Label>Name</Label>
+                  <Label>{t("common.name")}</Label>
                   <Input name="name" required defaultValue={editing.name} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Type</Label>
+                  <Label>{t("common.type")}</Label>
                   <select
                     name="type"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
                     defaultValue={editing.type}
                   >
-                    <option value="CASH">Cash</option>
-                    <option value="BANK">Bank</option>
-                    <option value="E_WALLET">E-wallet</option>
-                    <option value="CREDIT_CARD">Credit card</option>
-                    <option value="OTHER">Other</option>
+                    {typeOptions}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Current balance</Label>
+                  <Label>{t("accounts.currentBalance")}</Label>
                   <CurrencyAmountInput
                     name="currentBalance"
                     currency={editing.currency}
@@ -350,13 +362,11 @@ export default function AccountsPage() {
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Enter the balance you want as of your restart date (e.g. 12
-                    Oct). Existing transactions stay; opening balance is
-                    adjusted so this matches.
+                    {t("accounts.balanceHint")}
                   </p>
                 </div>
                 <Button type="submit" className="w-full">
-                  Save
+                  {t("common.save")}
                 </Button>
               </form>
             </>

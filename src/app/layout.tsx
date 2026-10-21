@@ -51,7 +51,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="id"
       suppressHydrationWarning
       className={`${dmSans.variable} ${plexMono.variable} h-full antialiased`}
     >

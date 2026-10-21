@@ -9,6 +9,7 @@ import {
   dismissAlert,
   getDismissedAlertIds,
 } from "@/lib/alert-dismiss";
+import { useI18n } from "@/components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,6 +44,7 @@ function kindLabel(kind: string) {
 }
 
 export default function AlertsPage() {
+  const { t, intlLocale } = useI18n();
   const [alerts, setAlerts] = useState<AppAlert[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -53,11 +55,11 @@ export default function AlertsPage() {
       const dismissed = getDismissedAlertIds();
       setAlerts(data.alerts.filter((a) => !dismissed.has(a.id)));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
+      toast.error(e instanceof Error ? e.message : t("common.failed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -71,18 +73,17 @@ export default function AlertsPage() {
   function onResetDismissals() {
     clearDismissedAlerts();
     void load();
-    toast.success("Dismissed alerts restored");
+    toast.success(t("alerts.restored"));
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Alerts</h1>
-          <p className="text-muted-foreground">
-            Reminder live dari data — utang, fixed cost, budget, recurring.
-            Tanpa AI, tanpa push.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("alerts.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("alerts.subtitle")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -91,7 +92,7 @@ export default function AlertsPage() {
             onClick={onResetDismissals}
             disabled={loading}
           >
-            Restore dismissed
+            {t("alerts.restoreDismissed")}
           </Button>
           <Button
             variant="outline"
@@ -99,22 +100,15 @@ export default function AlertsPage() {
             onClick={() => void load()}
             disabled={loading}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading ? t("common.refreshing") : t("common.refresh")}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardContent className="space-y-1 pt-6 text-sm text-muted-foreground">
-          <p>
-            <span className="font-medium text-foreground">CRITICAL</span> —
-            overdue / over budget ·{" "}
-            <span className="font-medium text-foreground">WARNING</span> —
-            due soon / budget ≥80% ·{" "}
-            <span className="font-medium text-foreground">INFO</span> — soft
-            reminder
-          </p>
-          <p>Dismiss hanya disimpan di browser ini (localStorage).</p>
+          <p>{t("alerts.legend")}</p>
+          <p>{t("alerts.dismissHint")}</p>
         </CardContent>
       </Card>
 
@@ -122,9 +116,7 @@ export default function AlertsPage() {
         {alerts.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              {loading
-                ? "Memuat…"
-                : "Tidak ada alert aktif. Semua aman untuk sekarang."}
+              {loading ? t("common.loading") : t("alerts.empty")}
             </CardContent>
           </Card>
         ) : (
@@ -149,7 +141,11 @@ export default function AlertsPage() {
                 <CardDescription>{alert.message}</CardDescription>
                 {alert.dueDate ? (
                   <p className="text-xs text-muted-foreground">
-                    Due {new Date(alert.dueDate).toLocaleDateString("id-ID")}
+                    {t("alerts.due", {
+                      date: new Date(alert.dueDate).toLocaleDateString(
+                        intlLocale
+                      ),
+                    })}
                   </p>
                 ) : null}
               </CardHeader>
@@ -158,14 +154,14 @@ export default function AlertsPage() {
                   href={alert.href}
                   className="inline-flex h-8 items-center rounded-md border px-3 text-sm"
                 >
-                  Open
+                  {t("alerts.open")}
                 </Link>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => onDismiss(alert.id)}
                 >
-                  Dismiss
+                  {t("alerts.dismiss")}
                 </Button>
               </CardContent>
             </Card>

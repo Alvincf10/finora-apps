@@ -9,12 +9,21 @@ const DebtSchema = new Schema(
       index: true,
     },
     name: { type: String, required: true, trim: true },
+    /** CONSUMER = hutang kecil; MORTGAGE = KPR (dikecualikan step 2 tangga). */
+    kind: {
+      type: String,
+      enum: ["CONSUMER", "MORTGAGE", "OTHER"],
+      default: "CONSUMER",
+    },
     originalAmount: { type: Number, required: true, min: 1 },
     remainingAmount: { type: Number, required: true, min: 0 },
     currency: { type: String, enum: ["IDR", "EUR"], required: true },
     interestRate: { type: Number },
     minimumPayment: { type: Number },
+    /** Monthly installment (cicilan) amount in minor units */
     plannedPayment: { type: Number },
+    /** Total installment tenure in months (tenor) */
+    installmentMonths: { type: Number, min: 1 },
     dueDate: { type: Date },
     startDate: { type: Date },
     targetPayoffDate: { type: Date },

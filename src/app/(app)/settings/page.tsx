@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +33,7 @@ type Settings = {
 export default function SettingsPage() {
   const { data } = useSession();
   const { theme, setTheme } = useTheme();
+  const { t, intlLocale } = useI18n();
   const [mounted, setMounted] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [paydayDay, setPaydayDay] = useState(25);
@@ -59,7 +62,7 @@ export default function SettingsPage() {
     e.preventDefault();
     if (!settings) return;
     if (!salaryMajor || salaryMajor <= 0) {
-      toast.error("Isi nominal gaji dulu (placeholder abu-abu bukan nilai tersimpan)");
+      toast.error(t("settings.salaryRequired"));
       return;
     }
     setSaving(true);
@@ -73,7 +76,7 @@ export default function SettingsPage() {
         }),
       });
       if ((updated.monthlySalary ?? 0) <= 0) {
-        toast.error("Gaji gagal tersimpan. Coba save lagi.");
+        toast.error(t("settings.salarySaveFailed"));
         return;
       }
       setSettings(updated);
@@ -82,10 +85,13 @@ export default function SettingsPage() {
       );
       setPaydayDay(updated.paydayDay);
       toast.success(
-        `Tersimpan: gaji ${updated.monthlySalary.toLocaleString("id-ID")} · tgl ${updated.paydayDay}`
+        t("settings.savedPayCycle", {
+          salary: updated.monthlySalary.toLocaleString(intlLocale),
+          day: updated.paydayDay,
+        })
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
       setSaving(false);
     }
@@ -96,26 +102,30 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-3xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground">Profile, pay cycle, and appearance.</p>
+        <h1 className="font-heading text-3xl font-semibold">
+          {t("settings.title")}
+        </h1>
+        <p className="text-muted-foreground">{t("settings.subtitle")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>From your authenticated session</CardDescription>
+          <CardTitle>{t("settings.profile")}</CardTitle>
+          <CardDescription>{t("settings.profileDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <p>
-            <span className="text-muted-foreground">Name: </span>
+            <span className="text-muted-foreground">{t("common.name")}: </span>
             {data?.user?.name ?? settings?.name}
           </p>
           <p>
-            <span className="text-muted-foreground">Email: </span>
+            <span className="text-muted-foreground">{t("common.email")}: </span>
             {data?.user?.email ?? settings?.email}
           </p>
           <p>
-            <span className="text-muted-foreground">Base currency: </span>
+            <span className="text-muted-foreground">
+              {t("settings.baseCurrency")}:{" "}
+            </span>
             {data?.user?.baseCurrency ?? settings?.baseCurrency}
           </p>
         </CardContent>
@@ -123,17 +133,24 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pay cycle & salary</CardTitle>
-          <CardDescription>
-            Gaji dihitung otomatis tiap cycle (payday → sehari sebelum payday
-            berikutnya). Tidak perlu input transaksi gaji setiap bulan.
-          </CardDescription>
+          <CardTitle>{t("settings.language")}</CardTitle>
+          <CardDescription>{t("settings.languageDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LanguageSwitcher />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.payCycle")}</CardTitle>
+          <CardDescription>{t("settings.payCycleDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={savePayCycle}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="paydayDay">Payday (tanggal)</Label>
+                <Label htmlFor="paydayDay">{t("settings.payday")}</Label>
                 <Input
                   id="paydayDay"
                   type="number"
@@ -144,28 +161,29 @@ export default function SettingsPage() {
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Contoh 25 → cycle 25 Okt sampai 24 Nov (periode gaji
-                  berikutnya / berjalan).
+                  {t("settings.paydayHint")}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Monthly salary (take-home)</Label>
+                <Label>{t("settings.monthlySalary")}</Label>
                 <CurrencyAmountInput
                   currency={currency}
                   value={salaryMajor}
                   onValueChange={setSalaryMajor}
                   allowEmpty
-                  placeholder="Contoh: 15.000.000"
+                  placeholder={t("settings.salaryPlaceholder")}
                 />
                 <p className="text-xs text-muted-foreground">
                   {salaryMajor > 0
-                    ? `Nilai siap disimpan: ${salaryMajor.toLocaleString("id-ID")}`
-                    : "Ketik nominal gaji — teks abu-abu di kotak hanya contoh, bukan data tersimpan."}
+                    ? t("settings.salaryReady", {
+                        amount: salaryMajor.toLocaleString(intlLocale),
+                      })
+                    : t("settings.salaryHint")}
                 </p>
               </div>
             </div>
             <Button type="submit" disabled={saving || !settings}>
-              {saving ? "Saving..." : "Save pay cycle"}
+              {saving ? t("common.saving") : t("settings.savePayCycle")}
             </Button>
           </form>
         </CardContent>
@@ -173,27 +191,27 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Theme</CardTitle>
-          <CardDescription>Light, dark, or system</CardDescription>
+          <CardTitle>{t("settings.theme")}</CardTitle>
+          <CardDescription>{t("settings.themeDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button
             variant={activeTheme === "light" ? "default" : "outline"}
             onClick={() => setTheme("light")}
           >
-            Light
+            {t("settings.themeLight")}
           </Button>
           <Button
             variant={activeTheme === "dark" ? "default" : "outline"}
             onClick={() => setTheme("dark")}
           >
-            Dark
+            {t("settings.themeDark")}
           </Button>
           <Button
             variant={activeTheme === "system" ? "default" : "outline"}
             onClick={() => setTheme("system")}
           >
-            System
+            {t("settings.themeSystem")}
           </Button>
         </CardContent>
       </Card>

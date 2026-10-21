@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,7 @@ type FixedCost = {
 };
 
 export default function FixedCostsPage() {
+  const { t, intlLocale } = useI18n();
   const [items, setItems] = useState<FixedCost[]>([]);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
@@ -65,11 +67,11 @@ export default function FixedCostsPage() {
           notes: form.get("notes") || undefined,
         }),
       });
-      toast.success("Fixed cost added");
+      toast.success(t("fixedCosts.created"));
       setOpen(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -87,21 +89,21 @@ export default function FixedCostsPage() {
           notes: form.get("notes") || undefined,
         }),
       });
-      toast.success("Fixed cost updated");
+      toast.success(t("fixedCosts.updated"));
       setEditOpen(null);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
   async function onDelete(id: string) {
     try {
       await api(`/api/fixed-costs/${id}`, { method: "DELETE" });
-      toast.success("Deleted");
+      toast.success(t("common.deleted"));
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -113,11 +115,10 @@ export default function FixedCostsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Fixed costs</h1>
-          <p className="text-muted-foreground">
-            Tagihan rutin setelah gajian (mis. tgl 1, 3, 10, 15, 21). Dipotong
-            dari cycle gaji, bukan uang survival sebelum tgl 25.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("fixedCosts.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("fixedCosts.subtitle")}</p>
         </div>
         <Dialog
           open={open}
@@ -126,19 +127,25 @@ export default function FixedCostsPage() {
             if (v) setFormCurrency("IDR");
           }}
         >
-          <DialogTrigger render={<Button />}>Add fixed cost</DialogTrigger>
+          <DialogTrigger render={<Button />}>
+            {t("fixedCosts.add")}
+          </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>New fixed cost</DialogTitle>
+              <DialogTitle>{t("fixedCosts.newItem")}</DialogTitle>
             </DialogHeader>
             <form className="space-y-3" onSubmit={onCreate}>
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input name="name" required placeholder="Internet" />
+                <Label>{t("common.name")}</Label>
+                <Input
+                  name="name"
+                  required
+                  placeholder={t("fixedCosts.namePlaceholder")}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Amount</Label>
+                  <Label>{t("common.amount")}</Label>
                   <CurrencyAmountInput
                     name="amount"
                     currency={formCurrency}
@@ -146,7 +153,7 @@ export default function FixedCostsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
+                  <Label>{t("common.currency")}</Label>
                   <select
                     name="currency"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -161,7 +168,7 @@ export default function FixedCostsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Due day (tanggal tiap bulan)</Label>
+                <Label>{t("fixedCosts.dueDayLabel")}</Label>
                 <Input
                   name="dueDay"
                   type="number"
@@ -171,15 +178,15 @@ export default function FixedCostsPage() {
                   placeholder="30"
                 />
                 <p className="text-xs text-muted-foreground">
-                  1–31. Bulan pendek (Feb) otomatis ke hari terakhir bulan.
+                  {t("fixedCosts.dueDayHint")}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Notes</Label>
-                <Input name="notes" placeholder="Optional" />
+                <Label>{t("common.notes")}</Label>
+                <Input name="notes" placeholder={t("common.optional")} />
               </div>
               <Button type="submit" className="w-full">
-                Create
+                {t("common.create")}
               </Button>
             </form>
           </DialogContent>
@@ -189,9 +196,10 @@ export default function FixedCostsPage() {
       {activeTotal > 0 ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total fixed cost aktif (IDR)</CardDescription>
+            <CardDescription>{t("fixedCosts.totalActive")}</CardDescription>
             <CardTitle className="font-mono text-2xl">
-              {formatMoney(activeTotal, "IDR")}/bulan
+              {formatMoney(activeTotal, "IDR", intlLocale)}
+              {t("fixedCosts.perMonth")}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -204,14 +212,18 @@ export default function FixedCostsPage() {
               <CardTitle className="flex items-center justify-between gap-2">
                 <span>{item.name}</span>
                 <Badge variant={item.isActive ? "secondary" : "outline"}>
-                  {item.isActive ? "ACTIVE" : "OFF"}
+                  {item.isActive
+                    ? t("fixedCosts.statusOn")
+                    : t("fixedCosts.statusOff")}
                 </Badge>
               </CardTitle>
-              <CardDescription>Jatuh tempo tiap tanggal {item.dueDay}</CardDescription>
+              <CardDescription>
+                {t("fixedCosts.dueEvery", { day: item.dueDay })}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="font-mono text-xl">
-                {formatMoney(item.amount, item.currency)}
+                {formatMoney(item.amount, item.currency, intlLocale)}
               </p>
               <div className="flex gap-2">
                 <Dialog
@@ -221,11 +233,13 @@ export default function FixedCostsPage() {
                   <DialogTrigger
                     render={<Button variant="outline" className="flex-1" />}
                   >
-                    Edit
+                    {t("common.edit")}
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Edit {item.name}</DialogTitle>
+                      <DialogTitle>
+                        {t("common.editNamed", { name: item.name })}
+                      </DialogTitle>
                     </DialogHeader>
                     <form
                       key={item._id + String(item.amount) + item.dueDay}
@@ -233,11 +247,11 @@ export default function FixedCostsPage() {
                       onSubmit={(e) => onEdit(e, item)}
                     >
                       <div className="space-y-2">
-                        <Label>Name</Label>
+                        <Label>{t("common.name")}</Label>
                         <Input name="name" required defaultValue={item.name} />
                       </div>
                       <div className="space-y-2">
-                        <Label>Amount</Label>
+                        <Label>{t("common.amount")}</Label>
                         <CurrencyAmountInput
                           name="amount"
                           currency={item.currency}
@@ -249,7 +263,7 @@ export default function FixedCostsPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Due day</Label>
+                        <Label>{t("fixedCosts.dueDay")}</Label>
                         <Input
                           name="dueDay"
                           type="number"
@@ -260,22 +274,24 @@ export default function FixedCostsPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Status</Label>
+                        <Label>{t("common.status")}</Label>
                         <select
                           name="isActive"
                           className="flex h-9 w-full rounded-md border px-3 text-sm"
                           defaultValue={item.isActive ? "true" : "false"}
                         >
-                          <option value="true">ACTIVE</option>
-                          <option value="false">OFF</option>
+                          <option value="true">{t("fixedCosts.statusOn")}</option>
+                          <option value="false">
+                            {t("fixedCosts.statusOff")}
+                          </option>
                         </select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Notes</Label>
+                        <Label>{t("common.notes")}</Label>
                         <Input name="notes" defaultValue={item.notes ?? ""} />
                       </div>
                       <Button type="submit" className="w-full">
-                        Save changes
+                        {t("common.saveChanges")}
                       </Button>
                     </form>
                   </DialogContent>
@@ -285,7 +301,7 @@ export default function FixedCostsPage() {
                   className="flex-1"
                   onClick={() => onDelete(item._id)}
                 >
-                  Delete
+                  {t("common.delete")}
                 </Button>
               </div>
             </CardContent>
@@ -294,9 +310,7 @@ export default function FixedCostsPage() {
       </div>
 
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Belum ada fixed cost. Tambah tagihan rutin setelah gajian.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("fixedCosts.empty")}</p>
       ) : null}
     </div>
   );

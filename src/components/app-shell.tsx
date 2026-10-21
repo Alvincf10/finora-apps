@@ -25,6 +25,8 @@ import {
   Bell,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
+import { useT } from "@/components/i18n-provider";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,60 +39,76 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AlertsBell } from "@/components/alerts-bell";
 
-const navGroups = [
+const navGroupDefs = [
   {
-    label: "Overview",
+    labelKey: "nav.overview",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/alerts", label: "Alerts", icon: Bell },
+      { href: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+      { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
     ],
   },
   {
-    label: "Money",
-    items: [
-      { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-      { href: "/accounts", label: "Accounts", icon: Wallet },
-    ],
-  },
-  {
-    label: "Planning",
-    items: [
-      { href: "/budget/recommendation", label: "Smart Budget", icon: Sparkles },
-      { href: "/budget", label: "Budget", icon: PiggyBank },
-      { href: "/debts", label: "Debts", icon: Landmark },
-      { href: "/fixed-costs", label: "Fixed costs", icon: Receipt },
-      { href: "/recurring", label: "Recurring", icon: Repeat },
-      { href: "/goals", label: "Goals", icon: Target },
-    ],
-  },
-  {
-    label: "Insights",
-    items: [
-      { href: "/insights", label: "Financial Insights", icon: Lightbulb },
-      { href: "/forecast", label: "Forecast", icon: TrendingUp },
-      { href: "/reports/monthly", label: "Monthly Review", icon: CalendarRange },
-      { href: "/simulator", label: "Simulator", icon: FlaskConical },
-      { href: "/reports", label: "Analytics", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "System",
+    labelKey: "nav.money",
     items: [
       {
-        href: "/whatsapp",
-        label: "WhatsApp (Vira)",
-        icon: MessageCircle,
+        href: "/transactions",
+        labelKey: "nav.transactions",
+        icon: ArrowLeftRight,
       },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/accounts", labelKey: "nav.accounts", icon: Wallet },
     ],
   },
-];
+  {
+    labelKey: "nav.planning",
+    items: [
+      {
+        href: "/budget/recommendation",
+        labelKey: "nav.smartBudget",
+        icon: Sparkles,
+      },
+      { href: "/budget", labelKey: "nav.budget", icon: PiggyBank },
+      { href: "/debts", labelKey: "nav.debts", icon: Landmark },
+      { href: "/fixed-costs", labelKey: "nav.fixedCosts", icon: Receipt },
+      { href: "/recurring", labelKey: "nav.recurring", icon: Repeat },
+      { href: "/goals", labelKey: "nav.goals", icon: Target },
+    ],
+  },
+  {
+    labelKey: "nav.insights",
+    items: [
+      {
+        href: "/insights",
+        labelKey: "nav.financialInsights",
+        icon: Lightbulb,
+      },
+      { href: "/forecast", labelKey: "nav.forecast", icon: TrendingUp },
+      {
+        href: "/reports/monthly",
+        labelKey: "nav.monthlyReview",
+        icon: CalendarRange,
+      },
+      { href: "/simulator", labelKey: "nav.simulator", icon: FlaskConical },
+      { href: "/reports", labelKey: "nav.analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    labelKey: "nav.system",
+    items: [
+      { href: "/whatsapp", labelKey: "nav.whatsapp", icon: MessageCircle },
+      { href: "/settings", labelKey: "nav.settings", icon: Settings },
+    ],
+  },
+] as const;
 
-const mobileTabs = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/transactions", label: "Transaksi", icon: ArrowLeftRight },
-  { href: "/accounts", label: "Akun", icon: Wallet },
-  { href: "/budget", label: "Budget", icon: PiggyBank },
+const mobileTabDefs = [
+  { href: "/dashboard", labelKey: "nav.home", icon: LayoutDashboard },
+  {
+    href: "/transactions",
+    labelKey: "nav.transactions",
+    icon: ArrowLeftRight,
+  },
+  { href: "/accounts", labelKey: "nav.accounts", icon: Wallet },
+  { href: "/budget", labelKey: "nav.budget", icon: PiggyBank },
 ] as const;
 
 function isActivePath(pathname: string, href: string) {
@@ -104,10 +122,13 @@ function isActivePath(pathname: string, href: string) {
   );
 }
 
-function pageTitle(pathname: string) {
-  for (const group of navGroups) {
+function pageTitle(
+  pathname: string,
+  t: (key: string) => string
+) {
+  for (const group of navGroupDefs) {
     for (const item of group.items) {
-      if (isActivePath(pathname, item.href)) return item.label;
+      if (isActivePath(pathname, item.href)) return t(item.labelKey);
     }
   }
   return "Finora";
@@ -115,13 +136,14 @@ function pageTitle(pathname: string) {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const t = useT();
 
   return (
     <nav className="flex flex-col gap-4">
-      {navGroups.map((group) => (
-        <div key={group.label} className="space-y-1">
+      {navGroupDefs.map((group) => (
+        <div key={group.labelKey} className="space-y-1">
           <p className="px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            {group.label}
+            {t(group.labelKey)}
           </p>
           {group.items.map((item) => {
             const Icon = item.icon;
@@ -139,7 +161,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}
@@ -152,9 +174,12 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data } = useSession();
   const pathname = usePathname();
+  const t = useT();
   const [moreOpen, setMoreOpen] = useState(false);
-  const title = pageTitle(pathname);
-  const tabActive = mobileTabs.some((tab) => isActivePath(pathname, tab.href));
+  const title = pageTitle(pathname, t);
+  const tabActive = mobileTabDefs.some((tab) =>
+    isActivePath(pathname, tab.href)
+  );
 
   return (
     <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-50 via-background to-slate-100 dark:from-slate-950 dark:via-background dark:to-slate-950">
@@ -165,9 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="font-heading text-xl font-semibold tracking-tight text-emerald-800 dark:text-emerald-300">
                 Finora
               </p>
-              <p className="text-xs text-muted-foreground">
-                Financial intelligence
-              </p>
+              <p className="text-xs text-muted-foreground">{t("nav.tagline")}</p>
             </div>
             <AlertsBell />
           </div>
@@ -176,6 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="mt-auto space-y-3 pt-6">
             <Separator />
+            <LanguageSwitcher compact className="px-1" />
             <div className="px-2 text-sm">
               <p className="font-medium">{data?.user?.name}</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -188,7 +212,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => signOut({ callbackUrl: "/login" })}
             >
               <LogOut className="mr-2 size-4" />
-              Sign out
+              {t("common.signOut")}
             </Button>
           </div>
         </aside>
@@ -208,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 size="icon"
                 className="size-10 shrink-0 touch-manipulation"
                 onClick={() => setMoreOpen(true)}
-                aria-label="Menu lainnya"
+                aria-label={t("nav.moreMenu")}
               >
                 <Ellipsis className="size-4" />
               </Button>
@@ -221,10 +245,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <nav
             className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur md:hidden pb-[env(safe-area-inset-bottom)]"
-            aria-label="Navigasi utama"
+            aria-label={t("nav.mainNav")}
           >
             <div className="mx-auto grid h-16 max-w-lg grid-cols-5">
-              {mobileTabs.map((tab) => {
+              {mobileTabDefs.map((tab) => {
                 const Icon = tab.icon;
                 const active = isActivePath(pathname, tab.href);
                 return (
@@ -239,12 +263,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     )}
                   >
                     <Icon
-                      className={cn(
-                        "size-5",
-                        active && "stroke-[2.25px]"
-                      )}
+                      className={cn("size-5", active && "stroke-[2.25px]")}
                     />
-                    <span>{tab.label}</span>
+                    <span>{t(tab.labelKey)}</span>
                   </Link>
                 );
               })}
@@ -261,7 +282,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Ellipsis
                   className={cn("size-5", !tabActive && "stroke-[2.25px]")}
                 />
-                <span>Lainnya</span>
+                <span>{t("common.more")}</span>
               </button>
             </div>
           </nav>
@@ -276,10 +297,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Finora
                 </SheetTitle>
                 <SheetDescription>
-                  {data?.user?.name ?? "Menu"} · semua halaman
+                  {data?.user?.name ?? t("common.menu")} · {t("nav.allPages")}
                 </SheetDescription>
               </SheetHeader>
               <div className="overflow-y-auto overscroll-contain px-4 pb-4">
+                <LanguageSwitcher compact className="mb-4" />
                 <NavLinks onNavigate={() => setMoreOpen(false)} />
                 <Separator className="my-4" />
                 <Button
@@ -291,7 +313,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <LogOut className="mr-2 size-4" />
-                  Sign out
+                  {t("common.signOut")}
                 </Button>
               </div>
             </SheetContent>

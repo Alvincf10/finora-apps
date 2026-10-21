@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
+import { I18nProvider } from "@/components/i18n-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 function ClientToaster() {
@@ -25,8 +26,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem
         disableTransitionOnChange
       >
-        {children}
-        <ClientToaster />
+        <I18nProvider>
+          {children}
+          <ClientToaster />
+        </I18nProvider>
       </ThemeProvider>
     </SessionProvider>
   );

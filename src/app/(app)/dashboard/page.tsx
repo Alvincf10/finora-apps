@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { CurrencyAmountInput } from "@/components/currency-amount-input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/components/i18n-provider";
 
 type DashboardData = {
   summary: {
@@ -80,8 +81,11 @@ type DashboardData = {
       dueAmount: number;
       paidAmount: number;
       remainingDue: number;
+      remainingAmount?: number;
       dueDate?: string;
       monthlyPayment: number | null;
+      installmentMonths?: number | null;
+      isInstallment?: boolean;
     }>;
     byCurrency: Array<{
       currency: Currency;
@@ -107,7 +111,11 @@ type DashboardData = {
       dueAmount: number;
       paidAmount: number;
       remainingDue: number;
+      remainingAmount?: number;
       dueDate?: string;
+      monthlyPayment?: number | null;
+      installmentMonths?: number | null;
+      isInstallment?: boolean;
     }>;
     fixedCostTotal: number;
     fixedCostItems: Array<{
@@ -184,8 +192,10 @@ function SurvivalCard({
 }: {
   survival: DashboardData["survival"];
 }) {
+  const { t, intlLocale } = useI18n();
   const [goalMajor, setGoalMajor] = useState(0);
   const c = survival.currency;
+  const money = (amount: number) => formatMoney(amount, c, intlLocale);
   const goalMinor = toMinorUnits(goalMajor, c);
   const spendable = survival.spendableCash ?? survival.cashOnHand;
   const sim = applyGoalAllocation(
@@ -195,72 +205,106 @@ function SurvivalCard({
     survival.maxSafeGoalContribution
   );
 
-  const paydayLabel = new Date(survival.nextPayday).toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const paydayLabel = new Date(survival.nextPayday).toLocaleDateString(
+    intlLocale,
+    {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }
+  );
 
   let advice: string;
   if (survival.status === "PAYDAY") {
-    advice = "Hari gajian. Mode bertahan selesai — cek buffer cycle di bawah.";
+    advice = t("dashboard.advicePayday");
   } else if (survival.status === "NO_CASH") {
-    advice = "Saldo rekening kosong. Tahan belanja sampai gaji masuk.";
+    advice = t("dashboard.adviceNoCash");
   } else if (goalMinor <= 0) {
-    advice = `Agar cukup sampai ${paydayLabel}, belanja max ${formatMoney(survival.dailyBudget, c)}/hari. Boleh sisihkan ke goals sampai ${formatMoney(survival.maxSafeGoalContribution, c)} tanpa mengorbankan ${survival.safeReserveDays} hari aman.`;
+    advice = t("dashboard.adviceDailyBudget", {
+      payday: paydayLabel,
+      daily: money(survival.dailyBudget),
+      maxGoal: money(survival.maxSafeGoalContribution),
+      safeDays: survival.safeReserveDays,
+    });
   } else if (!sim.withinSafeLimit) {
-    advice = `Alokasi goals di atas batas aman. Budget harian jadi ${formatMoney(sim.dailyBudget, c)} — survival bisa kepotong sebelum gajian.`;
+    advice = t("dashboard.adviceOverSafe", {
+      daily: money(sim.dailyBudget),
+    });
   } else if (sim.goalAllocation > 0) {
-    advice = `Aman. Setelah sisihkan ${formatMoney(sim.goalAllocation, c)} ke goals, sisa hidup ${formatMoney(sim.livingCash, c)} ≈ ${formatMoney(sim.dailyBudget, c)}/hari.`;
+    advice = t("dashboard.adviceSafeWithGoal", {
+      goal: money(sim.goalAllocation),
+      living: money(sim.livingCash),
+      daily: money(sim.dailyBudget),
+    });
   } else {
-    advice = `Belanja max ${formatMoney(survival.dailyBudget, c)}/hari sampai gaji.`;
+    advice = t("dashboard.adviceDailyOnly", {
+      daily: money(survival.dailyBudget),
+    });
+  }
+
+  const cashLineParts = [
+    t("dashboard.cashOnHandLine", { amount: money(survival.cashOnHand) }),
+  ];
+  if ((survival.fixedCostsBeforePayday ?? 0) > 0) {
+    cashLineParts.push(
+      t("dashboard.fixedCostReserve", {
+        amount: money(survival.fixedCostsBeforePayday),
+      })
+    );
+  }
+  cashLineParts.push(
+    t("dashboard.spendableCash", { amount: money(spendable) })
+  );
+  if (survival.spentToday > 0) {
+    cashLineParts.push(
+      t("dashboard.spentTodayLine", { amount: money(survival.spentToday) })
+    );
   }
 
   return (
     <Card className="border-amber-800/20 bg-amber-50/50 dark:bg-amber-950/20">
       <CardHeader>
         <CardDescription>
-          Bertahan sampai gaji · tgl {survival.paydayDay} · {paydayLabel}
+          {t("dashboard.survivalUntilPayday", {
+            day: survival.paydayDay,
+            label: paydayLabel,
+          })}
         </CardDescription>
         <CardTitle className="font-mono text-3xl tracking-tight text-amber-900 dark:text-amber-300">
           {survival.status === "PAYDAY"
-            ? "Hari gajian"
-            : `${survival.daysLeft} hari lagi`}
+            ? t("dashboard.paydayToday")
+            : t("dashboard.daysUntilPayday", { days: survival.daysLeft })}
         </CardTitle>
-        <CardDescription>
-          Rekening {formatMoney(survival.cashOnHand, c)}
-          {(survival.fixedCostsBeforePayday ?? 0) > 0
-            ? ` · cadangan fixed cost ${formatMoney(survival.fixedCostsBeforePayday, c)}`
-            : ""}
-          {" · "}
-          bisa dipakai {formatMoney(spendable, c)}
-          {survival.spentToday > 0
-            ? ` · belanja hari ini ${formatMoney(survival.spentToday, c)}`
-            : ""}
-        </CardDescription>
+        <CardDescription>{cashLineParts.join(" · ")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border bg-background/70 p-3">
-            <p className="text-xs text-muted-foreground">Budget harian</p>
+            <p className="text-xs text-muted-foreground">
+              {t("dashboard.dailyBudget")}
+            </p>
             <p className="font-mono text-xl text-amber-900 dark:text-amber-300">
-              {formatMoney(sim.dailyBudget, c)}
+              {money(sim.dailyBudget)}
             </p>
             {goalMinor > 0 && sim.dailyBudget !== survival.dailyBudget ? (
               <p className="text-xs text-muted-foreground">
-                semula {formatMoney(survival.dailyBudget, c)}/hari
+                {t("dashboard.wasPerDay", {
+                  amount: money(survival.dailyBudget),
+                })}
               </p>
             ) : null}
           </div>
           <div className="rounded-lg border bg-background/70 p-3">
             <p className="text-xs text-muted-foreground">
-              Max aman ke goals
+              {t("dashboard.maxSafeToGoals")}
             </p>
             <p className="font-mono text-xl text-sky-800 dark:text-sky-300">
-              {formatMoney(survival.maxSafeGoalContribution, c)}
+              {money(survival.maxSafeGoalContribution)}
             </p>
             <p className="text-xs text-muted-foreground">
-              jaga {survival.safeReserveDays} hari runway
+              {t("dashboard.keepRunwayDays", {
+                days: survival.safeReserveDays,
+              })}
             </p>
           </div>
         </div>
@@ -268,7 +312,7 @@ function SurvivalCard({
         {survival.status === "ACTIVE" ? (
           <div className="space-y-2">
             <Label className="text-xs">
-              Simulasi: sisihkan ke goals dulu (opsional)
+              {t("dashboard.simulateGoalAllocation")}
             </Label>
             <CurrencyAmountInput
               currency={c}
@@ -289,7 +333,7 @@ function SurvivalCard({
                     )
                   }
                 >
-                  Pakai max aman
+                  {t("dashboard.useMaxSafe")}
                 </Button>
               ) : null}
               {goalMajor > 0 ? (
@@ -299,14 +343,14 @@ function SurvivalCard({
                   size="sm"
                   onClick={() => setGoalMajor(0)}
                 >
-                  Reset
+                  {t("dashboard.reset")}
                 </Button>
               ) : null}
               <Link
                 href="/goals"
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
               >
-                Buka Goals
+                {t("dashboard.openGoals")}
               </Link>
             </div>
           </div>
@@ -327,6 +371,7 @@ function SurvivalCard({
 }
 
 export default function DashboardPage() {
+  const { t, intlLocale } = useI18n();
   const [data, setData] = useState<DashboardData | null>(null);
   const [aiText, setAiText] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
@@ -343,7 +388,7 @@ export default function DashboardPage() {
       .catch((error) => toast.error(error.message));
 
     Promise.all([
-      api<Array<{ title: string }>>("/api/insights"),
+      api<{ insights: Array<{ title: string }> }>("/api/insights"),
       api<{
         spending: Array<{
           categoryName: string;
@@ -356,7 +401,7 @@ export default function DashboardPage() {
     ])
       .then(([insights, analytics, forecast]) => {
         setPhase2({
-          insightsCount: insights.length,
+          insightsCount: insights.insights.length,
           trends: analytics.spending
             .filter((s) => s.trend === "INCREASING" || s.trend === "DECREASING")
             .slice(0, 3),
@@ -383,17 +428,21 @@ export default function DashboardPage() {
       );
       setAiText(`${result.explanation}\n\n${result.disclaimer}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "AI unavailable");
+      toast.error(
+        error instanceof Error ? error.message : t("dashboard.aiUnavailable")
+      );
     } finally {
       setLoadingAi(false);
     }
   }
 
   if (!data) {
-    return <p className="text-muted-foreground">Loading dashboard...</p>;
+    return <p className="text-muted-foreground">{t("dashboard.loading")}</p>;
   }
 
   const c = data.summary.currency;
+  const money = (amount: number, currency: Currency = c) =>
+    formatMoney(amount, currency, intlLocale);
   const cycle = data.payCycleBuffer;
   const debtItems = cycle?.debtItems?.length
     ? cycle.debtItems
@@ -409,10 +458,12 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h1 className="font-heading text-3xl font-semibold tracking-tight">
-          Dashboard
+          {t("dashboard.title")}
         </h1>
         <p className="text-sm text-muted-foreground sm:text-base">
-          Cycle gaji {cycle?.cycle.label ?? "berikutnya"}, dihitung otomatis.
+          {t("dashboard.subtitle", {
+            label: cycle?.cycle.label ?? t("dashboard.subtitleFallback"),
+          })}
         </p>
       </div>
 
@@ -422,7 +473,10 @@ export default function DashboardPage() {
         <Card className="border-emerald-800/15 bg-emerald-50/40 dark:bg-emerald-950/20">
           <CardHeader>
             <CardDescription>
-              Cycle gaji tgl {cycle.cycle.paydayDay} · {cycle.cycle.label}
+              {t("dashboard.salaryCycle", {
+                day: cycle.cycle.paydayDay,
+                label: cycle.cycle.label,
+              })}
             </CardDescription>
             <CardTitle
               className={`font-mono text-3xl tracking-tight ${
@@ -432,53 +486,65 @@ export default function DashboardPage() {
               }`}
             >
               {cycle.configured
-                ? formatMoney(cycle.buffer, cycle.currency)
-                : "Set salary in Settings"}
+                ? money(cycle.buffer, cycle.currency)
+                : t("dashboard.setSalary")}
             </CardTitle>
             <CardDescription>
               {cycle.configured
-                ? "Sisa setelah gaji, saldo, pengeluaran, utang, dan fixed cost cycle ini"
-                : "Isi gaji bulanan di Settings — dihitung otomatis tiap cycle, tanpa input ulang"}
+                ? t("dashboard.bufferConfigured")
+                : t("dashboard.bufferUnconfigured")}
             </CardDescription>
           </CardHeader>
           {cycle.configured ? (
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Gaji (otomatis)</span>
+                <span className="text-muted-foreground">
+                  {t("dashboard.autoSalary")}
+                </span>
                 <span className="font-mono text-emerald-800 dark:text-emerald-300">
-                  +{formatMoney(cycle.monthlySalary, cycle.currency)}
+                  +{money(cycle.monthlySalary, cycle.currency)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Saldo awal cycle</span>
+                <span className="text-muted-foreground">
+                  {t("dashboard.startingBalance")}
+                </span>
                 <span className="font-mono">
-                  +{formatMoney(cycle.startingBalance, cycle.currency)}
+                  +{money(cycle.startingBalance, cycle.currency)}
                 </span>
               </div>
               {cycle.otherIncome > 0 ? (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pemasukan lain</span>
+                  <span className="text-muted-foreground">
+                    {t("dashboard.otherIncome")}
+                  </span>
                   <span className="font-mono text-emerald-800 dark:text-emerald-300">
-                    +{formatMoney(cycle.otherIncome, cycle.currency)}
+                    +{money(cycle.otherIncome, cycle.currency)}
                   </span>
                 </div>
               ) : null}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Pengeluaran cycle</span>
+                <span className="text-muted-foreground">
+                  {t("dashboard.cycleExpenses")}
+                </span>
                 <span className="font-mono text-rose-700 dark:text-rose-400">
-                  −{formatMoney(cycle.expenses, cycle.currency)}
+                  −{money(cycle.expenses, cycle.currency)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Sisa utang due</span>
+                <span className="text-muted-foreground">
+                  {t("dashboard.debtRemaining")}
+                </span>
                 <span className="font-mono text-amber-700 dark:text-amber-400">
-                  −{formatMoney(cycle.debtRemaining, cycle.currency)}
+                  −{money(cycle.debtRemaining, cycle.currency)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Fixed costs cycle</span>
+                <span className="text-muted-foreground">
+                  {t("dashboard.fixedCostsCycle")}
+                </span>
                 <span className="font-mono text-violet-700 dark:text-violet-400">
-                  −{formatMoney(cycle.fixedCostTotal ?? 0, cycle.currency)}
+                  −{money(cycle.fixedCostTotal ?? 0, cycle.currency)}
                 </span>
               </div>
               {(cycle.fixedCostItems?.length ?? 0) > 0 ? (
@@ -486,17 +552,17 @@ export default function DashboardPage() {
                   {cycle.fixedCostItems.map((f) => (
                     <div key={f.fixedCostId} className="flex justify-between gap-2">
                       <span className="text-muted-foreground">
-                        {f.name} · tgl {f.dueDay}
+                        {f.name} · {t("dashboard.dueDay", { day: f.dueDay })}
                       </span>
                       <span className="font-mono">
-                        {formatMoney(f.amount, f.currency)}
+                        {money(f.amount, f.currency)}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : null}
               <div className="flex justify-between border-t pt-2 font-medium">
-                <span>Sisa buffer</span>
+                <span>{t("dashboard.remainingBuffer")}</span>
                 <span
                   className={`font-mono ${
                     cycle.buffer >= 0
@@ -504,7 +570,7 @@ export default function DashboardPage() {
                       : "text-rose-700 dark:text-rose-400"
                   }`}
                 >
-                  {formatMoney(cycle.buffer, cycle.currency)}
+                  {money(cycle.buffer, cycle.currency)}
                 </span>
               </div>
             </CardContent>
@@ -514,90 +580,158 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi
-          label="Uang di rekening"
-          value={formatMoney(data.summary.totalAssets, c)}
+          label={t("dashboard.cashInAccounts")}
+          value={money(data.summary.totalAssets)}
           valueClassName="text-emerald-800 dark:text-emerald-300"
-          hint="Saldo akun — yang boleh dipakai / belanja"
+          hint={t("dashboard.cashInAccountsHint")}
         />
         <Kpi
-          label="Tabungan goals"
-          value={formatMoney(goalsSaved, c)}
+          label={t("dashboard.goalsSavings")}
+          value={money(goalsSaved)}
           valueClassName="text-sky-800 dark:text-sky-300"
           hint={
             goalsTarget > 0
-              ? `Dari target ${formatMoney(goalsTarget, c)}`
-              : "Belum ada goal aktif"
+              ? t("dashboard.ofTarget", { amount: money(goalsTarget) })
+              : t("dashboard.noActiveGoalHint")
           }
         />
         <Kpi
-          label="Monthly income"
-          value={formatMoney(data.summary.income, c)}
+          label={t("dashboard.monthlyIncome")}
+          value={money(data.summary.income)}
         />
         <Kpi
-          label="Monthly expenses"
-          value={formatMoney(data.summary.expense, c)}
+          label={t("dashboard.monthlyExpenses")}
+          value={money(data.summary.expense)}
         />
         <Kpi
-          label="Net cash flow"
-          value={formatMoney(data.summary.netCashFlow, c)}
-          hint={`Savings rate ${data.summary.savingsRate}%`}
+          label={t("dashboard.netCashFlow")}
+          value={money(data.summary.netCashFlow)}
+          hint={t("dashboard.savingsRate", {
+            pct: data.summary.savingsRate,
+          })}
         />
         <Kpi
-          label="Total debt"
-          value={formatMoney(data.summary.totalDebt, c)}
+          label={t("dashboard.totalDebt")}
+          value={money(data.summary.totalDebt)}
           valueClassName="text-rose-700 dark:text-rose-400"
         />
         <Kpi
-          label="Debt due this cycle"
-          value={formatMoney(debtRemaining, debtCurrency)}
+          label={t("dashboard.debtDueThisCycle")}
+          value={money(debtRemaining, debtCurrency)}
           valueClassName="text-amber-700 dark:text-amber-400"
           hintClassName="text-amber-700/70 dark:text-amber-400/70"
-          hint={`Of ${formatMoney(debtDue, debtCurrency)} due · ${formatMoney(debtPaid, debtCurrency)} paid`}
+          hint={t("dashboard.debtDueHint", {
+            due: money(debtDue, debtCurrency),
+            paid: money(debtPaid, debtCurrency),
+          })}
         />
-        <Kpi label="Net worth" value={formatMoney(data.summary.netWorth, c)} />
+        <Kpi
+          label={t("dashboard.netWorth")}
+          value={money(data.summary.netWorth)}
+        />
       </div>
 
       {debtItems.length > 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Debt payments this pay cycle</CardTitle>
-            <CardDescription>
-              {cycle
-                ? `${cycle.cycle.label} · installments still left to pay`
-                : "Installments and due balances still left to pay."}
-            </CardDescription>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>{t("dashboard.installmentsThisCycle")}</CardTitle>
+              <CardDescription>
+                {cycle
+                  ? t("dashboard.installmentsCycleDesc", {
+                      label: cycle.cycle.label,
+                    })
+                  : t("dashboard.installmentsFallbackDesc")}
+              </CardDescription>
+            </div>
+            <Link
+              href="/debts"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              {t("dashboard.manageTenor")}
+            </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {debtItems.map((d) => (
-              <div
-                key={d.debtId}
-                className="flex items-center justify-between gap-3 text-sm"
-              >
-                <div>
-                  <p className="font-medium text-rose-700 dark:text-rose-400">
-                    {d.name}
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    {d.dueDate
-                      ? `Due ${new Date(d.dueDate).toLocaleDateString()}`
-                      : "Monthly installment"}
-                    {d.paidAmount > 0 ? (
-                      <span className="text-emerald-700 dark:text-emerald-400">
-                        {` · paid ${formatMoney(d.paidAmount, d.currency)}`}
-                      </span>
+            {debtItems.map((d) => {
+              const isCicilan = Boolean(d.isInstallment || d.monthlyPayment);
+              const months = d.installmentMonths;
+              const dueLong = d.dueDate
+                ? new Date(d.dueDate).toLocaleDateString(intlLocale)
+                : "";
+              const dueShort = d.dueDate
+                ? new Date(d.dueDate).toLocaleDateString(intlLocale, {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "";
+              return (
+                <div
+                  key={d.debtId}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-rose-700 dark:text-rose-400">
+                      {d.name}
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      {isCicilan
+                        ? months
+                          ? t("dashboard.installmentMonthsLabel", {
+                              months,
+                            })
+                          : t("dashboard.monthlyInstallmentLabel")
+                        : d.dueDate
+                          ? t("dashboard.dueOnDate", { date: dueLong })
+                          : t("dashboard.fullBill")}
+                      {d.dueDate && isCicilan
+                        ? ` · ${t("dashboard.dueShort", { date: dueShort })}`
+                        : null}
+                      {d.paidAmount > 0 ? (
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          {t("dashboard.alreadyPaid", {
+                            amount: money(d.paidAmount, d.currency),
+                          })}
+                        </span>
+                      ) : null}
+                    </p>
+                    {isCicilan && d.remainingAmount != null ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t("dashboard.remainingPrincipal", {
+                          amount: money(d.remainingAmount, d.currency),
+                        })}
+                      </p>
+                    ) : !isCicilan ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t("dashboard.noTenorYet")}
+                      </p>
                     ) : null}
-                  </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {isCicilan
+                        ? t("dashboard.payThisMonthLabel")
+                        : t("dashboard.billLabel")}
+                    </p>
+                    <p className="font-mono text-rose-700 dark:text-rose-400">
+                      {money(d.remainingDue, d.currency)}
+                    </p>
+                    {d.paidAmount > 0 ? (
+                      <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                        {t("dashboard.ofAmount", {
+                          amount: money(d.dueAmount, d.currency),
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-mono text-rose-700 dark:text-rose-400">
-                    {formatMoney(d.remainingDue, d.currency)}
-                  </p>
-                  <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
-                    of {formatMoney(d.dueAmount, d.currency)}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
+            <div className="flex justify-between border-t pt-3 text-sm font-medium">
+              <span>{t("dashboard.totalPayThisMonth")}</span>
+              <span className="font-mono text-rose-700 dark:text-rose-400">
+                {money(debtRemaining, debtCurrency)}
+              </span>
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -606,22 +740,29 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader>
-              <CardDescription>Financial insights</CardDescription>
-              <CardTitle>{phase2.insightsCount} recommendations</CardTitle>
+              <CardDescription>{t("dashboard.financialInsights")}</CardDescription>
+              <CardTitle>
+                {t("dashboard.recommendations", {
+                  count: phase2.insightsCount,
+                })}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader>
-              <CardDescription>Spending trends</CardDescription>
+              <CardDescription>{t("dashboard.spendingTrends")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
               {phase2.trends.length === 0 ? (
-                <p className="text-muted-foreground">Not enough history yet.</p>
+                <p className="text-muted-foreground">
+                  {t("dashboard.notEnoughHistory")}
+                </p>
               ) : (
-                phase2.trends.map((t) => (
-                  <p key={t.categoryName}>
-                    {t.categoryName}{" "}
-                    {t.trend === "INCREASING" ? "↑" : "↓"} {Math.abs(t.percentageChange)}%
+                phase2.trends.map((trend) => (
+                  <p key={trend.categoryName}>
+                    {trend.categoryName}{" "}
+                    {trend.trend === "INCREASING" ? "↑" : "↓"}{" "}
+                    {Math.abs(trend.percentageChange)}%
                   </p>
                 ))
               )}
@@ -629,11 +770,11 @@ export default function DashboardPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardDescription>Budget forecast (projected savings)</CardDescription>
+              <CardDescription>{t("dashboard.budgetForecast")}</CardDescription>
               <CardTitle className="font-mono text-xl">
                 {phase2.forecastSavings == null
                   ? "—"
-                  : formatMoney(phase2.forecastSavings, phase2.currency)}
+                  : money(phase2.forecastSavings, phase2.currency)}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -644,7 +785,7 @@ export default function DashboardPage() {
                   "touch-manipulation"
                 )}
               >
-                Open forecast
+                {t("dashboard.openForecast")}
               </Link>
             </CardContent>
           </Card>
@@ -654,8 +795,8 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Cash flow</CardTitle>
-            <CardDescription>Income vs expense (last 6 months)</CardDescription>
+            <CardTitle>{t("dashboard.cashFlow")}</CardTitle>
+            <CardDescription>{t("dashboard.cashFlowDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -673,12 +814,16 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Expense breakdown</CardTitle>
-            <CardDescription>Where money went this month</CardDescription>
+            <CardTitle>{t("dashboard.expenseBreakdown")}</CardTitle>
+            <CardDescription>
+              {t("dashboard.expenseBreakdownDesc")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.breakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No expenses yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {t("dashboard.noExpensesYet")}
+              </p>
             ) : (
               data.breakdown.slice(0, 6).map((row) => (
                 <div
@@ -686,7 +831,7 @@ export default function DashboardPage() {
                   className="flex items-center justify-between text-sm"
                 >
                   <span>{row.name}</span>
-                  <span className="font-mono">{formatMoney(row.amount, c)}</span>
+                  <span className="font-mono">{money(row.amount)}</span>
                 </div>
               ))
             )}
@@ -697,12 +842,12 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Budget overview</CardTitle>
+            <CardTitle>{t("dashboard.budgetOverview")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {data.budgets.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No budgets set for this month.
+                {t("dashboard.noBudgetsThisMonth")}
               </p>
             ) : (
               data.budgets.map((b) => (
@@ -723,17 +868,22 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <div>
-              <CardTitle>Insights</CardTitle>
-              <CardDescription>Deterministic recommendations</CardDescription>
+              <CardTitle>{t("dashboard.insights")}</CardTitle>
+              <CardDescription>{t("dashboard.insightsDesc")}</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={explainWithAI} disabled={loadingAi}>
-              {loadingAi ? "Explaining..." : "AI explain"}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={explainWithAI}
+              disabled={loadingAi}
+            >
+              {loadingAi ? t("dashboard.askingAi") : t("dashboard.askAi")}
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.recommendations.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No warnings right now.
+                {t("dashboard.noWarnings")}
               </p>
             ) : (
               data.recommendations.map((r, idx) => (
@@ -764,7 +914,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Recent transactions</CardTitle>
+            <CardTitle>{t("dashboard.recentTransactions")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.recentTransactions.map((tx) => (
@@ -777,12 +927,13 @@ export default function DashboardPage() {
                     {tx.description || tx.categoryId?.name || tx.type}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {tx.accountId?.name} · {new Date(tx.date).toLocaleDateString()}
+                    {tx.accountId?.name} ·{" "}
+                    {new Date(tx.date).toLocaleDateString(intlLocale)}
                   </p>
                 </div>
                 <span className="font-mono">
                   {tx.type === "EXPENSE" || tx.type === "TRANSFER" ? "-" : "+"}
-                  {formatMoney(tx.amount, tx.currency)}
+                  {money(tx.amount, tx.currency)}
                 </span>
               </div>
             ))}
@@ -792,17 +943,19 @@ export default function DashboardPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Debts</CardTitle>
+              <CardTitle>{t("dashboard.debts")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.debts.length === 0 ? (
-                <p className="text-muted-foreground">No active debts.</p>
+                <p className="text-muted-foreground">
+                  {t("dashboard.noActiveDebts")}
+                </p>
               ) : (
                 data.debts.map((d) => (
                   <div key={d.name} className="flex justify-between">
                     <span>{d.name}</span>
                     <span className="font-mono">
-                      {formatMoney(d.remainingAmount, d.currency)}
+                      {money(d.remainingAmount, d.currency)}
                     </span>
                   </div>
                 ))
@@ -811,11 +964,13 @@ export default function DashboardPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Goals</CardTitle>
+              <CardTitle>{t("dashboard.goals")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {data.goals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active goals.</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("dashboard.noActiveGoals")}
+                </p>
               ) : (
                 data.goals.map((g) => (
                   <div key={g.name} className="space-y-1">

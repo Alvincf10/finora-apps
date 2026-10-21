@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,21 +32,6 @@ type Forecast = {
   currency: Currency;
 };
 
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
 function confidenceVariant(c: Forecast["confidence"]) {
   if (c === "HIGH") return "default" as const;
   if (c === "MEDIUM") return "secondary" as const;
@@ -56,12 +42,14 @@ function Row({
   label,
   amount,
   currency,
+  intlLocale,
   tone,
   emphasize,
 }: {
   label: string;
   amount: number;
   currency: Currency;
+  intlLocale: string;
   tone?: "positive" | "negative" | "muted";
   emphasize?: boolean;
 }) {
@@ -96,13 +84,14 @@ function Row({
           color
         )}
       >
-        {formatMoney(amount, currency)}
+        {formatMoney(amount, currency, intlLocale)}
       </span>
     </div>
   );
 }
 
 export default function ForecastPage() {
+  const { t, intlLocale } = useI18n();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -113,27 +102,30 @@ export default function ForecastPage() {
     setLoading(true);
     api<Forecast>(`/api/forecast?year=${year}&month=${month}`)
       .then(setData)
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed"))
+      .catch((e) =>
+        toast.error(e instanceof Error ? e.message : t("common.failed"))
+      )
       .finally(() => setLoading(false));
-  }, [year, month]);
+  }, [year, month, t]);
 
-  const periodLabel = `${MONTH_NAMES[month - 1] ?? month} ${year}`;
+  const periodLabel = new Date(year, month - 1, 1).toLocaleDateString(
+    intlLocale,
+    { month: "long", year: "numeric" }
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-semibold">
-            Cash-flow Forecast
+            {t("forecast.title")}
           </h1>
-          <p className="text-muted-foreground">
-            Deterministic projection for the month — based on history, not AI.
-          </p>
+          <p className="text-muted-foreground">{t("forecast.subtitle")}</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="forecast-month" className="text-xs">
-              Month
+              {t("common.month")}
             </Label>
             <Input
               id="forecast-month"
@@ -147,7 +139,7 @@ export default function ForecastPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="forecast-year" className="text-xs">
-              Year
+              {t("common.year")}
             </Label>
             <Input
               id="forecast-year"
@@ -161,7 +153,7 @@ export default function ForecastPage() {
       </div>
 
       {!data && loading ? (
-        <p className="text-sm text-muted-foreground">Loading forecast…</p>
+        <p className="text-sm text-muted-foreground">{t("forecast.loading")}</p>
       ) : null}
 
       {data ? (
@@ -169,7 +161,9 @@ export default function ForecastPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Projected savings · {periodLabel}</CardDescription>
+                <CardDescription>
+                  {t("forecast.projectedSavings", { period: periodLabel })}
+                </CardDescription>
                 <CardTitle
                   className={cn(
                     "font-mono text-2xl tabular-nums",
@@ -178,31 +172,39 @@ export default function ForecastPage() {
                       : "text-rose-700 dark:text-rose-400"
                   )}
                 >
-                  {formatMoney(data.projectedSavings, data.currency)}
+                  {formatMoney(
+                    data.projectedSavings,
+                    data.currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Ending balance</CardDescription>
+                <CardDescription>{t("forecast.endingBalance")}</CardDescription>
                 <CardTitle className="font-mono text-2xl tabular-nums">
-                  {formatMoney(data.projectedEndingBalance, data.currency)}
+                  {formatMoney(
+                    data.projectedEndingBalance,
+                    data.currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Confidence</CardDescription>
+                <CardDescription>{t("forecast.confidence")}</CardDescription>
                 <div className="flex items-center gap-2 pt-1">
                   <Badge variant={confidenceVariant(data.confidence)}>
                     {data.confidence}
                   </Badge>
                   <span className="text-sm text-muted-foreground">
                     {data.confidence === "HIGH"
-                      ? "Stable income · 6+ months history"
+                      ? t("forecast.confidenceHigh")
                       : data.confidence === "MEDIUM"
-                        ? "3+ months of history"
-                        : "Limited history — treat as rough"}
+                        ? t("forecast.confidenceMedium")
+                        : t("forecast.confidenceLow")}
                   </span>
                 </div>
               </CardHeader>
@@ -212,47 +214,51 @@ export default function ForecastPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Breakdown</CardTitle>
-                <CardDescription>
-                  How the month is expected to close
-                </CardDescription>
+                <CardTitle>{t("forecast.breakdown")}</CardTitle>
+                <CardDescription>{t("forecast.breakdownDesc")}</CardDescription>
               </CardHeader>
               <CardContent className="divide-y">
                 <Row
-                  label="Projected income"
+                  label={t("forecast.projectedIncome")}
                   amount={data.projectedIncome}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   tone="positive"
                 />
                 <Row
-                  label="Projected expenses"
+                  label={t("forecast.projectedExpenses")}
                   amount={data.projectedExpenses}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   tone="negative"
                 />
                 <Row
-                  label="Debt payments"
+                  label={t("forecast.debtPayments")}
                   amount={data.projectedDebtPayment}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   tone="negative"
                 />
                 <Row
-                  label="Projected savings"
+                  label={t("forecast.projectedSavingsLabel")}
                   amount={data.projectedSavings}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   tone={data.projectedSavings >= 0 ? "positive" : "negative"}
                   emphasize
                 />
                 <Row
-                  label="Starting balance (assets)"
+                  label={t("forecast.startingBalance")}
                   amount={data.startingBalance}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   tone="muted"
                 />
                 <Row
-                  label="Projected ending balance"
+                  label={t("forecast.projectedEndingBalance")}
                   amount={data.projectedEndingBalance}
                   currency={data.currency}
+                  intlLocale={intlLocale}
                   emphasize
                 />
               </CardContent>
@@ -260,9 +266,9 @@ export default function ForecastPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Assumptions</CardTitle>
+                <CardTitle>{t("forecast.assumptions")}</CardTitle>
                 <CardDescription>
-                  Rules used for this projection
+                  {t("forecast.assumptionsDesc")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -277,21 +283,27 @@ export default function ForecastPage() {
                 <div className="flex flex-wrap gap-2 border-t pt-4">
                   <Link
                     href="/simulator"
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" })
+                    )}
                   >
-                    Run what-if
+                    {t("forecast.runWhatIf")}
                   </Link>
                   <Link
                     href="/budget/recommendation"
-                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "sm" })
+                    )}
                   >
-                    Smart budget
+                    {t("forecast.smartBudget")}
                   </Link>
                   <Link
                     href="/reports/monthly"
-                    className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "sm" })
+                    )}
                   >
-                    Monthly review
+                    {t("forecast.monthlyReview")}
                   </Link>
                 </div>
               </CardContent>
@@ -301,7 +313,7 @@ export default function ForecastPage() {
       ) : !loading ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No forecast yet. Add a few months of transactions, then refresh.
+            {t("forecast.empty")}
             <div className="mt-3">
               <Button
                 variant="outline"
@@ -311,12 +323,14 @@ export default function ForecastPage() {
                   api<Forecast>(`/api/forecast?year=${year}&month=${month}`)
                     .then(setData)
                     .catch((e) =>
-                      toast.error(e instanceof Error ? e.message : "Failed")
+                      toast.error(
+                        e instanceof Error ? e.message : t("common.failed")
+                      )
                     )
                     .finally(() => setLoading(false));
                 }}
               >
-                Retry
+                {t("common.retry")}
               </Button>
             </div>
           </CardContent>

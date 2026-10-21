@@ -26,11 +26,14 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!debt) throw new Error("NOT_FOUND");
 
     if (input.name !== undefined) debt.name = input.name;
+    if (input.kind !== undefined) debt.kind = input.kind;
     if (input.interestRate !== undefined) debt.interestRate = input.interestRate;
     if (input.minimumPayment !== undefined)
       debt.minimumPayment = input.minimumPayment;
     if (input.plannedPayment !== undefined)
       debt.plannedPayment = input.plannedPayment;
+    if (input.installmentMonths !== undefined)
+      debt.installmentMonths = input.installmentMonths;
     if (input.dueDate !== undefined) debt.dueDate = new Date(input.dueDate);
     if (input.startDate !== undefined) debt.startDate = new Date(input.startDate);
     if (input.targetPayoffDate !== undefined)

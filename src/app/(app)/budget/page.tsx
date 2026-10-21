@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,7 @@ type BudgetRow = {
 type Category = { _id: string; name: string; type: string };
 
 export default function BudgetPage() {
+  const { t, intlLocale } = useI18n();
   const now = new Date();
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -75,11 +77,11 @@ export default function BudgetPage() {
           currency,
         }),
       });
-      toast.success("Budget saved");
+      toast.success(t("budget.saved"));
       setOpen(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -87,10 +89,10 @@ export default function BudgetPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Budget</h1>
-          <p className="text-muted-foreground">
-            Monthly category budgets vs actual spending.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("budget.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("budget.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Input
@@ -114,16 +116,18 @@ export default function BudgetPage() {
               if (v) setFormCurrency("IDR");
             }}
           >
-            <DialogTrigger render={<Button />}>Set budget</DialogTrigger>
+            <DialogTrigger render={<Button />}>
+              {t("budget.setBudget")}
+            </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  Budget for {month}/{year}
+                  {t("budget.forPeriod", { month, year })}
                 </DialogTitle>
               </DialogHeader>
               <form className="space-y-3" onSubmit={onCreate}>
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label>{t("common.category")}</Label>
                   <select
                     name="categoryId"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -138,7 +142,7 @@ export default function BudgetPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Amount</Label>
+                    <Label>{t("common.amount")}</Label>
                     <CurrencyAmountInput
                       name="amount"
                       currency={formCurrency}
@@ -146,7 +150,7 @@ export default function BudgetPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Currency</Label>
+                    <Label>{t("common.currency")}</Label>
                     <select
                       name="currency"
                       className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -161,7 +165,7 @@ export default function BudgetPage() {
                   </div>
                 </div>
                 <Button type="submit" className="w-full">
-                  Save
+                  {t("common.save")}
                 </Button>
               </form>
             </DialogContent>
@@ -173,7 +177,7 @@ export default function BudgetPage() {
         {rows.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              No budgets for this month yet.
+              {t("budget.empty")}
             </CardContent>
           </Card>
         ) : (
@@ -191,26 +195,32 @@ export default function BudgetPage() {
                 <Progress value={Math.min(row.utilizationPercentage, 100)} />
                 <div className="grid grid-cols-3 gap-2 text-sm">
                   <div>
-                    <p className="text-muted-foreground">Budget</p>
+                    <p className="text-muted-foreground">{t("budget.title")}</p>
                     <p className="font-mono">
-                      {formatMoney(row.budgetAmount, row.currency)}
+                      {formatMoney(row.budgetAmount, row.currency, intlLocale)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Spent</p>
+                    <p className="text-muted-foreground">{t("budget.spent")}</p>
                     <p className="font-mono">
-                      {formatMoney(row.actualAmount, row.currency)}
+                      {formatMoney(row.actualAmount, row.currency, intlLocale)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">Left</p>
+                    <p className="text-muted-foreground">{t("budget.left")}</p>
                     <p className="font-mono">
-                      {formatMoney(row.remainingAmount, row.currency)}
+                      {formatMoney(
+                        row.remainingAmount,
+                        row.currency,
+                        intlLocale
+                      )}
                     </p>
                   </div>
                 </div>
                 {row.overBudget ? (
-                  <p className="text-sm text-destructive">Over budget</p>
+                  <p className="text-sm text-destructive">
+                    {t("budget.overBudget")}
+                  </p>
                 ) : null}
               </CardContent>
             </Card>

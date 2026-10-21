@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ type Rec = {
 };
 
 export default function SmartBudgetPage() {
+  const { t, intlLocale } = useI18n();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -61,7 +63,7 @@ export default function SmartBudgetPage() {
       }
       setAmounts(map);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
       setLoading(false);
     }
@@ -91,9 +93,9 @@ export default function SmartBudgetPage() {
           })),
         }),
       });
-      toast.success("Smart budget accepted into monthly budgets");
+      toast.success(t("smartBudget.accepted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -101,10 +103,10 @@ export default function SmartBudgetPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Smart Budget</h1>
-          <p className="text-muted-foreground">
-            Deterministic recommendation from your history — review before accepting.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("smartBudget.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("smartBudget.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Input
@@ -122,45 +124,55 @@ export default function SmartBudgetPage() {
             onChange={(e) => setYear(Number(e.target.value))}
           />
           <Button variant="outline" onClick={load} disabled={loading}>
-            {loading ? "Generating..." : "Refresh"}
+            {loading ? t("smartBudget.generating") : t("common.refresh")}
           </Button>
         </div>
       </div>
 
       {!data ? (
-        <p className="text-muted-foreground">Loading recommendation...</p>
+        <p className="text-muted-foreground">{t("smartBudget.loading")}</p>
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Expected income</CardDescription>
+                <CardDescription>
+                  {t("smartBudget.expectedIncome")}
+                </CardDescription>
                 <CardTitle className="font-mono text-xl">
-                  {formatMoney(data.totalIncome, data.currency)}
+                  {formatMoney(data.totalIncome, data.currency, intlLocale)}
                 </CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Recommended expenses</CardDescription>
+                <CardDescription>
+                  {t("smartBudget.recommendedExpenses")}
+                </CardDescription>
                 <CardTitle className="font-mono text-xl">
-                  {formatMoney(adjustedTotal, data.currency)}
+                  {formatMoney(adjustedTotal, data.currency, intlLocale)}
                 </CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Debt reserve</CardDescription>
+                <CardDescription>{t("smartBudget.debtReserve")}</CardDescription>
                 <CardTitle className="font-mono text-xl">
-                  {formatMoney(data.totalDebtPayment, data.currency)}
+                  {formatMoney(
+                    data.totalDebtPayment,
+                    data.currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Projected savings</CardDescription>
+                <CardDescription>
+                  {t("smartBudget.projectedSavings")}
+                </CardDescription>
                 <CardTitle className="font-mono text-xl">
-                  {formatMoney(savingsImpact, data.currency)}
+                  {formatMoney(savingsImpact, data.currency, intlLocale)}
                 </CardTitle>
               </CardHeader>
             </Card>
@@ -169,7 +181,9 @@ export default function SmartBudgetPage() {
           {data.conflict ? (
             <Card className="border-destructive/40">
               <CardHeader>
-                <CardTitle className="text-destructive">Budget conflict</CardTitle>
+                <CardTitle className="text-destructive">
+                  {t("smartBudget.conflict")}
+                </CardTitle>
                 <CardDescription>{data.conflict.message}</CardDescription>
               </CardHeader>
             </Card>
@@ -179,13 +193,13 @@ export default function SmartBudgetPage() {
             <CardHeader className="flex-row items-center justify-between">
               <div>
                 <CardTitle>
-                  {month}/{year} allocation
+                  {t("smartBudget.allocation", { month, year })}
                 </CardTitle>
                 <CardDescription>
-                  Confidence: {data.confidence}. Adjust amounts to simulate impact.
+                  {t("smartBudget.confidence", { level: data.confidence })}
                 </CardDescription>
               </div>
-              <Button onClick={accept}>Accept all</Button>
+              <Button onClick={accept}>{t("smartBudget.acceptAll")}</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {data.categories.map((c) => (
@@ -202,8 +216,18 @@ export default function SmartBudgetPage() {
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Avg {formatMoney(c.historicalAverage, data.currency)} · Current{" "}
-                      {formatMoney(c.currentAmount, data.currency)}
+                      {t("smartBudget.avgCurrent", {
+                        avg: formatMoney(
+                          c.historicalAverage,
+                          data.currency,
+                          intlLocale
+                        ),
+                        current: formatMoney(
+                          c.currentAmount,
+                          data.currency,
+                          intlLocale
+                        ),
+                      })}
                     </p>
                     <ul className="mt-2 list-disc pl-4 text-xs text-muted-foreground">
                       {c.rationale.map((r) => (
@@ -212,7 +236,9 @@ export default function SmartBudgetPage() {
                     </ul>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Your amount</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("smartBudget.yourAmount")}
+                    </p>
                     <CurrencyAmountInput
                       currency={data.currency}
                       value={fromMinorUnits(
@@ -234,14 +260,16 @@ export default function SmartBudgetPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Engine rationale</CardTitle>
+              <CardTitle>{t("smartBudget.engineRationale")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm text-muted-foreground">
               {data.rationale.map((r) => (
                 <p key={r}>{r}</p>
               ))}
               <p className="pt-2">
-                Buffer remaining: {formatMoney(data.buffer, data.currency)}
+                {t("smartBudget.bufferRemaining", {
+                  amount: formatMoney(data.buffer, data.currency, intlLocale),
+                })}
               </p>
             </CardContent>
           </Card>

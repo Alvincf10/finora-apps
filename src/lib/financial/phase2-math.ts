@@ -515,8 +515,8 @@ export function buildInsightFromTrend(
     return {
       type: "SPENDING_INCREASE",
       priority: changePercent >= 25 ? "HIGH" : "MEDIUM",
-      title: `${categoryName} spending increased`,
-      message: `${categoryName} spending is ${changePercent}% above your historical average.`,
+      title: `Belanja ${categoryName} naik`,
+      message: `Belanja ${categoryName} ${changePercent}% di atas rata-rata historismu.`,
       categoryId,
       currentValue: current,
       recommendedValue: average,
@@ -536,8 +536,8 @@ export function buildInsightFromTrend(
   return {
     type: "SPENDING_DECREASE",
     priority: "LOW",
-    title: `${categoryName} spending decreased`,
-    message: `${categoryName} spending is ${Math.abs(changePercent)}% below your historical average.`,
+    title: `Belanja ${categoryName} turun`,
+    message: `Belanja ${categoryName} ${Math.abs(changePercent)}% di bawah rata-rata historismu.`,
     categoryId,
     currentValue: current,
     recommendedValue: average,
@@ -552,5 +552,5 @@ export function buildInsightFromTrend(
     ],
     actionType: "VIEW_SPENDING",
     period,
-    };
+  };
 }

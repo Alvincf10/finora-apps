@@ -7,11 +7,16 @@ export type DebtDueItem = {
   debtId: string;
   name: string;
   currency: Currency;
+  /** Amount due this cycle (cicilan or full if lump-sum). */
   dueAmount: number;
   paidAmount: number;
   remainingDue: number;
+  /** Full outstanding principal. */
+  remainingAmount: number;
   dueDate?: string;
   monthlyPayment: number | null;
+  installmentMonths: number | null;
+  isInstallment: boolean;
 };
 
 export type DebtsDueThisMonth = {
@@ -40,38 +45,98 @@ function isOverdueBeforePeriodEnd(dueDate: Date | undefined | null, end: Date) {
   return new Date(dueDate) < end;
 }
 
+export function deriveMonthlyInstallment(debt: {
+  remainingAmount: number;
+  plannedPayment?: number | null;
+  minimumPayment?: number | null;
+  installmentMonths?: number | null;
+}): { monthlyPayment: number | null; installmentMonths: number | null } {
+  if (debt.remainingAmount <= 0) {
+    return { monthlyPayment: null, installmentMonths: null };
+  }
+
+  const months =
+    debt.installmentMonths != null && debt.installmentMonths > 0
+      ? debt.installmentMonths
+      : null;
+
+  const explicit = debt.plannedPayment ?? debt.minimumPayment ?? null;
+  if (explicit != null && explicit > 0) {
+    return {
+      monthlyPayment: explicit,
+      installmentMonths:
+        months ?? Math.max(1, Math.ceil(debt.remainingAmount / explicit)),
+    };
+  }
+
+  if (months != null) {
+    return {
+      monthlyPayment: Math.ceil(debt.remainingAmount / months),
+      installmentMonths: months,
+    };
+  }
+
+  return { monthlyPayment: null, installmentMonths: null };
+}
+
 /**
  * Monthly obligation for a debt this period:
- * 1) plannedPayment / minimumPayment (capped by remaining)
- * 2) else full remaining if dueDate falls in this month or is overdue
+ * 1) cicilan from plannedPayment / minimumPayment / installmentMonths
+ * 2) else full remaining if dueDate falls in this window or is overdue
  */
 export function monthlyDebtObligation(
   debt: {
     remainingAmount: number;
     plannedPayment?: number | null;
     minimumPayment?: number | null;
+    installmentMonths?: number | null;
     dueDate?: Date | null;
   },
   start: Date,
   end: Date
-): { dueAmount: number; monthlyPayment: number | null } {
-  const installment = debt.plannedPayment ?? debt.minimumPayment ?? null;
-  if (installment != null && installment > 0) {
+): {
+  dueAmount: number;
+  monthlyPayment: number | null;
+  installmentMonths: number | null;
+  isInstallment: boolean;
+} {
+  if (debt.remainingAmount <= 0) {
     return {
-      dueAmount: Math.min(installment, debt.remainingAmount),
-      monthlyPayment: installment,
+      dueAmount: 0,
+      monthlyPayment: null,
+      installmentMonths: null,
+      isInstallment: false,
+    };
+  }
+
+  const derived = deriveMonthlyInstallment(debt);
+  if (derived.monthlyPayment != null && derived.monthlyPayment > 0) {
+    return {
+      dueAmount: Math.min(derived.monthlyPayment, debt.remainingAmount),
+      monthlyPayment: derived.monthlyPayment,
+      installmentMonths: derived.installmentMonths,
+      isInstallment: true,
     };
   }
 
   if (
-    debt.remainingAmount > 0 &&
-    (isDueInPeriod(debt.dueDate, start, end) ||
-      isOverdueBeforePeriodEnd(debt.dueDate, end))
+    isDueInPeriod(debt.dueDate, start, end) ||
+    isOverdueBeforePeriodEnd(debt.dueDate, end)
   ) {
-    return { dueAmount: debt.remainingAmount, monthlyPayment: null };
+    return {
+      dueAmount: debt.remainingAmount,
+      monthlyPayment: null,
+      installmentMonths: null,
+      isInstallment: false,
+    };
   }
 
-  return { dueAmount: 0, monthlyPayment: null };
+  return {
+    dueAmount: 0,
+    monthlyPayment: null,
+    installmentMonths: null,
+    isInstallment: false,
+  };
 }
 
 export async function getDebtsDueInRange(
@@ -101,11 +166,8 @@ export async function getDebtsDueInRange(
   >();
 
   for (const debt of debts) {
-    const { dueAmount, monthlyPayment } = monthlyDebtObligation(
-      debt,
-      start,
-      end
-    );
+    const { dueAmount, monthlyPayment, installmentMonths, isInstallment } =
+      monthlyDebtObligation(debt, start, end);
     if (dueAmount <= 0) continue;
 
     const debtId = debt._id.toString();
@@ -120,8 +182,11 @@ export async function getDebtsDueInRange(
       dueAmount,
       paidAmount,
       remainingDue,
+      remainingAmount: debt.remainingAmount,
       dueDate: debt.dueDate ? new Date(debt.dueDate).toISOString() : undefined,
       monthlyPayment,
+      installmentMonths,
+      isInstallment,
     });
 
     const bucket = currencyTotals.get(currency) ?? {

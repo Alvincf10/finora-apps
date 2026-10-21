@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,28 +71,6 @@ type AnalyticsData = {
   months: number;
 };
 
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-function trendBadge(trend: string) {
-  if (trend === "INCREASING") return { label: "↑ Up", variant: "destructive" as const };
-  if (trend === "DECREASING") return { label: "↓ Down", variant: "secondary" as const };
-  if (trend === "STABLE") return { label: "Stable", variant: "outline" as const };
-  return { label: "No history", variant: "outline" as const };
-}
-
 function moneyTick(value: number, currency: Currency) {
   const major = fromMinorUnits(value, currency);
   if (currency === "IDR") {
@@ -106,6 +85,7 @@ function moneyTick(value: number, currency: Currency) {
 }
 
 export default function ReportsPage() {
+  const { t, intlLocale } = useI18n();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -113,15 +93,27 @@ export default function ReportsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
 
+  function trendBadge(trend: string) {
+    if (trend === "INCREASING")
+      return { label: t("reports.trendUp"), variant: "destructive" as const };
+    if (trend === "DECREASING")
+      return { label: t("reports.trendDown"), variant: "secondary" as const };
+    if (trend === "STABLE")
+      return { label: t("reports.trendStable"), variant: "outline" as const };
+    return { label: t("reports.trendNone"), variant: "outline" as const };
+  }
+
   useEffect(() => {
     setLoading(true);
     api<AnalyticsData>(
       `/api/analytics?year=${year}&month=${month}&months=${months}`
     )
       .then(setData)
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed"))
+      .catch((e) =>
+        toast.error(e instanceof Error ? e.message : t("common.failed"))
+      )
       .finally(() => setLoading(false));
-  }, [year, month, months]);
+  }, [year, month, months, t]);
 
   const currency = data?.profile.currency ?? "IDR";
 
@@ -156,18 +148,25 @@ export default function ReportsPage() {
     }));
   }, [data]);
 
+  const periodLabel = data
+    ? new Date(data.period.year, data.period.month - 1, 1).toLocaleDateString(
+        intlLocale,
+        { month: "short", year: "numeric" }
+      )
+    : "";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Analytics</h1>
-          <p className="text-muted-foreground">
-            Trend, anomaly, dan proyeksi per kategori — deterministic, bukan AI.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("reports.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("reports.subtitle")}</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
-            <Label className="text-xs">Month</Label>
+            <Label className="text-xs">{t("common.month")}</Label>
             <Input
               type="number"
               className="w-20"
@@ -178,7 +177,7 @@ export default function ReportsPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Year</Label>
+            <Label className="text-xs">{t("common.year")}</Label>
             <Input
               type="number"
               className="w-28"
@@ -187,7 +186,7 @@ export default function ReportsPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Range</Label>
+            <Label className="text-xs">{t("common.range")}</Label>
             <div className="flex rounded-md border p-0.5">
               {([3, 6, 12] as const).map((m) => (
                 <Button
@@ -207,7 +206,7 @@ export default function ReportsPage() {
       </div>
 
       {loading && !data ? (
-        <p className="text-sm text-muted-foreground">Loading analytics…</p>
+        <p className="text-sm text-muted-foreground">{t("reports.loading")}</p>
       ) : null}
 
       {data ? (
@@ -215,9 +214,15 @@ export default function ReportsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Avg income ({months}m hist.)</CardDescription>
+                <CardDescription>
+                  {t("reports.avgIncome", { months })}
+                </CardDescription>
                 <CardTitle className="font-mono text-xl tabular-nums">
-                  {formatMoney(data.profile.averageMonthlyIncome, currency)}
+                  {formatMoney(
+                    data.profile.averageMonthlyIncome,
+                    currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -226,9 +231,13 @@ export default function ReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Avg expense</CardDescription>
+                <CardDescription>{t("reports.avgExpense")}</CardDescription>
                 <CardTitle className="font-mono text-xl tabular-nums">
-                  {formatMoney(data.profile.averageMonthlyExpense, currency)}
+                  {formatMoney(
+                    data.profile.averageMonthlyExpense,
+                    currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -237,33 +246,43 @@ export default function ReportsPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Avg savings</CardDescription>
+                <CardDescription>{t("reports.avgSavings")}</CardDescription>
                 <CardTitle className="font-mono text-xl tabular-nums">
-                  {formatMoney(data.profile.averageMonthlySavings, currency)}
+                  {formatMoney(
+                    data.profile.averageMonthlySavings,
+                    currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                Rate {data.profile.averageSavingsRate}%
+                {t("reports.savingsRate", {
+                  rate: data.profile.averageSavingsRate,
+                })}
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Debt obligation / mo</CardDescription>
+                <CardDescription>{t("reports.debtObligation")}</CardDescription>
                 <CardTitle className="font-mono text-xl tabular-nums">
-                  {formatMoney(data.profile.averageDebtPayment, currency)}
+                  {formatMoney(
+                    data.profile.averageDebtPayment,
+                    currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                {MONTH_NAMES[data.period.month - 1]} {data.period.year}
+                {periodLabel}
               </CardContent>
             </Card>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Cash flow</CardTitle>
+              <CardTitle>{t("reports.cashFlow")}</CardTitle>
               <CardDescription>
-                Income vs expense · last {months} months
+                {t("reports.cashFlowDesc", { months })}
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
@@ -278,17 +297,22 @@ export default function ReportsPage() {
                   />
                   <Tooltip
                     formatter={(value) =>
-                      formatMoney(Number(value ?? 0), currency)
+                      formatMoney(Number(value ?? 0), currency, intlLocale)
                     }
                     labelFormatter={(label, payload) =>
                       String(payload?.[0]?.payload?.label ?? label)
                     }
                   />
                   <Legend />
-                  <Bar dataKey="income" name="Income" fill="#059669" radius={4} />
+                  <Bar
+                    dataKey="income"
+                    name={t("reports.income")}
+                    fill="#059669"
+                    radius={4}
+                  />
                   <Bar
                     dataKey="expense"
-                    name="Expense"
+                    name={t("reports.expense")}
                     fill="#64748b"
                     radius={4}
                   />
@@ -300,15 +324,17 @@ export default function ReportsPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Top categories</CardTitle>
+                <CardTitle>{t("reports.topCategories")}</CardTitle>
                 <CardDescription>
-                  Current vs {months >= 6 ? "6m" : "3m"} average
+                  {t("reports.topCategoriesDesc", {
+                    avg: months >= 6 ? t("reports.avg6m") : t("reports.avg3m"),
+                  })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="h-80">
                 {categoryChart.length === 0 ? (
                   <p className="py-12 text-center text-sm text-muted-foreground">
-                    Belum ada data kategori.
+                    {t("reports.noCategoryData")}
                   </p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -327,7 +353,7 @@ export default function ReportsPage() {
                       />
                       <Tooltip
                         formatter={(value) =>
-                          formatMoney(Number(value ?? 0), currency)
+                          formatMoney(Number(value ?? 0), currency, intlLocale)
                         }
                         labelFormatter={(_, payload) =>
                           String(payload?.[0]?.payload?.fullName ?? "")
@@ -336,13 +362,13 @@ export default function ReportsPage() {
                       <Legend />
                       <Bar
                         dataKey="current"
-                        name="Current"
+                        name={t("reports.current")}
                         fill="#059669"
                         radius={4}
                       />
                       <Bar
                         dataKey="average"
-                        name="Average"
+                        name={t("reports.average")}
                         fill="#94a3b8"
                         radius={4}
                       />
@@ -355,9 +381,9 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <div>
-                  <CardTitle>Category detail</CardTitle>
+                  <CardTitle>{t("reports.categoryDetail")}</CardTitle>
                   <CardDescription>
-                    Trend, proyeksi EOM, anomaly
+                    {t("reports.categoryDetailDesc")}
                   </CardDescription>
                 </div>
                 <Link
@@ -366,17 +392,17 @@ export default function ReportsPage() {
                     buttonVariants({ variant: "ghost", size: "sm" })
                   )}
                 >
-                  Open insights
+                  {t("reports.openInsights")}
                 </Link>
               </CardHeader>
               <CardContent className="max-h-80 space-y-3 overflow-y-auto">
                 {rankedSpending.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Tidak ada spending kategori.
+                    {t("reports.noSpending")}
                   </p>
                 ) : (
                   rankedSpending.map((row) => {
-                    const t = trendBadge(row.trend);
+                    const trend = trendBadge(row.trend);
                     return (
                       <div
                         key={row.categoryId}
@@ -387,20 +413,30 @@ export default function ReportsPage() {
                             <span className="font-medium">
                               {row.categoryName}
                             </span>
-                            <Badge variant={t.variant}>{t.label}</Badge>
+                            <Badge variant={trend.variant}>{trend.label}</Badge>
                             {row.anomaly ? (
-                              <Badge variant="destructive">Anomaly</Badge>
+                              <Badge variant="destructive">
+                                {t("reports.anomaly")}
+                              </Badge>
                             ) : null}
                           </div>
                           <span className="font-mono text-sm tabular-nums">
-                            {formatMoney(row.currentAmount, row.currency)}
+                            {formatMoney(
+                              row.currentAmount,
+                              row.currency,
+                              intlLocale
+                            )}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                           <span>
-                            Avg 3m{" "}
+                            {t("reports.avg3mLabel")}{" "}
                             <span className="font-mono text-foreground">
-                              {formatMoney(row.average3m, row.currency)}
+                              {formatMoney(
+                                row.average3m,
+                                row.currency,
+                                intlLocale
+                              )}
                             </span>
                           </span>
                           <span>
@@ -410,9 +446,13 @@ export default function ReportsPage() {
                             </span>
                           </span>
                           <span>
-                            Projected{" "}
+                            {t("reports.projected")}{" "}
                             <span className="font-mono text-foreground">
-                              {formatMoney(row.projectedMonthly, row.currency)}
+                              {formatMoney(
+                                row.projectedMonthly,
+                                row.currency,
+                                intlLocale
+                              )}
                             </span>
                           </span>
                           <span>
@@ -432,20 +472,20 @@ export default function ReportsPage() {
               href="/reports/monthly"
               className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
             >
-              Monthly review
+              {t("reports.monthlyReview")}
             </Link>
             <Link
               href="/forecast"
               className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
             >
-              Forecast
+              {t("reports.forecast")}
             </Link>
           </div>
         </>
       ) : !loading ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            Gagal memuat analytics. Coba refresh.
+            {t("reports.loadFailed")}
           </CardContent>
         </Card>
       ) : null}

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Input } from "@/components/ui/input";
 import {
   Card,
@@ -45,6 +46,7 @@ type Review = {
 };
 
 export default function MonthlyReviewPage() {
+  const { t, intlLocale } = useI18n();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -60,10 +62,10 @@ export default function MonthlyReviewPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Monthly Review</h1>
-          <p className="text-muted-foreground">
-            What happened this month — without labeling it good or bad.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("reports.monthlyTitle")}
+          </h1>
+          <p className="text-muted-foreground">{t("reports.monthlySubtitle")}</p>
         </div>
         <div className="flex gap-2">
           <Input
@@ -84,27 +86,46 @@ export default function MonthlyReviewPage() {
       </div>
 
       {!data ? (
-        <p className="text-muted-foreground">Loading review...</p>
+        <p className="text-muted-foreground">{t("reports.monthlyLoading")}</p>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              ["Income", data.income, data.comparison.incomeChange],
-              ["Expenses", data.expenses, data.comparison.expenseChange],
-              ["Savings", data.savings, data.comparison.savingsChange],
-              ["Debt payment", data.debtPayment, data.comparison.debtChange],
-              ["Net cash flow", data.netCashFlow, null],
-            ].map(([label, value, change]) => (
+            {(
+              [
+                [
+                  t("reports.monthlyIncome"),
+                  data.income,
+                  data.comparison.incomeChange,
+                ],
+                [
+                  t("reports.monthlyExpenses"),
+                  data.expenses,
+                  data.comparison.expenseChange,
+                ],
+                [
+                  t("reports.monthlySavings"),
+                  data.savings,
+                  data.comparison.savingsChange,
+                ],
+                [
+                  t("reports.monthlyDebt"),
+                  data.debtPayment,
+                  data.comparison.debtChange,
+                ],
+                [t("reports.monthlyNet"), data.netCashFlow, null],
+              ] as const
+            ).map(([label, value, change]) => (
               <Card key={String(label)}>
                 <CardHeader className="pb-2">
-                  <CardDescription>{label as string}</CardDescription>
+                  <CardDescription>{label}</CardDescription>
                   <CardTitle className="font-mono text-lg">
-                    {formatMoney(value as number, data.currency)}
+                    {formatMoney(value as number, data.currency, intlLocale)}
                   </CardTitle>
                   {typeof change === "number" ? (
                     <p className="text-xs text-muted-foreground">
-                      vs previous: {change > 0 ? "+" : ""}
-                      {change}%
+                      {t("reports.vsPrevious", {
+                        change: `${change > 0 ? "+" : ""}${change}`,
+                      })}
                     </p>
                   ) : null}
                 </CardHeader>
@@ -115,14 +136,14 @@ export default function MonthlyReviewPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Top categories</CardTitle>
+                <CardTitle>{t("reports.topCategories")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 {data.topCategories.map((c) => (
                   <div key={c.categoryName} className="flex justify-between">
                     <span>{c.categoryName}</span>
                     <span className="font-mono">
-                      {formatMoney(c.currentAmount, data.currency)}
+                      {formatMoney(c.currentAmount, data.currency, intlLocale)}
                     </span>
                   </div>
                 ))}
@@ -130,7 +151,7 @@ export default function MonthlyReviewPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Biggest changes</CardTitle>
+                <CardTitle>{t("reports.biggestChanges")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {data.biggestChanges.map((c) => (
@@ -151,25 +172,27 @@ export default function MonthlyReviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Budget performance</CardTitle>
+              <CardTitle>{t("reports.budgetPerformance")}</CardTitle>
               <CardDescription>
-                {data.budgetPerformance.within} within budget ·{" "}
-                {data.budgetPerformance.over} over budget
+                {t("reports.budgetPerformanceDesc", {
+                  within: data.budgetPerformance.within,
+                  over: data.budgetPerformance.over,
+                })}
               </CardDescription>
             </CardHeader>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Goals</CardTitle>
+              <CardTitle>{t("reports.goals")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.goals.map((g) => (
                 <div key={g.name} className="flex justify-between">
                   <span>{g.name}</span>
                   <span className="font-mono">
-                    {formatMoney(g.currentAmount, g.currency)} /{" "}
-                    {formatMoney(g.targetAmount, g.currency)}
+                    {formatMoney(g.currentAmount, g.currency, intlLocale)} /{" "}
+                    {formatMoney(g.targetAmount, g.currency, intlLocale)}
                   </span>
                 </div>
               ))}

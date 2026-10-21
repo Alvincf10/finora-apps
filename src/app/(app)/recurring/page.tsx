@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import { useI18n } from "@/components/i18n-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +57,7 @@ type GenerateResult = {
 };
 
 export default function RecurringPage() {
+  const { t, intlLocale } = useI18n();
   const [items, setItems] = useState<Recurring[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -90,7 +92,9 @@ export default function RecurringPage() {
   }
 
   useEffect(() => {
-    load().catch((e) => toast.error(e instanceof Error ? e.message : "Failed"));
+    load().catch((e) =>
+      toast.error(e instanceof Error ? e.message : t("common.failed"))
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -102,14 +106,14 @@ export default function RecurringPage() {
       });
       if (result.createdCount > 0) {
         toast.success(
-          `${result.createdCount} transaksi recurring di-post ke ledger`
+          t("recurring.generated", { count: result.createdCount })
         );
       } else {
-        toast.message("Tidak ada recurring yang jatuh tempo");
+        toast.message(t("recurring.noneDue"));
       }
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
       setGenerating(false);
     }
@@ -138,11 +142,11 @@ export default function RecurringPage() {
           endDate: form.get("endDate") || undefined,
         }),
       });
-      toast.success("Recurring saved");
+      toast.success(t("recurring.created"));
       setOpen(false);
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -154,17 +158,17 @@ export default function RecurringPage() {
       });
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
   async function onDelete(id: string) {
     try {
       await api(`/api/recurring/${id}`, { method: "DELETE" });
-      toast.success("Deleted");
+      toast.success(t("common.deleted"));
       await load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed");
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
     }
   }
 
@@ -176,11 +180,11 @@ export default function RecurringPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-heading text-3xl font-semibold">Recurring</h1>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("recurring.title")}
+          </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            Gaji, sewa, langganan — template yang bisa di-post otomatis ke
-            transaksi. Beda dari Fixed costs (itu hanya untuk hitung cycle
-            buffer).
+            {t("recurring.subtitle")}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -191,10 +195,10 @@ export default function RecurringPage() {
             onClick={() => void onGenerate()}
           >
             {generating
-              ? "Posting…"
+              ? t("recurring.posting")
               : dueCount > 0
-                ? `Post due (${dueCount})`
-                : "Post due"}
+                ? t("recurring.generateDue", { count: dueCount })
+                : t("recurring.generate")}
           </Button>
           <Dialog
             open={open}
@@ -213,11 +217,11 @@ export default function RecurringPage() {
                 <Button className="w-full touch-manipulation sm:w-auto" />
               }
             >
-              Add recurring
+              {t("recurring.add")}
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New recurring</DialogTitle>
+                <DialogTitle>{t("recurring.newItem")}</DialogTitle>
               </DialogHeader>
               <form
                 key={open ? "open" : "closed"}
@@ -226,7 +230,7 @@ export default function RecurringPage() {
               >
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Type</Label>
+                    <Label>{t("common.type")}</Label>
                     <select
                       name="type"
                       className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -235,12 +239,12 @@ export default function RecurringPage() {
                         setFormType(e.target.value as "INCOME" | "EXPENSE")
                       }
                     >
-                      <option value="EXPENSE">Expense</option>
-                      <option value="INCOME">Income</option>
+                      <option value="EXPENSE">{t("transactions.expense")}</option>
+                      <option value="INCOME">{t("transactions.income")}</option>
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Frequency</Label>
+                    <Label>{t("recurring.frequency")}</Label>
                     <select
                       name="frequency"
                       className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -251,14 +255,14 @@ export default function RecurringPage() {
                         )
                       }
                     >
-                      <option value="MONTHLY">Monthly</option>
-                      <option value="WEEKLY">Weekly</option>
+                      <option value="MONTHLY">{t("recurring.monthly")}</option>
+                      <option value="WEEKLY">{t("recurring.weekly")}</option>
                     </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Amount</Label>
+                    <Label>{t("common.amount")}</Label>
                     <CurrencyAmountInput
                       name="amount"
                       currency={formCurrency}
@@ -266,7 +270,7 @@ export default function RecurringPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Currency</Label>
+                    <Label>{t("common.currency")}</Label>
                     <select
                       name="currency"
                       className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -281,7 +285,7 @@ export default function RecurringPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Account</Label>
+                  <Label>{t("common.account")}</Label>
                   <select
                     name="accountId"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -295,7 +299,7 @@ export default function RecurringPage() {
                     }}
                   >
                     <option value="" disabled>
-                      Pilih akun…
+                      {t("recurring.selectAccount")}
                     </option>
                     {accounts.map((a) => (
                       <option key={a._id} value={a._id}>
@@ -305,7 +309,7 @@ export default function RecurringPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label>{t("common.category")}</Label>
                   <select
                     name="categoryId"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
@@ -313,7 +317,7 @@ export default function RecurringPage() {
                     defaultValue=""
                   >
                     <option value="" disabled>
-                      Pilih kategori…
+                      {t("recurring.selectCategory")}
                     </option>
                     {categoryOptions.map((c) => (
                       <option key={c._id} value={c._id}>
@@ -324,7 +328,7 @@ export default function RecurringPage() {
                 </div>
                 {formFrequency === "MONTHLY" ? (
                   <div className="space-y-2">
-                    <Label>Day of month</Label>
+                    <Label>{t("recurring.dayOfMonth")}</Label>
                     <Input
                       name="dayOfMonth"
                       type="number"
@@ -334,24 +338,23 @@ export default function RecurringPage() {
                       defaultValue={25}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Contoh gaji tgl 25, sewa tgl 1. Bulan pendek di-clamp ke
-                      akhir bulan.
+                      {t("recurring.dayOfMonthHint")}
                     </p>
                   </div>
                 ) : null}
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label>{t("common.description")}</Label>
                   <Input
                     name="description"
-                    placeholder="Gaji / Netflix / Sewa"
+                    placeholder={t("recurring.descPlaceholder")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>End date (opsional)</Label>
+                  <Label>{t("recurring.endDate")}</Label>
                   <Input name="endDate" type="date" />
                 </div>
                 <Button type="submit" className="w-full">
-                  Save
+                  {t("common.save")}
                 </Button>
               </form>
             </DialogContent>
@@ -362,22 +365,20 @@ export default function RecurringPage() {
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6 text-sm text-muted-foreground">
           <p>
-            Klik <span className="font-medium text-foreground">Post due</span>{" "}
-            untuk membuat transaksi dari template yang sudah jatuh tempo.
-            Fixed costs tetap di{" "}
+            {t("recurring.hint")}{" "}
             <Link
               href="/fixed-costs"
               className="underline underline-offset-2"
             >
-              halaman Fixed costs
+              {t("recurring.fixedCostsLink")}
             </Link>{" "}
-            (planning saja).
+            {t("recurring.hintSuffix")}
           </p>
           <Link
             href="/transactions"
             className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
           >
-            Lihat transaksi
+            {t("recurring.viewTransactions")}
           </Link>
         </CardContent>
       </Card>
@@ -394,16 +395,20 @@ export default function RecurringPage() {
                     {item.description || item.categoryId?.name || item.type}
                   </span>
                   <div className="flex gap-1">
-                    {isDue ? <Badge variant="destructive">DUE</Badge> : null}
+                    {isDue ? (
+                      <Badge variant="destructive">{t("recurring.due")}</Badge>
+                    ) : null}
                     <Badge variant={item.isActive ? "secondary" : "outline"}>
-                      {item.isActive ? "ACTIVE" : "OFF"}
+                      {item.isActive
+                        ? t("recurring.statusOn")
+                        : t("recurring.statusOff")}
                     </Badge>
                   </div>
                 </CardTitle>
                 <CardDescription>
                   {item.type} · {item.frequency}
                   {item.frequency === "MONTHLY" && item.dayOfMonth
-                    ? ` · tgl ${item.dayOfMonth}`
+                    ? t("recurring.dayShort", { day: item.dayOfMonth })
                     : ""}
                   {" · "}
                   {item.accountId?.name}
@@ -414,13 +419,20 @@ export default function RecurringPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="font-mono text-xl">
-                  {formatMoney(item.amount, item.currency)}
+                  {formatMoney(item.amount, item.currency, intlLocale)}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Next:{" "}
-                  {new Date(item.nextOccurrence).toLocaleDateString("id-ID")}
+                  {t("recurring.next", {
+                    date: new Date(item.nextOccurrence).toLocaleDateString(
+                      intlLocale
+                    ),
+                  })}
                   {item.endDate
-                    ? ` · ends ${new Date(item.endDate).toLocaleDateString("id-ID")}`
+                    ? t("recurring.ends", {
+                        date: new Date(item.endDate).toLocaleDateString(
+                          intlLocale
+                        ),
+                      })
                     : ""}
                 </p>
                 <div className="flex gap-2">
@@ -429,14 +441,16 @@ export default function RecurringPage() {
                     className="flex-1"
                     onClick={() => void toggleActive(item)}
                   >
-                    {item.isActive ? "Pause" : "Resume"}
+                    {item.isActive
+                      ? t("recurring.pause")
+                      : t("recurring.resume")}
                   </Button>
                   <Button
                     variant="ghost"
                     className="flex-1"
                     onClick={() => void onDelete(item._id)}
                   >
-                    Delete
+                    {t("common.delete")}
                   </Button>
                 </div>
               </CardContent>
@@ -446,10 +460,7 @@ export default function RecurringPage() {
       </div>
 
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Belum ada recurring. Tambah gaji atau tagihan rutin yang ingin
-          masuk ke ledger.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("recurring.empty")}</p>
       ) : null}
     </div>
   );

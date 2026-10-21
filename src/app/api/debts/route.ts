@@ -21,12 +21,14 @@ export async function POST(request: Request) {
     const debt = await Debt.create({
       userId,
       name: input.name,
+      kind: input.kind ?? "CONSUMER",
       originalAmount: input.originalAmount,
       remainingAmount: input.originalAmount,
       currency: input.currency,
       interestRate: input.interestRate,
       minimumPayment: input.minimumPayment,
       plannedPayment: input.plannedPayment,
+      installmentMonths: input.installmentMonths,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       startDate: input.startDate ? new Date(input.startDate) : undefined,
       targetPayoffDate: input.targetPayoffDate

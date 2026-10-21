@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { getDismissedAlertIds } from "@/lib/alert-dismiss";
+import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -15,6 +16,7 @@ type AlertsResponse = {
 };
 
 export function AlertsBell({ className }: { className?: string }) {
+  const t = useT();
   const [visibleCount, setVisibleCount] = useState(0);
   const [hasCritical, setHasCritical] = useState(false);
 
@@ -48,8 +50,8 @@ export function AlertsBell({ className }: { className?: string }) {
       )}
       aria-label={
         visibleCount > 0
-          ? `${visibleCount} alerts`
-          : "Alerts"
+          ? t("alerts.alertsCount", { count: visibleCount })
+          : t("nav.alerts")
       }
     >
       <Bell className="size-4" />

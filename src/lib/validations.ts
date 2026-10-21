@@ -101,13 +101,17 @@ export const createBudgetSchema = z.object({
   currency: currencySchema,
 });
 
+export const debtKindSchema = z.enum(["CONSUMER", "MORTGAGE", "OTHER"]);
+
 export const createDebtSchema = z.object({
   name: z.string().min(1).max(100),
+  kind: debtKindSchema.optional(),
   originalAmount: z.number().int().positive(),
   currency: currencySchema,
   interestRate: z.number().min(0).optional(),
   minimumPayment: z.number().int().positive().optional(),
   plannedPayment: z.number().int().positive().optional(),
+  installmentMonths: z.number().int().min(1).max(600).optional(),
   dueDate: z.string().or(z.date()).optional(),
   startDate: z.string().or(z.date()).optional(),
   targetPayoffDate: z.string().or(z.date()).optional(),
