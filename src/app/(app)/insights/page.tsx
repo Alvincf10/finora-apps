@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowRight, Check, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney } from "@/lib/money";
@@ -33,23 +34,52 @@ type Insight = {
   difference?: number;
 };
 
+type LadderStepStatus =
+  | "COMPLETED"
+  | "FOCUS"
+  | "LOCKED"
+  | "NOT_APPLICABLE"
+  | "UNKNOWN"
+  | "DONE"
+  | "CURRENT"
+  | "UPCOMING";
+
 type LadderStep = {
   id: number;
   title: string;
   description: string;
-  status: "DONE" | "CURRENT" | "UPCOMING";
+  status: LadderStepStatus;
+  reason?: string;
   progress?: number;
   detail?: string;
   actionType: string;
 };
 
 type WealthLadder = {
-  currentStep: number;
+  currentStep: number | null;
   completedCount: number;
   totalSteps: number;
+  applicableSteps?: number;
+  progressPercent?: number;
   currency: Currency;
   steps: LadderStep[];
 };
+
+function isLadderFocus(status: LadderStepStatus) {
+  return status === "FOCUS" || status === "CURRENT" || status === "UNKNOWN";
+}
+
+function isLadderDone(status: LadderStepStatus) {
+  return status === "COMPLETED" || status === "DONE";
+}
+
+function isLadderLocked(status: LadderStepStatus) {
+  return (
+    status === "LOCKED" ||
+    status === "UPCOMING" ||
+    status === "NOT_APPLICABLE"
+  );
+}
 
 type InsightsPayload = {
   insights: Insight[];
@@ -302,7 +332,15 @@ function InsightCard({
 
 function LadderPanel({ ladder }: { ladder: WealthLadder }) {
   const { t } = useI18n();
-  const current = ladder.steps.find((s) => s.status === "CURRENT");
+  const current = ladder.steps.find((s) => isLadderFocus(s.status));
+  const progressPct =
+    typeof ladder.progressPercent === "number"
+      ? ladder.progressPercent
+      : Math.floor(
+          (ladder.completedCount /
+            Math.max(1, ladder.applicableSteps ?? ladder.totalSteps)) *
+            100
+        );
 
   function actionLabel(actionType: string) {
     if (actionType === "VIEW_ACCOUNTS") return t("insights.ladderActionAccounts");
@@ -315,121 +353,252 @@ function LadderPanel({ ladder }: { ladder: WealthLadder }) {
     return t("insights.actionDefault");
   }
 
-  function statusLabel(status: LadderStep["status"]) {
-    if (status === "DONE") return t("insights.ladderDone");
-    if (status === "CURRENT") return t("insights.ladderCurrent");
-    return t("insights.ladderUpcoming");
+  function statusLabel(status: LadderStepStatus) {
+    if (isLadderDone(status)) return t("insights.ladderDone");
+    if (status === "UNKNOWN") return t("insights.ladderUnknown");
+    if (status === "NOT_APPLICABLE") return t("insights.ladderNotApplicable");
+    if (isLadderFocus(status)) return t("insights.ladderCurrent");
+    return t("insights.ladderLocked");
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-heading text-xl">
-          {t("insights.ladderTitle")}
-        </CardTitle>
-        <CardDescription>{t("insights.ladderSubtitle")}</CardDescription>
-        <p className="text-sm font-medium">
-          {t("insights.ladderProgress", {
-            current: ladder.currentStep,
-            total: ladder.totalSteps,
-            done: ladder.completedCount,
-          })}
-        </p>
-        <div className="flex gap-1 pt-1">
-          {ladder.steps.map((step) => (
-            <div
-              key={step.id}
-              className={cn(
-                "h-2 flex-1 rounded-full",
-                step.status === "DONE" && "bg-emerald-600",
-                step.status === "CURRENT" && "bg-primary",
-                step.status === "UPCOMING" && "bg-muted"
-              )}
-              title={`${step.id}. ${step.title}`}
-            />
-          ))}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {current ? (
-          <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge>{t("insights.ladderCurrent")}</Badge>
-              <span className="font-medium">
-                {current.id}. {current.title}
-              </span>
+    <section className="overflow-hidden rounded-2xl border border-emerald-800/15 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-emerald-100 via-card to-amber-50/40 shadow-[0_20px_50px_-28px_rgba(6,78,59,0.45)] dark:border-emerald-400/20 dark:from-emerald-950/80 dark:via-card dark:to-slate-950">
+      <div className="relative border-b border-emerald-900/10 px-5 py-5 sm:px-7 sm:py-6 dark:border-emerald-400/10">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-8 -top-10 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl dark:bg-emerald-500/15"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 left-1/3 h-24 w-48 rounded-full bg-amber-300/20 blur-3xl dark:bg-amber-500/10"
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-xl space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-800/15 bg-emerald-900/5 px-3 py-1 text-xs font-medium text-emerald-900 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200">
+              <TrendingUp className="size-3.5" />
+              {t("insights.ladderTitle")}
             </div>
-            <p className="text-sm text-muted-foreground">
-              {current.description}
+            <h2 className="font-heading text-2xl font-semibold tracking-tight text-emerald-950 sm:text-3xl dark:text-emerald-50">
+              {t("insights.ladderProgress", {
+                current: ladder.currentStep ?? "—",
+                total: ladder.applicableSteps ?? ladder.totalSteps,
+                done: ladder.completedCount,
+              })}
+            </h2>
+            <p className="text-sm leading-relaxed text-emerald-900/70 dark:text-emerald-100/65">
+              {t("insights.ladderSubtitle")}
             </p>
-            {current.detail ? (
-              <p className="font-mono text-sm tabular-nums">{current.detail}</p>
-            ) : null}
-            {typeof current.progress === "number" ? (
-              <div className="space-y-1">
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${current.progress}%` }}
-                  />
+          </div>
+          <div className="rounded-2xl border border-emerald-900/10 bg-white/70 px-4 py-3 text-center backdrop-blur-sm dark:border-emerald-400/15 dark:bg-emerald-950/50">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-800/60 dark:text-emerald-200/55">
+              {t("insights.ladderOverallLabel")}
+            </p>
+            <p className="font-heading text-3xl font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">
+              {progressPct}
+              <span className="text-lg text-emerald-700/70 dark:text-emerald-300/70">
+                %
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* Ascending staircase visual */}
+        <div className="relative mt-6 flex h-28 items-end gap-1.5 sm:h-36 sm:gap-2">
+          {ladder.steps.map((step, index) => {
+            const height = 28 + index * 10;
+            return (
+              <div
+                key={step.id}
+                className="group relative flex flex-1 flex-col items-center justify-end"
+                style={{ height: "100%" }}
+                title={`${step.id}. ${step.title}`}
+              >
+                <div
+                  className={cn(
+                    "relative w-full origin-bottom rounded-t-md transition-all duration-500",
+                    isLadderDone(step.status) &&
+                      "bg-gradient-to-t from-emerald-800 to-emerald-500 shadow-[0_0_24px_-8px_rgba(16,185,129,0.7)]",
+                    isLadderFocus(step.status) &&
+                      "bg-gradient-to-t from-emerald-950 to-emerald-600 ring-2 ring-emerald-300/80 ring-offset-2 ring-offset-emerald-50 dark:ring-emerald-400/60 dark:ring-offset-emerald-950",
+                    step.status === "NOT_APPLICABLE" &&
+                      "bg-emerald-900/5 opacity-50 dark:bg-emerald-100/5",
+                    isLadderLocked(step.status) &&
+                      step.status !== "NOT_APPLICABLE" &&
+                      "bg-emerald-900/10 dark:bg-emerald-100/10"
+                  )}
+                  style={{
+                    height: `${height}%`,
+                    animationDelay: `${index * 60}ms`,
+                  }}
+                >
+                  {isLadderFocus(step.status) ? (
+                    <span className="absolute inset-x-0 -top-1 mx-auto h-1 w-2/3 animate-pulse rounded-full bg-amber-300/90" />
+                  ) : null}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {current.progress}%
+                <span
+                  className={cn(
+                    "mt-1.5 text-[10px] font-semibold tabular-nums sm:text-xs",
+                    isLadderFocus(step.status) &&
+                      "text-emerald-900 dark:text-emerald-100",
+                    isLadderDone(step.status) &&
+                      "text-emerald-700 dark:text-emerald-300",
+                    isLadderLocked(step.status) && "text-muted-foreground"
+                  )}
+                >
+                  {step.id}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+        {/* Current focus hero */}
+        <div className="border-b border-emerald-900/10 p-5 sm:p-7 lg:border-b-0 lg:border-r dark:border-emerald-400/10">
+          {current ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-emerald-900 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-50 dark:bg-emerald-400 dark:text-emerald-950">
+                  {t("insights.ladderCurrent")}
+                </span>
+                <span className="text-xs font-medium text-emerald-800/60 dark:text-emerald-200/55">
+                  {t("insights.ladderStepOf", {
+                    current: current.id,
+                    total: ladder.totalSteps,
+                  })}
+                </span>
+              </div>
+              <div>
+                <p className="font-heading text-3xl font-semibold tracking-tight text-emerald-950 sm:text-4xl dark:text-emerald-50">
+                  {current.title}
+                </p>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-emerald-900/70 dark:text-emerald-100/65">
+                  {current.description}
                 </p>
               </div>
-            ) : null}
-            {current.actionType !== "NONE" ? (
-              <Link
-                href={ladderHref(current.actionType)}
-                className={cn(
-                  buttonVariants({ size: "sm", variant: "default" })
-                )}
-              >
-                {actionLabel(current.actionType)}
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
+              {current.reason ? (
+                <p className="max-w-md text-sm text-emerald-900/80 dark:text-emerald-100/75">
+                  {current.reason}
+                </p>
+              ) : null}
+              {current.detail ? (
+                <p className="inline-flex rounded-xl border border-emerald-900/10 bg-white/60 px-3 py-2 font-mono text-sm tabular-nums text-emerald-950 backdrop-blur-sm dark:border-emerald-400/15 dark:bg-emerald-950/40 dark:text-emerald-100">
+                  {current.detail}
+                </p>
+              ) : null}
+              {typeof current.progress === "number" ? (
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-xs font-medium uppercase tracking-[0.14em] text-emerald-800/55 dark:text-emerald-200/50">
+                      {t("insights.ladderProgressLabel")}
+                    </span>
+                    <span className="font-heading text-2xl font-semibold tabular-nums text-emerald-900 dark:text-emerald-100">
+                      {current.progress}%
+                    </span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-emerald-900/10 dark:bg-emerald-100/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-800 via-emerald-600 to-lime-500 transition-all duration-700"
+                      style={{ width: `${Math.max(current.progress, 2)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {current.actionType !== "NONE" ? (
+                <Link
+                  href={ladderHref(current.actionType)}
+                  className={cn(
+                    buttonVariants({ size: "lg" }),
+                    "gap-2 bg-emerald-900 text-emerald-50 hover:bg-emerald-800 dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300"
+                  )}
+                >
+                  {actionLabel(current.actionType)}
+                  <ArrowRight className="size-4" />
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("insights.summaryEmpty")}
+            </p>
+          )}
+        </div>
 
-        <ol className="space-y-2">
+        {/* Timeline steps */}
+        <ol className="relative space-y-0 p-4 sm:p-5">
+          <div
+            aria-hidden
+            className="absolute bottom-6 left-[1.85rem] top-6 w-px bg-gradient-to-b from-emerald-600 via-emerald-400/40 to-transparent sm:left-[2.1rem]"
+          />
           {ladder.steps.map((step) => (
             <li
               key={step.id}
               className={cn(
-                "flex gap-3 rounded-md border px-3 py-2 text-sm",
-                step.status === "CURRENT" && "border-primary/40 bg-primary/5",
-                step.status === "DONE" && "opacity-70"
+                "relative flex gap-3 rounded-xl px-2 py-2.5 transition-colors sm:gap-3.5",
+                isLadderFocus(step.status) &&
+                  "bg-emerald-900/[0.06] dark:bg-emerald-400/10"
               )}
             >
               <span
                 className={cn(
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  step.status === "DONE" &&
-                    "bg-emerald-600 text-white",
-                  step.status === "CURRENT" && "bg-primary text-primary-foreground",
-                  step.status === "UPCOMING" && "bg-muted text-muted-foreground"
+                  "relative z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold sm:size-9",
+                  isLadderDone(step.status) &&
+                    "bg-emerald-700 text-white shadow-md shadow-emerald-700/30",
+                  isLadderFocus(step.status) &&
+                    "bg-emerald-950 text-emerald-50 ring-4 ring-emerald-400/35 dark:bg-emerald-300 dark:text-emerald-950",
+                  isLadderLocked(step.status) &&
+                    "border border-emerald-900/15 bg-card text-muted-foreground dark:border-emerald-400/20"
                 )}
               >
-                {step.status === "DONE" ? "✓" : step.id}
+                {isLadderDone(step.status) ? (
+                  <Check className="size-4" strokeWidth={3} />
+                ) : (
+                  step.id
+                )}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 pt-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{step.title}</span>
-                  <Badge
-                    variant={
-                      step.status === "DONE"
-                        ? "secondary"
-                        : step.status === "CURRENT"
-                          ? "default"
-                          : "outline"
-                    }
-                    className="text-[10px]"
+                  <span
+                    className={cn(
+                      "text-sm font-semibold leading-snug",
+                      isLadderFocus(step.status) &&
+                        "text-emerald-950 dark:text-emerald-50",
+                      isLadderDone(step.status) &&
+                        "text-emerald-800 dark:text-emerald-200",
+                      isLadderLocked(step.status) && "text-foreground/80"
+                    )}
                   >
-                    {statusLabel(step.status)}
-                  </Badge>
+                    {step.title}
+                  </span>
+                  {isLadderFocus(step.status) ? (
+                    <span className="rounded-full bg-amber-400/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-950">
+                      {statusLabel(step.status)}
+                    </span>
+                  ) : isLadderDone(step.status) ? (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                      {statusLabel(step.status)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {statusLabel(step.status)}
+                    </span>
+                  )}
                 </div>
+                {step.reason ? (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                    {step.reason}
+                  </p>
+                ) : null}
                 {step.detail ? (
-                  <p className="truncate text-xs text-muted-foreground">
+                  <p
+                    className={cn(
+                      "mt-0.5 truncate text-xs",
+                      isLadderFocus(step.status)
+                        ? "text-emerald-900/65 dark:text-emerald-100/60"
+                        : "text-muted-foreground"
+                    )}
+                  >
                     {step.detail}
                   </p>
                 ) : null}
@@ -437,8 +606,8 @@ function LadderPanel({ ladder }: { ladder: WealthLadder }) {
             </li>
           ))}
         </ol>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

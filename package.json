@@ -10,6 +10,7 @@
     "smoke:money": "node scripts/smoke-money.mjs",
     "smoke:phase2": "node scripts/smoke-phase2.mjs",
     "smoke:wa-parse": "node scripts/smoke-wa-parse.mjs",
+    "smoke:ladder": "tsx --tsconfig tsconfig.json scripts/smoke-wealth-ladder.ts",
     "wa:vira": "tsx --tsconfig tsconfig.json scripts/wa-vira.ts"
   },
   "dependencies": {

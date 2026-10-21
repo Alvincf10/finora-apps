@@ -52,6 +52,24 @@ function jidToPhone(jid: string | null | undefined): string {
   return digitsOnly(user.split(":")[0]);
 }
 
+/** Collect phone candidates — WhatsApp may send LID (@lid) instead of PN. */
+function messagePhoneCandidates(msg: WAMessage): string[] {
+  const out = new Set<string>();
+  const add = (value?: string | null) => {
+    const phone = jidToPhone(value);
+    // Skip pure LIDs that are not plausible E.164 (too short / no country feel) —
+    // still keep them so an explicit allowlist of a LID could work later.
+    if (phone) out.add(phone);
+  };
+  add(msg.key.remoteJid);
+  add(msg.key.participant);
+  // Baileys PN aliases when remoteJid is a LID
+  add((msg.key as { senderPn?: string }).senderPn);
+  add((msg.key as { participantPn?: string }).participantPn);
+  add((msg.key as { remoteJidAlt?: string }).remoteJidAlt);
+  return [...out];
+}
+
 function extractText(msg: WAMessage): string {
   const m = msg.message;
   if (!m) return "";
@@ -292,24 +310,25 @@ function isAllowedSender(
   /** When true, fromMe in any 1:1 chat is OK (user typed on same phone into OpenClaw chat). */
   hasFinoraPrefix: boolean
 ): boolean {
-  const remote = jidToPhone(msg.key.remoteJid);
+  const candidates = messagePhoneCandidates(msg);
   const allowed = digitsOnly(session.allowedFrom);
   const self = digitsOnly(session.phoneNumber);
 
   // Hard requirement: allowlist must be configured. Without it, ignore all commands.
   if (!allowed) return false;
 
+  const matchesAllowed = candidates.includes(allowed);
+  const matchesSelf = Boolean(self && candidates.includes(self));
+
   if (msg.key.fromMe) {
     if (!hasFinoraPrefix) return false;
-    // Note-to-self on the linked phone
-    if (self && remote === self) return true;
-    // Typing into a chat with the allowlisted number
-    if (remote === allowed) return true;
-    return false;
+    // Note-to-self on the linked phone, or chat with the allowlisted number
+    // (remoteJid may be a LID — match via senderPn / remoteJidAlt).
+    return matchesSelf || matchesAllowed;
   }
 
-  // Incoming DM — must match allowlist exactly
-  return remote === allowed;
+  // Incoming DM — allowlist must appear in PN candidates (not only LID digits)
+  return matchesAllowed;
 }
 
 async function handleMessage(
@@ -348,6 +367,9 @@ async function handleMessage(
         userId,
         fromMe: msg.key.fromMe,
         remote: jidToPhone(jid),
+        remoteJid: jid,
+        senderPn: (msg.key as { senderPn?: string }).senderPn ?? null,
+        candidates: messagePhoneCandidates(msg),
         allowedFrom: session.allowedFrom,
         phone: session.phoneNumber,
       },
