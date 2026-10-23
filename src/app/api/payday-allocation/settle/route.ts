@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { ok, handleError } from "@/lib/api";
 import {
   recordDebtPayment,
+  resolveDebtIdForCreditCard,
   resolveDefaultFundingAccountId,
 } from "@/lib/financial/record-debt-payment";
 import { recordFixedCostPayment } from "@/lib/financial/record-fixed-cost-payment";
@@ -49,7 +50,26 @@ export async function POST(request: Request) {
         "Only debt / CC / fixed envelopes can be settled into transactions"
       );
     }
-    if (!input.linkedDebtId) {
+
+    const creditCardAccountId =
+      input.kind === "CC_STATEMENT"
+        ? input.linkedAccountId ??
+          (input.envelopeKey.startsWith("cc_statement:")
+            ? input.envelopeKey.slice("cc_statement:".length)
+            : undefined)
+        : input.linkedAccountId;
+
+    let linkedDebtId = input.linkedDebtId;
+    if (!linkedDebtId && input.kind === "CC_STATEMENT") {
+      if (!creditCardAccountId) {
+        throw new Error("CC envelope has no linked credit card account");
+      }
+      linkedDebtId = await resolveDebtIdForCreditCard(
+        userId,
+        creditCardAccountId
+      );
+    }
+    if (!linkedDebtId) {
       throw new Error(
         "Envelope has no linked debt — cannot auto-record payment"
       );
@@ -108,23 +128,21 @@ export async function POST(request: Request) {
       throw new Error("Envelope already settled — payment already recorded");
     }
 
-    const creditCardAccountId =
-      input.kind === "CC_STATEMENT" ? input.linkedAccountId : undefined;
-
     const payment = await recordDebtPayment({
       userId,
-      debtId: input.linkedDebtId,
+      debtId: linkedDebtId,
       accountId: fundingAccountId,
       amount: input.amount,
       date: new Date(),
       notes: `Payday settle: ${input.label}`,
-      creditCardAccountId,
+      creditCardAccountId:
+        input.kind === "CC_STATEMENT" ? creditCardAccountId : undefined,
     });
 
     const txOid = new mongoose.Types.ObjectId(payment.transactionId);
-    const debtOid = new mongoose.Types.ObjectId(input.linkedDebtId);
-    const cardOid = input.linkedAccountId
-      ? new mongoose.Types.ObjectId(input.linkedAccountId)
+    const debtOid = new mongoose.Types.ObjectId(linkedDebtId);
+    const cardOid = creditCardAccountId
+      ? new mongoose.Types.ObjectId(creditCardAccountId)
       : undefined;
 
     if (existing) {

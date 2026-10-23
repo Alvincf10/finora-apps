@@ -1,4 +1,5 @@
 import { Account } from "@/models/Account";
+import { Debt } from "@/models/Debt";
 import { PaydayAllocation } from "@/models/PaydayAllocation";
 import { User } from "@/models/User";
 import { isLiabilityAccount } from "@/lib/financial/balances";
@@ -69,7 +70,7 @@ export async function suggestPaydayAllocation(
   const currency = (user?.baseCurrency as Currency) ?? "IDR";
   const cycle = getPayCycleBounds(paydayDay, now);
 
-  const [accounts, cards, debtsDue, fixedCosts, paidFixedIds, existing] =
+  const [accounts, cards, debtsDue, fixedCosts, paidFixedIds, existing, ccDebts] =
     await Promise.all([
       Account.find({ userId, isActive: true }).lean(),
       getCreditCardsForUser(userId),
@@ -80,6 +81,13 @@ export async function suggestPaydayAllocation(
         userId,
         cycleStart: cycle.start,
       }).lean(),
+      Debt.find({
+        userId,
+        status: "ACTIVE",
+        linkedAccountId: { $ne: null },
+      })
+        .select({ _id: 1, linkedAccountId: 1 })
+        .lean(),
     ]);
 
   let suggestedStartingCash = 0;
@@ -106,6 +114,15 @@ export async function suggestPaydayAllocation(
     cards.map((c) => c.accountId)
   );
 
+  // Map CC account → linked debt so Payday settle can record a real payment.
+  const debtIdByCcAccount = new Map<string, string>();
+  for (const debt of ccDebts) {
+    const cardId = debt.linkedAccountId?.toString();
+    if (cardId && linkedCcAccountIds.has(cardId) && !debtIdByCcAccount.has(cardId)) {
+      debtIdByCcAccount.set(cardId, debt._id.toString());
+    }
+  }
+
   const envelopes: AllocationEnvelope[] = [];
 
   for (const card of cards) {
@@ -117,6 +134,7 @@ export async function suggestPaydayAllocation(
       source: "AUTO",
       kind: "CC_STATEMENT",
       linkedAccountId: card.accountId,
+      linkedDebtId: debtIdByCcAccount.get(card.accountId),
     });
   }
 
@@ -253,7 +271,28 @@ export async function suggestPaydayAllocation(
         };
       });
 
-    const mergedNonFixed = [...nonFixedSaved];
+    const freshByKey = new Map(
+      envelopes.map((e): [string, AllocationEnvelope] => [e.key, e])
+    );
+    const mergedNonFixed: AllocationEnvelope[] = nonFixedSaved.map(
+      (saved: AllocationEnvelope) => {
+        // Backfill CC links from fresh suggestion (older saves lacked linkedDebtId).
+        if (saved.kind === "CC_STATEMENT") {
+          const fresh = freshByKey.get(saved.key);
+          if (fresh) {
+            return {
+              ...saved,
+              linkedDebtId: saved.linkedDebtId ?? fresh.linkedDebtId,
+              linkedAccountId: saved.linkedAccountId ?? fresh.linkedAccountId,
+              paid: Boolean(saved.paid) || Boolean(fresh.paid),
+              paymentTransactionId:
+                saved.paymentTransactionId ?? fresh.paymentTransactionId,
+            };
+          }
+        }
+        return saved;
+      }
+    );
     for (const e of envelopes) {
       if (e.kind === "FIXED") continue;
       if (!savedByKey.has(e.key)) {

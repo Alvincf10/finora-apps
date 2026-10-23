@@ -8,7 +8,7 @@ import {
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
-    const period = parsePeriod(new URL(request.url).searchParams);
+    const period = await parsePeriod(new URL(request.url).searchParams, userId);
     const context = await buildPhase2FinancialContext(userId, period);
     return ok(context);
   } catch (error) {

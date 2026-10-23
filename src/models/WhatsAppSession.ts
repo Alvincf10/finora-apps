@@ -35,6 +35,10 @@ const WhatsAppSessionSchema = new Schema(
     lastHeartbeatAt: { type: Date, default: null },
     /** Worker clears Baileys auth folder when true, then resets flag. */
     clearAuthRequested: { type: Boolean, default: false },
+    /** Auto-send weekly spending report every Sunday 20:00 Asia/Jakarta. */
+    weeklyReportEnabled: { type: Boolean, default: true },
+    /** Last scheduled weekly report week key (YYYY-MM-DD of that week's Monday). */
+    lastWeeklyReportWeekKey: { type: String, default: null },
   },
   { timestamps: true }
 );

@@ -3,16 +3,24 @@ import { requireUser } from "@/lib/session";
 import { createBudgetSchema } from "@/lib/validations";
 import { Budget } from "@/models/Budget";
 import { getBudgetOverview } from "@/lib/financial/summary";
+import { parsePeriod } from "@/lib/financial/phase2-service";
+import {
+  getPayCycleForPeriod,
+  getUserPaydayDay,
+} from "@/lib/financial/pay-cycle";
 
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
-    const { searchParams } = new URL(request.url);
-    const now = new Date();
-    const year = Number(searchParams.get("year") ?? now.getFullYear());
-    const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
-    const overview = await getBudgetOverview(userId, { year, month });
-    return ok(overview);
+    const period = await parsePeriod(new URL(request.url).searchParams, userId);
+    const paydayDay = await getUserPaydayDay(userId);
+    const cycle = getPayCycleForPeriod(paydayDay, period);
+    const items = await getBudgetOverview(userId, period);
+    return ok({
+      items,
+      period,
+      cycleLabel: cycle.label,
+    });
   } catch (error) {
     return handleError(error);
   }

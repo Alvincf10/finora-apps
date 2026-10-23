@@ -7,6 +7,7 @@ import {
 import { Debt } from "@/models/Debt";
 import { FixedCost } from "@/models/FixedCost";
 import { getBudgetOverview } from "@/lib/financial/summary";
+import { getUserPaydayDay, periodFromDate } from "@/lib/financial/pay-cycle";
 import { formatMoney } from "@/lib/money";
 import { daysInMonth } from "@/lib/financial/phase2-math";
 import type { Currency } from "@/types";
@@ -48,7 +49,8 @@ export async function getAlertsForUser(userId: string): Promise<AppAlert[]> {
   const now = new Date();
   const today = startOfDay(now);
   const soon = endOfDay(addDays(today, DUE_SOON_DAYS));
-  const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
+  const paydayDay = await getUserPaydayDay(userId);
+  const period = periodFromDate(paydayDay, now);
 
   const [debts, fixedCosts, budgets] = await Promise.all([
     Debt.find({ userId, status: "ACTIVE" }).lean(),

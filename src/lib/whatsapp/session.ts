@@ -92,6 +92,8 @@ export function serializeWhatsAppSession(session: {
   lastError?: string | null;
   lastMessageAt?: Date | null;
   lastHeartbeatAt?: Date | null;
+  weeklyReportEnabled?: boolean | null;
+  lastWeeklyReportWeekKey?: string | null;
   updatedAt?: Date;
 }) {
   const live = resolveFinoraLive(session);
@@ -109,6 +111,8 @@ export function serializeWhatsAppSession(session: {
     lastError: session.lastError ?? null,
     lastMessageAt: session.lastMessageAt ?? null,
     lastHeartbeatAt: session.lastHeartbeatAt ?? null,
+    weeklyReportEnabled: session.weeklyReportEnabled !== false,
+    lastWeeklyReportWeekKey: session.lastWeeklyReportWeekKey ?? null,
     updatedAt: session.updatedAt ?? null,
     ...live,
     workerHint:

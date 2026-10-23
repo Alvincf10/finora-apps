@@ -92,28 +92,44 @@ function Row({
   );
 }
 
+type ForecastPayload = Forecast & {
+  period?: { year: number; month: number };
+  cycleLabel?: string;
+};
+
 export default function ForecastPage() {
   const { t, intlLocale } = useI18n();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [data, setData] = useState<Forecast | null>(null);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
+  const [data, setData] = useState<ForecastPayload | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    api<Forecast>(`/api/forecast?year=${year}&month=${month}`)
-      .then(setData)
+    const qs =
+      year != null && month != null ? `?year=${year}&month=${month}` : "";
+    api<ForecastPayload>(`/api/forecast${qs}`)
+      .then((forecast) => {
+        setData(forecast);
+        if (year == null && forecast.period) {
+          setYear(forecast.period.year);
+          setMonth(forecast.period.month);
+        }
+      })
       .catch((e) =>
         toast.error(e instanceof Error ? e.message : t("common.failed"))
       )
       .finally(() => setLoading(false));
   }, [year, month, t]);
 
-  const periodLabel = new Date(year, month - 1, 1).toLocaleDateString(
-    intlLocale,
-    { month: "long", year: "numeric" }
-  );
+  const periodLabel =
+    data?.cycleLabel ??
+    (year != null && month != null
+      ? new Date(year, month - 1, 1).toLocaleDateString(intlLocale, {
+          month: "long",
+          year: "numeric",
+        })
+      : "…");
 
   return (
     <div className="space-y-6">
@@ -133,7 +149,7 @@ export default function ForecastPage() {
               id="forecast-month"
               type="number"
               className="w-20"
-              value={month}
+              value={month ?? ""}
               min={1}
               max={12}
               onChange={(e) => setMonth(Number(e.target.value))}
@@ -147,7 +163,7 @@ export default function ForecastPage() {
               id="forecast-year"
               type="number"
               className="w-28"
-              value={year}
+              value={year ?? ""}
               onChange={(e) => setYear(Number(e.target.value))}
             />
           </div>
@@ -346,7 +362,11 @@ export default function ForecastPage() {
                 size="sm"
                 onClick={() => {
                   setLoading(true);
-                  api<Forecast>(`/api/forecast?year=${year}&month=${month}`)
+                  const qs =
+                    year != null && month != null
+                      ? `?year=${year}&month=${month}`
+                      : "";
+                  api<ForecastPayload>(`/api/forecast${qs}`)
                     .then(setData)
                     .catch((e) =>
                       toast.error(

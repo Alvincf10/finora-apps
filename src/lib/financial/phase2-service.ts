@@ -1,4 +1,3 @@
-import { subMonths, startOfMonth, endOfMonth } from "date-fns";
 import mongoose from "mongoose";
 import { Transaction } from "@/models/Transaction";
 import { Category } from "@/models/Category";
@@ -11,7 +10,6 @@ import {
   buildInsightFromTrend,
   calculateDebtScenario,
   calculateEmergencyCoverage,
-  daysInMonth,
   defaultClassification,
   defaultNature,
   detectAnomaly,
@@ -28,6 +26,13 @@ import {
   getPlanningBaselines,
   resolveExpectedIncome,
 } from "@/lib/financial/planning-baselines";
+import {
+  getCycleProgress,
+  getPayCycleForPeriod,
+  getUserPaydayDay,
+  periodFromDate,
+  shiftPeriodRef,
+} from "@/lib/financial/pay-cycle";
 import { formatMoney, percent } from "@/lib/money";
 import type {
   CategoryMonthlySpend,
@@ -49,8 +54,7 @@ function periodKey(p: Period) {
 }
 
 function shiftPeriod(period: Period, monthsBack: number): Period {
-  const d = subMonths(new Date(period.year, period.month - 1, 1), monthsBack);
-  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  return shiftPeriodRef(period, monthsBack);
 }
 
 function completedHistoryPeriods(current: Period, count: number): Period[] {
@@ -73,12 +77,13 @@ export async function aggregateCategoryMonthly(
     expense: number;
   }> = [];
 
+  const paydayDay = await getUserPaydayDay(userId);
+
   for (const period of periods) {
-    const start = startOfMonth(new Date(period.year, period.month - 1, 1));
-    const end = endOfMonth(start);
+    const cycle = getPayCycleForPeriod(paydayDay, period);
     const match: Record<string, unknown> = {
       userId: new mongoose.Types.ObjectId(userId),
-      date: { $gte: start, $lte: end },
+      date: { $gte: cycle.start, $lte: cycle.end },
       type: { $in: ["INCOME", "EXPENSE"] },
     };
     if (currency) match.currency = currency;
@@ -259,16 +264,18 @@ export async function getSpendingAnalytics(
 ) {
   const months = Math.min(Math.max(historyMonths, 3), 12);
   const data = await buildCategorySpendingSeries(userId, current, months);
-  const now = new Date();
-  const isCurrentMonth =
-    now.getFullYear() === current.year && now.getMonth() + 1 === current.month;
-  const elapsed = isCurrentMonth ? now.getDate() : daysInMonth(current.year, current.month);
-  const dim = daysInMonth(current.year, current.month);
+  const paydayDay = await getUserPaydayDay(userId);
+  const cycle = getPayCycleForPeriod(paydayDay, current);
+  const { elapsedDays, totalDays } = getCycleProgress(cycle, new Date());
 
   return data.series.map((s) => {
     const trend = detectSpendingTrend(s.currentAmount, s.amounts);
     const anomaly = detectAnomaly(s.currentAmount, s.amounts);
-    const projected = projectCategorySpend(s.currentAmount, elapsed, dim);
+    const projected = projectCategorySpend(
+      s.currentAmount,
+      elapsedDays,
+      totalDays
+    );
     return {
       categoryId: s.categoryId,
       categoryName: s.categoryName,
@@ -335,18 +342,23 @@ export async function getSmartBudgetRecommendation(
     targetSavings = profile.averageMonthlySavings;
   }
 
-  return generateBudgetRecommendation({
-    year: current.year,
-    month: current.month,
-    currency: data.currency,
-    expectedIncome,
-    categories: data.series,
-    minimumDebtPayment,
-    fixedObligations: baselines.fixedCostsTotal,
-    incomeSource: baselines.incomeSource,
-    targetSavings,
-    historicalMonthsAvailable: data.historicalMonthsAvailable,
-  });
+  return {
+    ...generateBudgetRecommendation({
+      year: current.year,
+      month: current.month,
+      currency: data.currency,
+      expectedIncome,
+      categories: data.series,
+      minimumDebtPayment,
+      fixedObligations: baselines.fixedCostsTotal,
+      incomeSource: baselines.incomeSource,
+      targetSavings,
+      historicalMonthsAvailable: data.historicalMonthsAvailable,
+    }),
+    cycleLabel: baselines.cycleLabel,
+    periodStart: baselines.periodStart,
+    periodEnd: baselines.periodEnd,
+  };
 }
 
 export async function acceptBudgetRecommendation(
@@ -391,8 +403,11 @@ export async function generatePhase2Insights(
     ]);
   const currency = summary.currency ?? profile.currency;
   const now = new Date();
-  const elapsed = now.getDate();
-  const dim = daysInMonth(period.year, period.month);
+  const paydayDay = await getUserPaydayDay(userId);
+  const cycle = getPayCycleForPeriod(paydayDay, period);
+  const { elapsedDays, totalDays } = getCycleProgress(cycle, now);
+  const elapsed = elapsedDays;
+  const dim = totalDays;
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   for (const row of analytics) {
@@ -411,7 +426,7 @@ export async function generatePhase2Insights(
         type: "UNUSUAL_CATEGORY_SPENDING",
         priority: "HIGH",
         title: `Belanja ${row.categoryName} tidak wajar`,
-        message: `${row.categoryName} bulan ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
+        message: `${row.categoryName} cycle ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
         categoryId: row.categoryId,
         currentValue: row.currentAmount,
         evidence: [
@@ -503,7 +518,7 @@ export async function generatePhase2Insights(
       type: "SAVINGS_TARGET_RISK",
       priority: "MEDIUM",
       title: "Rasio tabungan rendah",
-      message: `Rasio tabungan bulan ini ${summary.savingsRate}% — di bawah ambang 10%.`,
+      message: `Rasio tabungan cycle ini ${summary.savingsRate}% — di bawah ambang 10%.`,
       currentValue: summary.savings,
       evidence: [{ metric: "savings_rate", current: summary.savingsRate }],
       actionType: "SIMULATE",
@@ -536,7 +551,7 @@ export async function generatePhase2Insights(
       type: "CASHFLOW_RISK",
       priority: "HIGH",
       title: "Arus kas negatif",
-      message: "Pengeluaran melebihi pemasukan bulan ini.",
+      message: "Pengeluaran melebihi pemasukan cycle ini.",
       currentValue: summary.netCashFlow,
       evidence: [
         {
@@ -901,26 +916,32 @@ export async function getCashFlowForecastForUser(
       ? "Fixed costs come from Fixed costs planning; variable spend from weighted 3-month history."
       : "Spending assumed similar to the previous 3 months (weighted).",
     baselines.debtDueTotal > 0
-      ? "Debt uses obligations due in this calendar month."
+      ? `Debt uses obligations due in this pay cycle (${baselines.cycleLabel}).`
       : "Debt payment uses planned/minimum obligation on active debts.",
     "Transfers are excluded from expenses.",
-    "Payday split allocates this cycle's cash — Forecast projects the calendar month.",
+    `Window is the pay cycle ${baselines.cycleLabel} (payday → day before next payday).`,
   ];
 
-  return forecastMonthlyCashflow({
-    projectedIncome,
-    projectedExpenses,
-    projectedFixedCosts,
-    projectedDebtPayment,
-    startingBalance,
-    currency: data.currency,
-    historicalMonthsAvailable: data.historicalMonthsAvailable,
-    incomeStable:
-      profile.incomeStability === "STABLE" ||
-      baselines.incomeSource === "SALARY",
-    incomeSource: baselines.incomeSource,
-    assumptions,
-  });
+  return {
+    ...forecastMonthlyCashflow({
+      projectedIncome,
+      projectedExpenses,
+      projectedFixedCosts,
+      projectedDebtPayment,
+      startingBalance,
+      currency: data.currency,
+      historicalMonthsAvailable: data.historicalMonthsAvailable,
+      incomeStable:
+        profile.incomeStability === "STABLE" ||
+        baselines.incomeSource === "SALARY",
+      incomeSource: baselines.incomeSource,
+      assumptions,
+    }),
+    period,
+    cycleLabel: baselines.cycleLabel,
+    periodStart: baselines.periodStart,
+    periodEnd: baselines.periodEnd,
+  };
 }
 
 export async function getDebtScenarios(userId: string) {
@@ -984,6 +1005,8 @@ export async function getEmergencyFundAnalysis(userId: string, period: Period) {
 }
 
 export async function getMonthlyReview(userId: string, period: Period) {
+  const paydayDay = await getUserPaydayDay(userId);
+  const cycle = getPayCycleForPeriod(paydayDay, period);
   const summary = await getFinancialSummary(userId, period);
   const analytics = await getSpendingAnalytics(userId, period);
   const budgets = await getBudgetOverview(userId, period);
@@ -993,7 +1016,10 @@ export async function getMonthlyReview(userId: string, period: Period) {
 
   return {
     period,
-    label: periodKey(period),
+    label: cycle.label,
+    cycleLabel: cycle.label,
+    cycleStart: cycle.start.toISOString(),
+    cycleEnd: cycle.end.toISOString(),
     income: summary.income,
     expenses: summary.expense,
     savings: summary.savings,
@@ -1135,10 +1161,22 @@ export async function buildPhase2FinancialContext(
   };
 }
 
-export function parsePeriod(searchParams: URLSearchParams): Period {
-  const now = new Date();
-  return {
-    year: Number(searchParams.get("year") ?? now.getFullYear()),
-    month: Number(searchParams.get("month") ?? now.getMonth() + 1),
-  };
+/**
+ * Resolve period from query. Missing year/month → current pay cycle
+ * (payday month), not calendar month.
+ */
+export async function parsePeriod(
+  searchParams: URLSearchParams,
+  userId: string
+): Promise<Period> {
+  const yearParam = searchParams.get("year");
+  const monthParam = searchParams.get("month");
+  if (yearParam && monthParam) {
+    return {
+      year: Number(yearParam),
+      month: Number(monthParam),
+    };
+  }
+  const paydayDay = await getUserPaydayDay(userId);
+  return periodFromDate(paydayDay, new Date());
 }

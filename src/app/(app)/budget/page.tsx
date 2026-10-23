@@ -39,22 +39,35 @@ type BudgetRow = {
 
 type Category = { _id: string; name: string; type: string };
 
+type BudgetResponse = {
+  items: BudgetRow[];
+  period: { year: number; month: number };
+  cycleLabel: string;
+};
+
 export default function BudgetPage() {
   const { t, intlLocale } = useI18n();
-  const now = new Date();
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState<number | null>(null);
+  const [year, setYear] = useState<number | null>(null);
+  const [cycleLabel, setCycleLabel] = useState<string | null>(null);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
 
   async function load() {
+    const qs =
+      year != null && month != null ? `?year=${year}&month=${month}` : "";
     const [budget, cats] = await Promise.all([
-      api<BudgetRow[]>(`/api/budgets?year=${year}&month=${month}`),
+      api<BudgetResponse>(`/api/budgets${qs}`),
       api<Category[]>("/api/categories"),
     ]);
-    setRows(budget);
+    setRows(budget.items);
+    setCycleLabel(budget.cycleLabel);
+    if (year == null && budget.period) {
+      setYear(budget.period.year);
+      setMonth(budget.period.month);
+    }
     setCategories(cats.filter((c) => c.type === "EXPENSE"));
   }
 
@@ -93,12 +106,17 @@ export default function BudgetPage() {
             {t("budget.title")}
           </h1>
           <p className="text-muted-foreground">{t("budget.subtitle")}</p>
+          {cycleLabel ? (
+            <p className="mt-1 text-sm font-medium">
+              {t("budget.cycleLabel", { label: cycleLabel })}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Input
             type="number"
             className="w-24"
-            value={month}
+            value={month ?? ""}
             min={1}
             max={12}
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -106,7 +124,7 @@ export default function BudgetPage() {
           <Input
             type="number"
             className="w-28"
-            value={year}
+            value={year ?? ""}
             onChange={(e) => setYear(Number(e.target.value))}
           />
           <Dialog
@@ -122,7 +140,10 @@ export default function BudgetPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {t("budget.forPeriod", { month, year })}
+                  {t("budget.forPeriod", {
+                    month: month ?? "—",
+                    year: year ?? "—",
+                  })}
                 </DialogTitle>
               </DialogHeader>
               <form className="space-y-3" onSubmit={onCreate}>

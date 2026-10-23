@@ -43,7 +43,13 @@ type DashboardData = {
     netWorth: number;
     currency: Currency;
   };
-  breakdown: Array<{ name: string; amount: number }>;
+  breakdown: Array<{
+    categoryId: string;
+    name: string;
+    amount: number;
+    pct: number;
+    topItems: Array<{ label: string; amount: number }>;
+  }>;
   budgets: Array<{
     categoryName: string;
     utilizationPercentage: number;
@@ -98,6 +104,8 @@ type DashboardData = {
     cycle: { label: string; paydayDay: number };
     currency: Currency;
     monthlySalary: number;
+    baseSalary?: number;
+    salaryFromAllocation?: boolean;
     startingBalance: number;
     otherIncome: number;
     expenses: number;
@@ -151,6 +159,16 @@ type DashboardData = {
   }>;
   goalsSaved: number;
   goalsTarget: number;
+  cycleStats: {
+    label: string;
+    start: string;
+    end: string;
+    income: number;
+    expense: number;
+    net: number;
+    debtRemaining: number;
+    currency: Currency;
+  };
 };
 
 function Kpi({
@@ -453,6 +471,11 @@ export default function DashboardPage() {
   const debtCurrency = cycle?.currency ?? data.debtsDueThisMonth?.currency ?? c;
   const goalsSaved = data.goalsSaved ?? 0;
   const goalsTarget = data.goalsTarget ?? 0;
+  const cycleStats = data.cycleStats;
+  const cycleExpense = cycleStats?.expense ?? cycle?.expenses ?? data.summary.expense;
+  const cycleNet = cycleStats?.net ?? data.summary.netCashFlow;
+  const cycleDebtRemaining =
+    cycleStats?.debtRemaining ?? debtRemaining;
 
   return (
     <div className="space-y-8">
@@ -467,7 +490,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {data.survival ? <SurvivalCard survival={data.survival} /> : null}
+      {/* Survival runway hidden for now — restore: data.survival ? <SurvivalCard survival={data.survival} /> : null */}
 
       {cycle ? (
         <Card className="border-emerald-800/15 bg-emerald-50/40 dark:bg-emerald-950/20">
@@ -499,7 +522,9 @@ export default function DashboardPage() {
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
-                  {t("dashboard.autoSalary")}
+                  {cycle.salaryFromAllocation
+                    ? t("dashboard.cycleSalary")
+                    : t("dashboard.autoSalary")}
                 </span>
                 <span className="font-mono text-emerald-800 dark:text-emerald-300">
                   +{money(cycle.monthlySalary, cycle.currency)}
@@ -578,46 +603,30 @@ export default function DashboardPage() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi
           label={t("dashboard.cashInAccounts")}
           value={money(data.summary.totalAssets)}
-          valueClassName="text-emerald-800 dark:text-emerald-300"
+          valueClassName={
+            data.summary.totalAssets >= 0
+              ? "text-emerald-800 dark:text-emerald-300"
+              : "text-rose-700 dark:text-rose-400"
+          }
           hint={t("dashboard.cashInAccountsHint")}
         />
         <Kpi
-          label={t("dashboard.goalsSavings")}
-          value={money(goalsSaved)}
-          valueClassName="text-sky-800 dark:text-sky-300"
+          label={t("dashboard.cycleExpensesKpi")}
+          value={money(cycleExpense, debtCurrency)}
+          valueClassName="text-rose-700 dark:text-rose-400"
           hint={
-            goalsTarget > 0
-              ? t("dashboard.ofTarget", { amount: money(goalsTarget) })
-              : t("dashboard.noActiveGoalHint")
+            cycleStats?.label
+              ? t("dashboard.cyclePeriodHint", { label: cycleStats.label })
+              : cycle?.cycle.label
           }
         />
         <Kpi
-          label={t("dashboard.monthlyIncome")}
-          value={money(data.summary.income)}
-        />
-        <Kpi
-          label={t("dashboard.monthlyExpenses")}
-          value={money(data.summary.expense)}
-        />
-        <Kpi
-          label={t("dashboard.netCashFlow")}
-          value={money(data.summary.netCashFlow)}
-          hint={t("dashboard.savingsRate", {
-            pct: data.summary.savingsRate,
-          })}
-        />
-        <Kpi
-          label={t("dashboard.totalDebt")}
-          value={money(data.summary.totalDebt)}
-          valueClassName="text-rose-700 dark:text-rose-400"
-        />
-        <Kpi
           label={t("dashboard.debtDueThisCycle")}
-          value={money(debtRemaining, debtCurrency)}
+          value={money(cycleDebtRemaining, debtCurrency)}
           valueClassName="text-amber-700 dark:text-amber-400"
           hintClassName="text-amber-700/70 dark:text-amber-400/70"
           hint={t("dashboard.debtDueHint", {
@@ -626,8 +635,16 @@ export default function DashboardPage() {
           })}
         />
         <Kpi
-          label={t("dashboard.netWorth")}
-          value={money(data.summary.netWorth)}
+          label={t("dashboard.cycleNetKpi")}
+          value={money(cycleNet, debtCurrency)}
+          valueClassName={
+            cycleNet >= 0
+              ? "text-emerald-800 dark:text-emerald-300"
+              : "text-rose-700 dark:text-rose-400"
+          }
+          hint={t("dashboard.cycleNetHint", {
+            income: money(cycleStats?.income ?? data.summary.income, debtCurrency),
+          })}
         />
       </div>
 
@@ -736,6 +753,54 @@ export default function DashboardPage() {
         </Card>
       ) : null}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("dashboard.expenseBreakdown")}</CardTitle>
+          <CardDescription>
+            {t("dashboard.expenseBreakdownDesc", {
+              label: cycleStats?.label ?? cycle?.cycle.label ?? "",
+            })}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid max-h-[32rem] gap-4 overflow-y-auto sm:grid-cols-2">
+          {data.breakdown.length === 0 ? (
+            <p className="text-sm text-muted-foreground sm:col-span-2">
+              {t("dashboard.noExpensesYet")}
+            </p>
+          ) : (
+            data.breakdown.map((row) => (
+              <div key={row.categoryId} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate font-medium">{row.name}</span>
+                  <span className="shrink-0 font-mono tabular-nums">
+                    {money(row.amount)}
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      {Math.round(row.pct)}%
+                    </span>
+                  </span>
+                </div>
+                <Progress value={Math.min(row.pct, 100)} />
+                {row.topItems.length > 0 ? (
+                  <ul className="space-y-0.5 border-l border-border/60 pl-2 text-xs text-muted-foreground">
+                    {row.topItems.map((item, i) => (
+                      <li
+                        key={`${row.categoryId}-${i}`}
+                        className="flex items-start justify-between gap-2"
+                      >
+                        <span className="min-w-0 truncate">{item.label}</span>
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {money(item.amount)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
       {phase2 ? (
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
@@ -792,52 +857,48 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dashboard.cashFlow")}</CardTitle>
-            <CardDescription>{t("dashboard.cashFlowDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.cashFlow}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="income" fill="#059669" radius={4} />
-                <Bar dataKey="expense" fill="#64748b" radius={4} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dashboard.expenseBreakdown")}</CardTitle>
-            <CardDescription>
-              {t("dashboard.expenseBreakdownDesc")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.breakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("dashboard.noExpensesYet")}
-              </p>
-            ) : (
-              data.breakdown.slice(0, 6).map((row) => (
-                <div
-                  key={row.name}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span>{row.name}</span>
-                  <span className="font-mono">{money(row.amount)}</span>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Kpi
+          label={t("dashboard.goalsSavings")}
+          value={money(goalsSaved)}
+          valueClassName="text-sky-800 dark:text-sky-300"
+          hint={
+            goalsTarget > 0
+              ? t("dashboard.ofTarget", { amount: money(goalsTarget) })
+              : t("dashboard.noActiveGoalHint")
+          }
+        />
+        <Kpi
+          label={t("dashboard.totalDebt")}
+          value={money(data.summary.totalDebt)}
+          valueClassName="text-rose-700 dark:text-rose-400"
+          hint={t("dashboard.secondaryDebtHint")}
+        />
+        <Kpi
+          label={t("dashboard.netWorth")}
+          value={money(data.summary.netWorth)}
+          hint={t("dashboard.secondaryNetWorthHint")}
+        />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("dashboard.cashFlow")}</CardTitle>
+          <CardDescription>{t("dashboard.cashFlowDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data.cashFlow}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Bar dataKey="income" fill="#059669" radius={4} />
+              <Bar dataKey="expense" fill="#64748b" radius={4} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

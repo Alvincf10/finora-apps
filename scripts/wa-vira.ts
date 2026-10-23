@@ -97,6 +97,7 @@ async function connectMongo() {
 async function loadAppModules() {
   // Dynamic import so dotenv runs first; uses tsx path aliases from tsconfig.
   const sessionMod = await import("../src/models/WhatsAppSession");
+  const outboundMod = await import("../src/models/WhatsAppOutbound");
   const accountMod = await import("../src/models/Account");
   const parseMod = await import("../src/lib/whatsapp/parse-expense");
   const catMod = await import("../src/lib/whatsapp/resolve-category");
@@ -106,8 +107,12 @@ async function loadAppModules() {
   const totalsMod = await import("../src/lib/whatsapp/query-totals");
   const balanceMod = await import("../src/lib/whatsapp/query-balance");
   const prefixMod = await import("../src/lib/whatsapp/prefix");
+  const weeklyMod = await import("../src/lib/financial/weekly-review");
+  const enqueueMod = await import("../src/lib/whatsapp/outbound");
+  const echoGuardMod = await import("../src/lib/whatsapp/echo-guard");
   return {
     WhatsAppSession: sessionMod.WhatsAppSession,
+    WhatsAppOutbound: outboundMod.WhatsAppOutbound,
     Account: accountMod.Account,
     parseMoneyMessage: parseMod.parseMoneyMessage,
     resolveCategoryId: catMod.resolveCategoryId,
@@ -121,6 +126,13 @@ async function loadAppModules() {
     stripWaPrefix: prefixMod.stripWaPrefix,
     getWaPrefix: prefixMod.getWaPrefix,
     formatPrefixExamples: prefixMod.formatPrefixExamples,
+    parseWeeklyReportQuery: weeklyMod.parseWeeklyReportQuery,
+    getWeeklyReview: weeklyMod.getWeeklyReview,
+    formatWeeklyReportWaText: weeklyMod.formatWeeklyReportWaText,
+    isWeeklyReportCronWindow: weeklyMod.isWeeklyReportCronWindow,
+    weeklyReportWeekKey: weeklyMod.weeklyReportWeekKey,
+    enqueueWeeklyReport: enqueueMod.enqueueWeeklyReport,
+    shouldIgnoreWaEcho: echoGuardMod.shouldIgnoreWaEcho,
   };
 }
 
@@ -346,8 +358,9 @@ async function handleMessage(
   const text = extractText(msg).trim();
   if (!text) return;
 
-  // Ignore Vira's own confirmation replies looping
-  if (text.startsWith("Vira ·") || text.startsWith("OK ·")) return;
+  if (mods.shouldIgnoreWaEcho(text, Boolean(msg.key.fromMe))) {
+    return;
+  }
 
   const session = await mods.WhatsAppSession.findOne({ userId });
   if (!session || session.status !== "connected") return;
@@ -401,6 +414,16 @@ async function handleMessage(
   // Deterministic /saldo — no LLM (Phase 1)
   if (mods.parseBalanceQuery(body)) {
     const reply = await mods.buildBalanceReply(userId);
+    await sock.sendMessage(jid, { text: reply });
+    await patchSession(mods.WhatsAppSession, userId, {
+      lastMessageAt: new Date(),
+    });
+    return;
+  }
+
+  if (mods.parseWeeklyReportQuery(body)) {
+    const review = await mods.getWeeklyReview(userId, 0);
+    const reply = mods.formatWeeklyReportWaText(review);
     await sock.sendMessage(jid, { text: reply });
     await patchSession(mods.WhatsAppSession, userId, {
       lastMessageAt: new Date(),
@@ -494,6 +517,76 @@ async function handleMessage(
   );
 }
 
+async function flushOutbound(
+  userId: string,
+  sock: WASocket,
+  mods: AppModules
+) {
+  const pending = await mods.WhatsAppOutbound.find({
+    userId,
+    status: "pending",
+  })
+    .sort({ createdAt: 1 })
+    .limit(5);
+
+  for (const msg of pending) {
+    const phone = digitsOnly(msg.toPhone);
+    if (!phone) {
+      msg.status = "failed";
+      msg.error = "invalid toPhone";
+      await msg.save();
+      continue;
+    }
+    try {
+      await sock.sendMessage(`${phone}@s.whatsapp.net`, { text: msg.body });
+      msg.status = "sent";
+      msg.sentAt = new Date();
+      msg.error = null;
+      await msg.save();
+      logger.info(
+        { userId, outboundId: String(msg._id), kind: msg.kind },
+        "outbound WhatsApp message sent"
+      );
+    } catch (err) {
+      msg.status = "failed";
+      msg.error = err instanceof Error ? err.message : String(err);
+      await msg.save();
+      logger.warn(
+        { err, userId, outboundId: String(msg._id) },
+        "outbound WhatsApp send failed"
+      );
+    }
+  }
+}
+
+async function maybeEnqueueWeeklyReports(mods: AppModules) {
+  if (!mods.isWeeklyReportCronWindow()) return;
+  const weekKey = mods.weeklyReportWeekKey();
+  const sessions = await mods.WhatsAppSession.find({
+    desiredState: "running",
+    status: "connected",
+    weeklyReportEnabled: { $ne: false },
+    lastWeeklyReportWeekKey: { $ne: weekKey },
+  });
+
+  for (const session of sessions) {
+    const userId = String(session.userId);
+    if (!digitsOnly(session.allowedFrom)) continue;
+    try {
+      // Sunday evening → wrap up the week that is ending (before Monday)
+      await mods.enqueueWeeklyReport(userId, {
+        weekOffset: 0,
+        kind: "WEEKLY_REPORT",
+      });
+      session.lastWeeklyReportWeekKey = weekKey;
+      await session.save();
+      logger.info({ userId, weekKey }, "queued scheduled weekly report");
+    } catch (err) {
+      logger.warn({ err, userId }, "failed to enqueue weekly report");
+    }
+  }
+}
+
 async function tick(mods: AppModules) {
   const runningOrFlagged = await mods.WhatsAppSession.find({
     $or: [{ desiredState: "running" }, { clearAuthRequested: true }],
@@ -560,8 +653,14 @@ async function tick(mods: AppModules) {
       await patchSession(mods.WhatsAppSession, userId, {
         lastHeartbeatAt: new Date(),
       });
+      const entry = active.get(userId);
+      if (entry && !entry.stopping) {
+        await flushOutbound(userId, entry.sock, mods);
+      }
     }
   }
+
+  await maybeEnqueueWeeklyReports(mods);
 }
 
 async function main() {

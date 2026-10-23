@@ -106,6 +106,10 @@ export async function PATCH(request: Request) {
       }
     }
 
+    if (body.weeklyReportEnabled !== undefined) {
+      session.weeklyReportEnabled = body.weeklyReportEnabled;
+    }
+
     await session.save();
     return ok(serializeWhatsAppSession(session));
   } catch (error) {

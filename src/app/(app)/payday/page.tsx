@@ -28,6 +28,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Envelope = {
   key: string;
@@ -133,6 +141,7 @@ export default function PaydayAllocationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settlingKey, setSettlingKey] = useState<string | null>(null);
+  const [confirmEnv, setConfirmEnv] = useState<Envelope | null>(null);
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({
     debts: true,
     fixed: true,
@@ -224,7 +233,7 @@ export default function PaydayAllocationPage() {
     );
   }
 
-  async function settleEnvelope(env: Envelope) {
+  function requestSettle(env: Envelope) {
     if (!isPayableEnvelope(env)) {
       toast.message(t("paydayAllocation.settleOnlyDebt"));
       return;
@@ -233,25 +242,24 @@ export default function PaydayAllocationPage() {
       toast.message(t("paydayAllocation.settleAlready"));
       return;
     }
-    if (env.kind !== "FIXED" && !env.linkedDebtId) {
+    if (env.kind === "CC_STATEMENT") {
+      if (!env.linkedAccountId && !env.linkedDebtId) {
+        toast.error(t("paydayAllocation.settleOnlyDebt"));
+        return;
+      }
+    } else if (env.kind === "FIXED") {
+      if (!env.linkedFixedCostId && !env.key.startsWith("fixed:")) {
+        toast.error(t("paydayAllocation.settleOnlyDebt"));
+        return;
+      }
+    } else if (!env.linkedDebtId) {
       toast.error(t("paydayAllocation.settleOnlyDebt"));
       return;
     }
-    if (
-      env.kind === "FIXED" &&
-      !env.linkedFixedCostId &&
-      !env.key.startsWith("fixed:")
-    ) {
-      toast.error(t("paydayAllocation.settleOnlyDebt"));
-      return;
-    }
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(t("paydayAllocation.settleConfirm"))
-    ) {
-      return;
-    }
+    setConfirmEnv(env);
+  }
 
+  async function settleEnvelope(env: Envelope) {
     setSettlingKey(env.key);
     try {
       await api("/api/payday-allocation/settle", {
@@ -269,6 +277,7 @@ export default function PaydayAllocationPage() {
           envelopes,
         }),
       });
+      setConfirmEnv(null);
       toast.success(t("paydayAllocation.settleDone"));
       await load();
     } catch (error) {
@@ -699,7 +708,7 @@ export default function PaydayAllocationPage() {
                                 }
                                 onClick={() => {
                                   if (isPayableEnvelope(env)) {
-                                    settleEnvelope(env).catch(() => undefined);
+                                    requestSettle(env);
                                   }
                                 }}
                               >
@@ -807,6 +816,64 @@ export default function PaydayAllocationPage() {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={confirmEnv != null}
+        onOpenChange={(open) => {
+          if (!open && settlingKey == null) setConfirmEnv(null);
+        }}
+      >
+        <DialogContent showCloseButton={settlingKey == null}>
+          <DialogHeader>
+            <DialogTitle>
+              {t("paydayAllocation.settleConfirmTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmEnv ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {confirmEnv.label}
+                  </span>
+                  {" · "}
+                  <span className="font-mono tabular-nums">
+                    {money(confirmEnv.amount)}
+                  </span>
+                  <br />
+                  {t("paydayAllocation.settleConfirm")}
+                </>
+              ) : (
+                t("paydayAllocation.settleConfirm")
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="touch-manipulation"
+              disabled={settlingKey != null}
+              onClick={() => setConfirmEnv(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              className="touch-manipulation"
+              disabled={confirmEnv == null || settlingKey != null}
+              onClick={() => {
+                if (confirmEnv) {
+                  settleEnvelope(confirmEnv).catch(() => undefined);
+                }
+              }}
+            >
+              <Check className="size-3.5" />
+              {settlingKey != null
+                ? t("common.saving")
+                : t("paydayAllocation.settleConfirmAction")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

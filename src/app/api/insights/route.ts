@@ -6,6 +6,10 @@ import {
   persistInsights,
 } from "@/lib/financial/phase2-service";
 import { evaluateWealthLadder } from "@/lib/financial/wealth-ladder";
+import {
+  getPayCycleForPeriod,
+  getUserPaydayDay,
+} from "@/lib/financial/pay-cycle";
 import { FinancialRecommendation } from "@/models/FinancialRecommendation";
 import { z } from "zod";
 
@@ -13,15 +17,18 @@ export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
     const { searchParams } = new URL(request.url);
-    const period = parsePeriod(searchParams);
+    const period = await parsePeriod(searchParams, userId);
     const refresh = searchParams.get("refresh") === "1";
 
     const ladder = await evaluateWealthLadder(userId, period);
+    const paydayDay = await getUserPaydayDay(userId);
+    const cycle = getPayCycleForPeriod(paydayDay, period);
+    const meta = { period, cycleLabel: cycle.label };
 
     if (refresh) {
       const insights = await generatePhase2Insights(userId, period);
       const saved = await persistInsights(userId, period, insights);
-      return ok({ insights: saved, ladder });
+      return ok({ insights: saved, ladder, ...meta });
     }
 
     const existing = await FinancialRecommendation.find({
@@ -34,10 +41,10 @@ export async function GET(request: Request) {
     if (existing.length === 0) {
       const insights = await generatePhase2Insights(userId, period);
       const saved = await persistInsights(userId, period, insights);
-      return ok({ insights: saved, ladder });
+      return ok({ insights: saved, ladder, ...meta });
     }
 
-    return ok({ insights: existing, ladder });
+    return ok({ insights: existing, ladder, ...meta });
   } catch (error) {
     return handleError(error);
   }

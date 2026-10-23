@@ -1,4 +1,3 @@
-import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { Account } from "@/models/Account";
 import { Transaction } from "@/models/Transaction";
 import { Debt } from "@/models/Debt";
@@ -6,6 +5,13 @@ import { Budget } from "@/models/Budget";
 import { Category } from "@/models/Category";
 import { isLiabilityAccount } from "@/lib/financial/balances";
 import { percent } from "@/lib/money";
+import {
+  getPayCycleForPeriod,
+  getUserPaydayDay,
+  periodFromDate,
+  shiftPeriodRef,
+  type PeriodRef,
+} from "@/lib/financial/pay-cycle";
 import type { AccountType, Currency } from "@/types";
 
 export interface Period {
@@ -13,14 +19,22 @@ export interface Period {
   month: number;
 }
 
-export function getPeriodBounds(period: Period) {
-  const start = startOfMonth(new Date(period.year, period.month - 1, 1));
-  const end = endOfMonth(start);
-  return { start, end };
+/**
+ * Bounds for a period key = pay cycle of that month's payday
+ * (not calendar 1st–end-of-month).
+ */
+export function getPeriodBounds(period: Period, paydayDay = 25) {
+  const cycle = getPayCycleForPeriod(paydayDay, period);
+  return { start: cycle.start, end: cycle.end, label: cycle.label, cycle };
+}
+
+export async function resolvePeriodBounds(userId: string, period: Period) {
+  const paydayDay = await getUserPaydayDay(userId);
+  return getPeriodBounds(period, paydayDay);
 }
 
 export async function getFinancialSummary(userId: string, period: Period) {
-  const { start, end } = getPeriodBounds(period);
+  const { start, end, label } = await resolvePeriodBounds(userId, period);
 
   const [accounts, transactions, debts] = await Promise.all([
     Account.find({ userId, isActive: true }).lean(),
@@ -81,6 +95,7 @@ export async function getFinancialSummary(userId: string, period: Period) {
 
   return {
     period,
+    cycleLabel: label,
     income,
     expense,
     netCashFlow,
@@ -97,7 +112,7 @@ export async function getFinancialSummary(userId: string, period: Period) {
 }
 
 export async function getExpenseBreakdown(userId: string, period: Period) {
-  const { start, end } = getPeriodBounds(period);
+  const { start, end } = await resolvePeriodBounds(userId, period);
 
   const expenses = await Transaction.find({
     userId,
@@ -125,7 +140,7 @@ export async function getExpenseBreakdown(userId: string, period: Period) {
 }
 
 export async function getBudgetOverview(userId: string, period: Period) {
-  const { start, end } = getPeriodBounds(period);
+  const { start, end } = await resolvePeriodBounds(userId, period);
   const budgets = await Budget.find({
     userId,
     year: period.year,
@@ -169,14 +184,15 @@ export async function getBudgetOverview(userId: string, period: Period) {
   });
 }
 
-export async function getCashFlowSeries(userId: string, months = 6) {
-  const now = new Date();
+/** Last N pay cycles (not calendar months). */
+export async function getCashFlowSeries(userId: string, cycles = 6) {
+  const paydayDay = await getUserPaydayDay(userId);
+  const current = periodFromDate(paydayDay, new Date());
   const series = [];
 
-  for (let i = months - 1; i >= 0; i--) {
-    const date = subMonths(now, i);
-    const period = { year: date.getFullYear(), month: date.getMonth() + 1 };
-    const { start, end } = getPeriodBounds(period);
+  for (let i = cycles - 1; i >= 0; i--) {
+    const period = shiftPeriodRef(current as PeriodRef, i);
+    const { start, end, label } = getPeriodBounds(period, paydayDay);
     const txs = await Transaction.find({
       userId,
       date: { $gte: start, $lte: end },
@@ -191,7 +207,7 @@ export async function getCashFlowSeries(userId: string, months = 6) {
     }
 
     series.push({
-      label: `${period.year}-${String(period.month).padStart(2, "0")}`,
+      label,
       year: period.year,
       month: period.month,
       income,

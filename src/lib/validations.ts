@@ -273,4 +273,5 @@ export const updateWhatsappSchema = z.object({
     .string()
     .regex(/^\d{8,20}$/, "allowedFrom must be digits only (e.g. 62812...)")
     .optional(),
+  weeklyReportEnabled: z.boolean().optional(),
 });

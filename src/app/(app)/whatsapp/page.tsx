@@ -37,6 +37,8 @@ type WaSession = {
   lastError: string | null;
   lastMessageAt: string | null;
   lastHeartbeatAt: string | null;
+  weeklyReportEnabled: boolean;
+  lastWeeklyReportWeekKey: string | null;
   finoraStatus: FinoraLiveStatus;
   finoraStatusLabel: string;
   finoraDownReason: string | null;
@@ -130,6 +132,7 @@ export default function WhatsAppPage() {
   const [session, setSession] = useState<WaSession | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [allowedFrom, setAllowedFrom] = useState("");
+  const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const statusLabel: Record<WaSession["status"], string> = {
@@ -148,6 +151,7 @@ export default function WhatsAppPage() {
     setSession(wa);
     setAccounts(accs.filter((a) => a.isActive));
     setAllowedFrom(wa.allowedFrom ?? "");
+    setWeeklyReportEnabled(wa.weeklyReportEnabled !== false);
   }, []);
 
   useEffect(() => {
@@ -212,9 +216,11 @@ export default function WhatsAppPage() {
         body: JSON.stringify({
           defaultAccountId,
           allowedFrom: from,
+          weeklyReportEnabled,
         }),
       });
       setSession(wa);
+      setWeeklyReportEnabled(wa.weeklyReportEnabled !== false);
       toast.success(t("whatsapp.savedToast"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -401,6 +407,22 @@ export default function WhatsAppPage() {
                 {t("whatsapp.allowedSenderHint")}
               </p>
             </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 size-4"
+                checked={weeklyReportEnabled}
+                onChange={(e) => setWeeklyReportEnabled(e.target.checked)}
+              />
+              <span className="min-w-0 space-y-0.5">
+                <span className="block text-sm font-medium">
+                  {t("whatsapp.weeklyReport")}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {t("whatsapp.weeklyReportHint")}
+                </span>
+              </span>
+            </label>
             <Button type="submit" disabled={busy || !session}>
               {t("whatsapp.saveSettings")}
             </Button>

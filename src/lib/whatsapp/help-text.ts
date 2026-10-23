@@ -32,6 +32,7 @@ Cek saldo / total (tanpa AI):
 • ${pre}pengeluaran hari ini
 • ${pre}total pemasukan
 • ${pre}ringkasan
+• ${pre}report minggu
 
 Jumlah: 50rb / 35k / 25.000 / 1.5jt / 10 juta
 

@@ -11,7 +11,7 @@ import { z } from "zod";
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
-    const period = parsePeriod(new URL(request.url).searchParams);
+    const period = await parsePeriod(new URL(request.url).searchParams, userId);
     const [debts, emergency] = await Promise.all([
       getDebtScenarios(userId),
       getEmergencyFundAnalysis(userId, period),
@@ -42,11 +42,10 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireUser();
     const body = whatIfSchema.parse(await request.json());
-    const now = new Date();
-    const period = {
-      year: body.year ?? now.getFullYear(),
-      month: body.month ?? now.getMonth() + 1,
-    };
+    const params = new URLSearchParams();
+    if (body.year != null) params.set("year", String(body.year));
+    if (body.month != null) params.set("month", String(body.month));
+    const period = await parsePeriod(params, userId);
     const result = await simulateWhatIf(userId, period, body);
     return ok(result);
   } catch (error) {

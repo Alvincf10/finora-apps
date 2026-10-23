@@ -3,13 +3,18 @@ import { requireUser } from "@/lib/session";
 import {
   getBudgetOverview,
   getCashFlowSeries,
-  getExpenseBreakdown,
   getFinancialSummary,
 } from "@/lib/financial/summary";
 import { getDebtsDueThisMonth } from "@/lib/financial/debts-due";
-import { getPayCycleBuffer } from "@/lib/financial/pay-cycle";
+import {
+  getCycleExpenseBreakdown,
+  getPayCycleBuffer,
+  getUserPaydayDay,
+  periodFromDate,
+} from "@/lib/financial/pay-cycle";
 import { getSurvivalPlan } from "@/lib/financial/survival";
 import { generateRecommendations } from "@/lib/financial/recommendations";
+import { parsePeriod } from "@/lib/financial/phase2-service";
 import { Transaction } from "@/models/Transaction";
 import { Debt } from "@/models/Debt";
 import { SavingsGoal } from "@/models/SavingsGoal";
@@ -20,9 +25,13 @@ export async function GET(request: Request) {
     const { userId } = await requireUser();
     const { searchParams } = new URL(request.url);
     const now = new Date();
-    const year = Number(searchParams.get("year") ?? now.getFullYear());
-    const month = Number(searchParams.get("month") ?? now.getMonth() + 1);
-    const period = { year, month };
+    const paydayDay = await getUserPaydayDay(userId);
+    const period = searchParams.get("year") && searchParams.get("month")
+      ? await parsePeriod(searchParams, userId)
+      : periodFromDate(paydayDay, now);
+
+    const payCycleBuffer = await getPayCycleBuffer(userId, now);
+    const cycle = payCycleBuffer.cycle;
 
     const [
       summary,
@@ -34,9 +43,11 @@ export async function GET(request: Request) {
       debts,
       goals,
       accounts,
+      debtsDueThisMonth,
+      survival,
     ] = await Promise.all([
       getFinancialSummary(userId, period),
-      getExpenseBreakdown(userId, period),
+      getCycleExpenseBreakdown(userId, cycle.start, cycle.end),
       getBudgetOverview(userId, period),
       getCashFlowSeries(userId, 6),
       generateRecommendations(userId, period),
@@ -54,16 +65,16 @@ export async function GET(request: Request) {
       Debt.find({ userId, status: "ACTIVE" }).limit(5),
       SavingsGoal.find({ userId, status: "ACTIVE" }),
       Account.find({ userId, isActive: true }),
-    ]);
-
-    const [debtsDueThisMonth, payCycleBuffer, survival] = await Promise.all([
-      getDebtsDueThisMonth(userId, period, summary.currency),
-      getPayCycleBuffer(userId),
+      getDebtsDueThisMonth(userId, period, payCycleBuffer.currency),
       getSurvivalPlan(userId),
     ]);
 
     const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
     const goalsTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+
+    const cycleIncome = payCycleBuffer.monthlySalary + payCycleBuffer.otherIncome;
+    const cycleExpense = payCycleBuffer.expenses;
+    const cycleNet = cycleIncome - cycleExpense;
 
     return ok({
       summary,
@@ -80,6 +91,16 @@ export async function GET(request: Request) {
       goalsSaved,
       goalsTarget,
       accounts,
+      cycleStats: {
+        label: cycle.label,
+        start: cycle.start.toISOString(),
+        end: cycle.end.toISOString(),
+        income: cycleIncome,
+        expense: cycleExpense,
+        net: cycleNet,
+        debtRemaining: payCycleBuffer.debtRemaining,
+        currency: payCycleBuffer.currency,
+      },
     });
   } catch (error) {
     return handleError(error);

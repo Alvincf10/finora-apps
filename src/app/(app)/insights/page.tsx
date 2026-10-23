@@ -84,6 +84,8 @@ function isLadderLocked(status: LadderStepStatus) {
 type InsightsPayload = {
   insights: Insight[];
   ladder: WealthLadder;
+  period?: { year: number; month: number };
+  cycleLabel?: string;
 };
 
 type InsightGroup = "spending" | "cashflow" | "debt" | "protection" | "other";
@@ -613,9 +615,9 @@ function LadderPanel({ ladder }: { ladder: WealthLadder }) {
 
 export default function InsightsPage() {
   const { t, intlLocale } = useI18n();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
+  const [cycleLabel, setCycleLabel] = useState<string | null>(null);
   const [items, setItems] = useState<Insight[]>([]);
   const [ladder, setLadder] = useState<WealthLadder | null>(null);
   const [loading, setLoading] = useState(false);
@@ -623,14 +625,23 @@ export default function InsightsPage() {
   async function load(refresh = false) {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        year: String(year),
-        month: String(month),
-      });
+      const params = new URLSearchParams();
+      if (year != null && month != null) {
+        params.set("year", String(year));
+        params.set("month", String(month));
+      }
       if (refresh) params.set("refresh", "1");
-      const data = await api<InsightsPayload>(`/api/insights?${params}`);
+      const qs = params.toString();
+      const data = await api<InsightsPayload>(
+        `/api/insights${qs ? `?${qs}` : ""}`
+      );
       setItems(data.insights);
       setLadder(data.ladder);
+      if (data.cycleLabel) setCycleLabel(data.cycleLabel);
+      if (year == null && data.period) {
+        setYear(data.period.year);
+        setMonth(data.period.month);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -705,10 +716,14 @@ export default function InsightsPage() {
     return { focus, watch, info };
   }, [items]);
 
-  const periodLabel = new Date(year, month - 1, 1).toLocaleDateString(
-    intlLocale,
-    { month: "long", year: "numeric" }
-  );
+  const periodLabel =
+    cycleLabel ??
+    (year != null && month != null
+      ? new Date(year, month - 1, 1).toLocaleDateString(intlLocale, {
+          month: "long",
+          year: "numeric",
+        })
+      : "…");
 
   function groupTitle(group: InsightGroup) {
     if (group === "spending") return t("insights.groupSpending");
@@ -732,7 +747,7 @@ export default function InsightsPage() {
           <Input
             type="number"
             className="w-20"
-            value={month}
+            value={month ?? ""}
             min={1}
             max={12}
             aria-label={t("common.month")}
@@ -741,7 +756,7 @@ export default function InsightsPage() {
           <Input
             type="number"
             className="w-28"
-            value={year}
+            value={year ?? ""}
             aria-label={t("common.year")}
             onChange={(e) => setYear(Number(e.target.value))}
           />

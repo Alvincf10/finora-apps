@@ -1,7 +1,10 @@
-import { endOfMonth, startOfMonth } from "date-fns";
 import { User } from "@/models/User";
 import { getDebtsDueInRange } from "@/lib/financial/debts-due";
 import { getFixedCostsInRange } from "@/lib/financial/fixed-costs";
+import {
+  getPayCycleForPeriod,
+  getUserPaydayDay,
+} from "@/lib/financial/pay-cycle";
 import type { IncomeSource, Period } from "@/lib/financial/phase2-types";
 import type { Currency } from "@/types";
 
@@ -16,11 +19,12 @@ export type PlanningBaselines = {
   debtDueTotal: number;
   periodStart: string;
   periodEnd: string;
+  cycleLabel: string;
 };
 
 /**
  * Shared payday-aware baselines for Forecast + Smart Budget.
- * Period window is the selected calendar month (matches month pickers).
+ * Period window = pay cycle for that month's payday (not calendar month).
  * Income prefers Settings.monthlySalary when set.
  */
 export async function getPlanningBaselines(
@@ -30,8 +34,10 @@ export async function getPlanningBaselines(
   const user = await User.findById(userId).lean();
   const currency = (user?.baseCurrency as Currency) ?? "IDR";
   const monthlySalary = Math.max(0, user?.monthlySalary ?? 0);
-  const start = startOfMonth(new Date(period.year, period.month - 1, 1));
-  const end = endOfMonth(start);
+  const paydayDay = await getUserPaydayDay(userId);
+  const cycle = getPayCycleForPeriod(paydayDay, period);
+  const start = cycle.start;
+  const end = cycle.end;
 
   const [fixed, debts] = await Promise.all([
     getFixedCostsInRange(userId, start, end, currency),
@@ -46,6 +52,7 @@ export async function getPlanningBaselines(
     debtDueTotal: debts.totalDue,
     periodStart: start.toISOString(),
     periodEnd: end.toISOString(),
+    cycleLabel: cycle.label,
   };
 }
 

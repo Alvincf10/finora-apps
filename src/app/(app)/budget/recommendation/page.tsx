@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 type Rec = {
   month: number;
   year: number;
+  cycleLabel?: string;
   currency: Currency;
   categories: Array<{
     categoryId: string;
@@ -47,9 +48,8 @@ type Rec = {
 
 export default function SmartBudgetPage() {
   const { t, intlLocale } = useI18n();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [data, setData] = useState<Rec | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
@@ -57,10 +57,14 @@ export default function SmartBudgetPage() {
   async function load() {
     setLoading(true);
     try {
-      const rec = await api<Rec>(
-        `/api/budget/recommendation?year=${year}&month=${month}`
-      );
+      const qs =
+        year != null && month != null ? `?year=${year}&month=${month}` : "";
+      const rec = await api<Rec>(`/api/budget/recommendation${qs}`);
       setData(rec);
+      if (year == null) {
+        setYear(rec.year);
+        setMonth(rec.month);
+      }
       const map: Record<string, number> = {};
       for (const c of rec.categories) {
         map[c.categoryId] = c.recommendedAmount;
@@ -114,12 +118,17 @@ export default function SmartBudgetPage() {
             {t("smartBudget.title")}
           </h1>
           <p className="text-muted-foreground">{t("smartBudget.subtitle")}</p>
+          {data?.cycleLabel ? (
+            <p className="mt-1 text-sm font-medium">
+              {t("smartBudget.cycleLabel", { label: data.cycleLabel })}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Input
             type="number"
             className="w-20"
-            value={month}
+            value={month ?? ""}
             min={1}
             max={12}
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -127,7 +136,7 @@ export default function SmartBudgetPage() {
           <Input
             type="number"
             className="w-28"
-            value={year}
+            value={year ?? ""}
             onChange={(e) => setYear(Number(e.target.value))}
           />
           <Button variant="outline" onClick={load} disabled={loading}>
@@ -228,7 +237,12 @@ export default function SmartBudgetPage() {
             <CardHeader className="flex-row items-center justify-between">
               <div>
                 <CardTitle>
-                  {t("smartBudget.allocation", { month, year })}
+                  {data.cycleLabel
+                    ? t("smartBudget.cycleLabel", { label: data.cycleLabel })
+                    : t("smartBudget.allocation", {
+                        month: month ?? "—",
+                        year: year ?? "—",
+                      })}
                 </CardTitle>
                 <CardDescription>
                   {t("smartBudget.confidence", { level: data.confidence })}

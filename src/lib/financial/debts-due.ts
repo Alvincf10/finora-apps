@@ -1,7 +1,7 @@
 import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { DebtPayment } from "@/models/DebtPayment";
-import { getPeriodBounds, type Period } from "@/lib/financial/summary";
+import { resolvePeriodBounds, type Period } from "@/lib/financial/summary";
 import type { Currency } from "@/types";
 
 export type DebtObligationType =
@@ -269,7 +269,7 @@ export async function getDebtsDueThisMonth(
   period: Period,
   preferredCurrency: Currency = "IDR"
 ): Promise<DebtsDueThisMonth> {
-  const { start, end } = getPeriodBounds(period);
+  const { start, end } = await resolvePeriodBounds(userId, period);
   const due = await getDebtsDueInRange(userId, start, end, preferredCurrency);
   return { period, ...due };
 }

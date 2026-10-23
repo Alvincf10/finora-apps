@@ -204,3 +204,52 @@ export async function resolveDefaultFundingAccountId(
 
   return preferred?._id?.toString() ?? null;
 }
+
+/**
+ * Resolve (or create) the CREDIT_STATEMENT debt mirrored to a CC account,
+ * so Payday CC envelopes can settle without a pre-linked debt id.
+ */
+export async function resolveDebtIdForCreditCard(
+  userId: string,
+  creditCardAccountId: string
+): Promise<string> {
+  const existing = await Debt.findOne({
+    userId,
+    status: "ACTIVE",
+    linkedAccountId: creditCardAccountId,
+  }).lean();
+  if (existing) return existing._id.toString();
+
+  const card = await Account.findOne({
+    _id: creditCardAccountId,
+    userId,
+    type: "CREDIT_CARD",
+    isActive: true,
+  });
+  if (!card) throw new Error("Credit card account not found");
+
+  const outstanding = Math.max(0, card.currentBalance ?? 0);
+  if (outstanding <= 0) {
+    throw new Error("Credit card has no outstanding balance to pay");
+  }
+
+  const statementDue = Math.max(
+    0,
+    Math.min(outstanding, card.statementDueAmount ?? outstanding)
+  );
+
+  const created = await Debt.create({
+    userId,
+    name: `Bayar CC · ${card.name}`,
+    kind: "CONSUMER",
+    originalAmount: outstanding,
+    remainingAmount: outstanding,
+    currency: card.currency,
+    obligationType: "CREDIT_STATEMENT",
+    linkedAccountId: card._id,
+    plannedPayment: statementDue > 0 ? statementDue : outstanding,
+    status: "ACTIVE",
+  });
+
+  return created._id.toString();
+}

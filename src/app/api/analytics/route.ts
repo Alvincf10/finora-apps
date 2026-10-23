@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
     const searchParams = new URL(request.url).searchParams;
-    const period = parsePeriod(searchParams);
+    const period = await parsePeriod(searchParams, userId);
     const monthsRaw = Number(searchParams.get("months") ?? 6);
     const months = ([3, 6, 12] as const).includes(monthsRaw as 3 | 6 | 12)
       ? (monthsRaw as 3 | 6 | 12)

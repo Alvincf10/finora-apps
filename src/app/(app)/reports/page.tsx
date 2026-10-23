@@ -86,9 +86,8 @@ function moneyTick(value: number, currency: Currency) {
 
 export default function ReportsPage() {
   const { t, intlLocale } = useI18n();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState<number | null>(null);
+  const [month, setMonth] = useState<number | null>(null);
   const [months, setMonths] = useState<3 | 6 | 12>(6);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -105,10 +104,16 @@ export default function ReportsPage() {
 
   useEffect(() => {
     setLoading(true);
-    api<AnalyticsData>(
-      `/api/analytics?year=${year}&month=${month}&months=${months}`
-    )
-      .then(setData)
+    const periodQs =
+      year != null && month != null ? `year=${year}&month=${month}&` : "";
+    api<AnalyticsData>(`/api/analytics?${periodQs}months=${months}`)
+      .then((payload) => {
+        setData(payload);
+        if (year == null && payload.period) {
+          setYear(payload.period.year);
+          setMonth(payload.period.month);
+        }
+      })
       .catch((e) =>
         toast.error(e instanceof Error ? e.message : t("common.failed"))
       )
@@ -144,16 +149,18 @@ export default function ReportsPage() {
     if (!data) return [];
     return data.cashFlow.map((row) => ({
       ...row,
-      short: row.label.slice(5),
+      short: row.label.length > 14 ? `${row.label.slice(0, 12)}…` : row.label,
     }));
   }, [data]);
 
-  const periodLabel = data
-    ? new Date(data.period.year, data.period.month - 1, 1).toLocaleDateString(
-        intlLocale,
-        { month: "short", year: "numeric" }
-      )
-    : "";
+  const periodLabel =
+    data?.cashFlow?.[data.cashFlow.length - 1]?.label ??
+    (data
+      ? new Date(data.period.year, data.period.month - 1, 1).toLocaleDateString(
+          intlLocale,
+          { month: "short", year: "numeric" }
+        )
+      : "");
 
   return (
     <div className="space-y-6">
@@ -172,7 +179,7 @@ export default function ReportsPage() {
               className="w-20"
               min={1}
               max={12}
-              value={month}
+              value={month ?? ""}
               onChange={(e) => setMonth(Number(e.target.value))}
             />
           </div>
@@ -181,7 +188,7 @@ export default function ReportsPage() {
             <Input
               type="number"
               className="w-28"
-              value={year}
+              value={year ?? ""}
               onChange={(e) => setYear(Number(e.target.value))}
             />
           </div>
