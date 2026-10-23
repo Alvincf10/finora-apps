@@ -169,6 +169,15 @@ type DashboardData = {
     debtRemaining: number;
     currency: Currency;
   };
+  cashPockets?: {
+    spendable: number;
+    fixedReserve: number;
+    totalCash: number;
+    ccAvailable: number;
+    ccOutstanding: number;
+    ccLimit: number;
+    currency: Currency;
+  };
 };
 
 function Kpi({
@@ -491,129 +500,51 @@ export default function DashboardPage() {
       </div>
 
       {/* Survival runway hidden for now — restore: data.survival ? <SurvivalCard survival={data.survival} /> : null */}
+      {/* Pay-cycle buffer card hidden — data.payCycleBuffer still used for KPIs / debts */}
 
-      {cycle ? (
-        <Card className="border-emerald-800/15 bg-emerald-50/40 dark:bg-emerald-950/20">
-          <CardHeader>
-            <CardDescription>
-              {t("dashboard.salaryCycle", {
-                day: cycle.cycle.paydayDay,
-                label: cycle.cycle.label,
-              })}
-            </CardDescription>
-            <CardTitle
-              className={`font-mono text-3xl tracking-tight ${
-                cycle.buffer >= 0
-                  ? "text-emerald-800 dark:text-emerald-300"
-                  : "text-rose-700 dark:text-rose-400"
-              }`}
-            >
-              {cycle.configured
-                ? money(cycle.buffer, cycle.currency)
-                : t("dashboard.setSalary")}
-            </CardTitle>
-            <CardDescription>
-              {cycle.configured
-                ? t("dashboard.bufferConfigured")
-                : t("dashboard.bufferUnconfigured")}
-            </CardDescription>
-          </CardHeader>
-          {cycle.configured ? (
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {cycle.salaryFromAllocation
-                    ? t("dashboard.cycleSalary")
-                    : t("dashboard.autoSalary")}
-                </span>
-                <span className="font-mono text-emerald-800 dark:text-emerald-300">
-                  +{money(cycle.monthlySalary, cycle.currency)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {t("dashboard.startingBalance")}
-                </span>
-                <span className="font-mono">
-                  +{money(cycle.startingBalance, cycle.currency)}
-                </span>
-              </div>
-              {cycle.otherIncome > 0 ? (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {t("dashboard.otherIncome")}
-                  </span>
-                  <span className="font-mono text-emerald-800 dark:text-emerald-300">
-                    +{money(cycle.otherIncome, cycle.currency)}
-                  </span>
-                </div>
-              ) : null}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {t("dashboard.cycleExpenses")}
-                </span>
-                <span className="font-mono text-rose-700 dark:text-rose-400">
-                  −{money(cycle.expenses, cycle.currency)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {t("dashboard.debtRemaining")}
-                </span>
-                <span className="font-mono text-amber-700 dark:text-amber-400">
-                  −{money(cycle.debtRemaining, cycle.currency)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  {t("dashboard.fixedCostsCycle")}
-                </span>
-                <span className="font-mono text-violet-700 dark:text-violet-400">
-                  −{money(cycle.fixedCostTotal ?? 0, cycle.currency)}
-                </span>
-              </div>
-              {(cycle.fixedCostItems?.length ?? 0) > 0 ? (
-                <div className="space-y-1 rounded-md border border-violet-200/60 bg-background/50 p-2 text-xs dark:border-violet-900/50">
-                  {cycle.fixedCostItems.map((f) => (
-                    <div key={f.fixedCostId} className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">
-                        {f.name} · {t("dashboard.dueDay", { day: f.dueDay })}
-                      </span>
-                      <span className="font-mono">
-                        {money(f.amount, f.currency)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <div className="flex justify-between border-t pt-2 font-medium">
-                <span>{t("dashboard.remainingBuffer")}</span>
-                <span
-                  className={`font-mono ${
-                    cycle.buffer >= 0
-                      ? "text-emerald-800 dark:text-emerald-300"
-                      : "text-rose-700 dark:text-rose-400"
-                  }`}
-                >
-                  {money(cycle.buffer, cycle.currency)}
-                </span>
-              </div>
-            </CardContent>
-          ) : null}
-        </Card>
-      ) : null}
+      {(() => {
+        const pockets = data.cashPockets;
+        const pocketCurrency = pockets?.currency ?? debtCurrency;
+        const spendable =
+          pockets?.spendable ?? data.summary.totalAssets;
+        const fixedReserve = pockets?.fixedReserve ?? 0;
+        const ccAvailable = pockets?.ccAvailable ?? 0;
+        const ccOutstanding = pockets?.ccOutstanding ?? 0;
+        return (
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Kpi
+              label={t("dashboard.pocketSpendable")}
+              value={money(spendable, pocketCurrency)}
+              valueClassName="text-emerald-800 dark:text-emerald-300"
+              hint={t("dashboard.pocketSpendableHint")}
+            />
+            <Kpi
+              label={t("dashboard.pocketFixedReserve")}
+              value={money(fixedReserve, pocketCurrency)}
+              valueClassName="text-violet-800 dark:text-violet-300"
+              hint={t("dashboard.pocketFixedReserveHint")}
+            />
+            <Kpi
+              label={t("dashboard.pocketCcDebit")}
+              value={
+                pockets && pockets.ccLimit > 0
+                  ? money(ccAvailable, pocketCurrency)
+                  : t("dashboard.pocketCcDebitEmpty")
+              }
+              valueClassName="text-sky-800 dark:text-sky-300"
+              hint={
+                pockets && pockets.ccLimit > 0
+                  ? t("dashboard.pocketCcDebitHint", {
+                      outstanding: money(ccOutstanding, pocketCurrency),
+                    })
+                  : undefined
+              }
+            />
+          </div>
+        );
+      })()}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi
-          label={t("dashboard.cashInAccounts")}
-          value={money(data.summary.totalAssets)}
-          valueClassName={
-            data.summary.totalAssets >= 0
-              ? "text-emerald-800 dark:text-emerald-300"
-              : "text-rose-700 dark:text-rose-400"
-          }
-          hint={t("dashboard.cashInAccountsHint")}
-        />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi
           label={t("dashboard.cycleExpensesKpi")}
           value={money(cycleExpense, debtCurrency)}

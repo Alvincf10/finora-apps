@@ -20,7 +20,7 @@ const UserSchema = new Schema(
     timezone: { type: String, default: "Asia/Jakarta" },
     /** Nominal day of month salary arrives (1–28). If that date is Sat/Sun, pay advances to the previous Friday. Cycle runs actual payday → day before next payday. */
     paydayDay: { type: Number, min: 1, max: 28, default: 25 },
-    /** Recurring net salary in minor units; applied automatically each pay cycle. */
+    /** Planned net salary in minor units — used for cycle planning (budget / payday), not auto-posted to accounts. */
     monthlySalary: { type: Number, min: 0, default: 0 },
   },
   { timestamps: true }

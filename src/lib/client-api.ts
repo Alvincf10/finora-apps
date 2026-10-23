@@ -5,6 +5,7 @@ export async function api<T>(
   init?: RequestInit
 ): Promise<T> {
   const response = await fetch(path, {
+    cache: "no-store",
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -19,6 +19,63 @@ import { Transaction } from "@/models/Transaction";
 import { Debt } from "@/models/Debt";
 import { SavingsGoal } from "@/models/SavingsGoal";
 import { Account } from "@/models/Account";
+import { isLiabilityAccount } from "@/lib/financial/balances";
+import { toCreditCardSummary } from "@/lib/financial/credit-cards";
+import type { AccountType, Currency } from "@/types";
+
+function isFixedReserveAccount(name: string) {
+  return /fixed/i.test(name);
+}
+
+function buildCashPockets(
+  accounts: Array<{
+    _id: { toString(): string };
+    name: string;
+    type: string;
+    currency: string;
+    currentBalance?: number | null;
+    creditLimit?: number | null;
+    statementDueAmount?: number | null;
+    statementDueDay?: number | null;
+    debitMode?: boolean | null;
+    isActive?: boolean;
+  }>
+) {
+  let spendable = 0;
+  let fixedReserve = 0;
+  let ccAvailable = 0;
+  let ccOutstanding = 0;
+  let ccLimit = 0;
+  let currency: Currency = "IDR";
+
+  for (const account of accounts) {
+    if (account.isActive === false) continue;
+    currency = (account.currency as Currency) || currency;
+
+    if (isLiabilityAccount(account.type as AccountType)) {
+      const card = toCreditCardSummary(account);
+      if (!card?.debitMode) continue;
+      ccAvailable += card.available;
+      ccOutstanding += card.outstanding;
+      ccLimit += card.creditLimit;
+      continue;
+    }
+
+    const bal = account.currentBalance ?? 0;
+    if (isFixedReserveAccount(account.name)) fixedReserve += bal;
+    else spendable += bal;
+  }
+
+  return {
+    spendable,
+    fixedReserve,
+    totalCash: spendable + fixedReserve,
+    ccAvailable,
+    ccOutstanding,
+    ccLimit,
+    currency,
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -71,6 +128,7 @@ export async function GET(request: Request) {
 
     const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
     const goalsTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+    const cashPockets = buildCashPockets(accounts);
 
     const cycleIncome = payCycleBuffer.monthlySalary + payCycleBuffer.otherIncome;
     const cycleExpense = payCycleBuffer.expenses;
@@ -91,6 +149,7 @@ export async function GET(request: Request) {
       goalsSaved,
       goalsTarget,
       accounts,
+      cashPockets,
       cycleStats: {
         label: cycle.label,
         start: cycle.start.toISOString(),

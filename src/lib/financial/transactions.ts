@@ -112,12 +112,16 @@ export async function deleteTransaction(userId: string, transactionId: string) {
   const tx = await Transaction.findOne({ _id: transactionId, userId });
   if (!tx) throw new Error("NOT_FOUND");
 
-  await withTransaction(async (session) => {
-    const accountIds = new Set<string>([tx.accountId.toString()]);
+  const accountIds = new Set<string>([tx.accountId.toString()]);
+  const transferId = tx.transferId;
 
-    if (tx.transferId) {
+  // Use Model.delete* (not doc.deleteOne): if a multi-doc transaction aborts and
+  // withTransaction retries without a session, mongoose may skip a second
+  // doc.deleteOne because $isDeleted was already set from the rolled-back attempt.
+  await withTransaction(async (session) => {
+    if (transferId) {
       const paired = await Transaction.find({
-        transferId: tx.transferId,
+        transferId,
         userId,
       }).session(session);
 
@@ -125,14 +129,17 @@ export async function deleteTransaction(userId: string, transactionId: string) {
         accountIds.add(p.accountId.toString());
       }
 
-      await Transaction.deleteMany({
-        transferId: tx.transferId,
-        userId,
-      }).session(session);
-    } else if (session) {
-      await tx.deleteOne({ session });
+      const res = await Transaction.deleteMany(
+        { transferId, userId },
+        sessionOption(session)
+      );
+      if (!res.deletedCount) throw new Error("NOT_FOUND");
     } else {
-      await tx.deleteOne();
+      const res = await Transaction.deleteOne(
+        { _id: tx._id, userId },
+        sessionOption(session)
+      );
+      if (!res.deletedCount) throw new Error("NOT_FOUND");
     }
 
     for (const accountId of accountIds) {

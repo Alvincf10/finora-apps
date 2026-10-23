@@ -64,6 +64,12 @@ type Allocation = {
   configured: boolean;
   existingId: string | null;
   existingStatus: string | null;
+  goalAdvice?: {
+    goalId: string;
+    goalName: string;
+    reason: string;
+    suggestedAmount: number;
+  } | null;
 };
 
 type StepId = "debts" | "fixed" | "buffer" | "fun" | "goals" | "other";
@@ -80,27 +86,27 @@ const STEP_KINDS: Record<StepId, string[]> = {
 const STEP_ORDER: StepId[] = [
   "debts",
   "fixed",
+  "goals",
   "buffer",
   "fun",
-  "goals",
   "other",
 ];
 
 const STEP_ACCENT: Record<StepId, string> = {
   debts: "border-l-amber-600 bg-amber-50/40 dark:bg-amber-950/20",
   fixed: "border-l-sky-600 bg-sky-50/40 dark:bg-sky-950/20",
+  goals: "border-l-teal-600 bg-teal-50/40 dark:bg-teal-950/20",
   buffer: "border-l-emerald-600 bg-emerald-50/40 dark:bg-emerald-950/20",
   fun: "border-l-violet-600 bg-violet-50/40 dark:bg-violet-950/20",
-  goals: "border-l-teal-600 bg-teal-50/40 dark:bg-teal-950/20",
   other: "border-l-muted-foreground/40",
 };
 
 const STEP_NUM: Record<StepId, number> = {
   debts: 1,
   fixed: 2,
-  buffer: 3,
-  fun: 4,
-  goals: 5,
+  goals: 3,
+  buffer: 4,
+  fun: 5,
   other: 6,
 };
 
@@ -150,18 +156,39 @@ export default function PaydayAllocationPage() {
     goals: true,
     other: false,
   });
+  const [fixedReserveBalance, setFixedReserveBalance] = useState(0);
 
   const load = useCallback(
     async (refresh = false) => {
       setLoading(true);
       try {
-        const rec = await api<Allocation>(
-          `/api/payday-allocation${refresh ? "?refresh=1" : ""}`
-        );
+        const [rec, accounts] = await Promise.all([
+          api<Allocation>(
+            `/api/payday-allocation${refresh ? "?refresh=1" : ""}`
+          ),
+          api<
+            Array<{
+              name: string;
+              type: string;
+              currentBalance: number;
+              isActive: boolean;
+            }>
+          >("/api/accounts"),
+        ]);
         setData(rec);
         setEnvelopes(rec.envelopes);
         setSalary(rec.salary);
         setStartingCash(rec.startingCash);
+        setFixedReserveBalance(
+          accounts
+            .filter(
+              (a) =>
+                a.isActive &&
+                a.type !== "CREDIT_CARD" &&
+                /fixed/i.test(a.name)
+            )
+            .reduce((s, a) => s + (a.currentBalance ?? 0), 0)
+        );
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -184,6 +211,13 @@ export default function PaydayAllocationPage() {
   const totalIn = salary + startingCash;
   const allocated = useMemo(
     () => envelopes.reduce((s, e) => s + e.amount, 0),
+    [envelopes]
+  );
+  const paidAllocated = useMemo(
+    () =>
+      envelopes
+        .filter((e) => e.paid || e.paymentTransactionId)
+        .reduce((s, e) => s + e.amount, 0),
     [envelopes]
   );
   const remaining = totalIn - allocated;
@@ -211,7 +245,13 @@ export default function PaydayAllocationPage() {
       const total = items.reduce((s, e) => s + e.amount, 0);
       const before = running;
       running -= total;
-      const locked = id !== "debts" && id !== "fixed" && before <= 0;
+      // Only lock when prior steps already used up all available cash.
+      // Goals/buffer/fun stay open whenever there is cash entering the step.
+      const locked =
+        id !== "debts" &&
+        id !== "fixed" &&
+        id !== "goals" &&
+        before <= 0;
       const share =
         totalIn > 0 ? Math.min(100, Math.round((total / totalIn) * 100)) : 0;
       return { id, items, total, before, after: running, locked, share };
@@ -229,7 +269,8 @@ export default function PaydayAllocationPage() {
     return (
       env.kind === "DEBT" ||
       env.kind === "CC_STATEMENT" ||
-      env.kind === "FIXED"
+      env.kind === "FIXED" ||
+      env.kind === "GOALS"
     );
   }
 
@@ -250,6 +291,14 @@ export default function PaydayAllocationPage() {
     } else if (env.kind === "FIXED") {
       if (!env.linkedFixedCostId && !env.key.startsWith("fixed:")) {
         toast.error(t("paydayAllocation.settleOnlyDebt"));
+        return;
+      }
+    } else if (env.kind === "GOALS") {
+      const goalId = env.key.startsWith("goals:")
+        ? env.key.slice("goals:".length)
+        : "";
+      if (!goalId) {
+        toast.error(t("paydayAllocation.settleGoalMissing"));
         return;
       }
     } else if (!env.linkedDebtId) {
@@ -495,6 +544,11 @@ export default function PaydayAllocationPage() {
             <Progress value={Math.min(usedPct, 100)} />
             <p className="text-[11px] text-muted-foreground">
               {usedPct}% terpakai
+              {paidAllocated > 0
+                ? ` · ${t("paydayAllocation.allocatedPaidHint", {
+                    amount: money(paidAllocated),
+                  })}`
+                : ""}
             </p>
           </div>
         </CardContent>
@@ -628,9 +682,28 @@ export default function PaydayAllocationPage() {
                           <p className="truncate text-sm font-semibold sm:text-base">
                             {stepTitle(step.id)}
                           </p>
-                          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">
                             {stepDesc(step.id)}
                           </p>
+                          {step.id === "fixed" && fixedReserveBalance > 0 ? (
+                            <p className="mt-1 text-[11px] text-violet-700 dark:text-violet-300">
+                              {t("paydayAllocation.stepFixedReserveHint", {
+                                amount: money(fixedReserveBalance),
+                              })}
+                            </p>
+                          ) : null}
+                          {step.id === "goals" && data?.goalAdvice ? (
+                            <p className="mt-1 text-[11px] text-teal-800 dark:text-teal-300">
+                              <span className="font-medium">
+                                {t("paydayAllocation.goalAdviceTitle")}:{" "}
+                                {data.goalAdvice.goalName}.{" "}
+                              </span>
+                              {t("paydayAllocation.goalAdviceBody", {
+                                reason: data.goalAdvice.reason,
+                                amount: money(data.goalAdvice.suggestedAmount),
+                              })}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="font-mono text-sm font-semibold tabular-nums sm:text-base">
@@ -696,29 +769,27 @@ export default function PaydayAllocationPage() {
                                   ) : null}
                                 </div>
                               </div>
-                              <Button
-                                type="button"
-                                variant={env.paid ? "secondary" : "default"}
-                                size="sm"
-                                className="h-8 shrink-0 touch-manipulation gap-1 px-2.5 text-xs"
-                                disabled={
-                                  step.locked ||
-                                  settlingKey === env.key ||
-                                  Boolean(env.paid || env.paymentTransactionId)
-                                }
-                                onClick={() => {
-                                  if (isPayableEnvelope(env)) {
-                                    requestSettle(env);
+                              {isPayableEnvelope(env) ? (
+                                <Button
+                                  type="button"
+                                  variant={env.paid ? "secondary" : "default"}
+                                  size="sm"
+                                  className="h-8 shrink-0 touch-manipulation gap-1 px-2.5 text-xs"
+                                  disabled={
+                                    step.locked ||
+                                    settlingKey === env.key ||
+                                    Boolean(env.paid || env.paymentTransactionId)
                                   }
-                                }}
-                              >
-                                <Check className="size-3.5" />
-                                {env.paid || env.paymentTransactionId
-                                  ? t("paydayAllocation.paid")
-                                  : isPayableEnvelope(env)
-                                    ? t("paydayAllocation.settlePay")
-                                    : t("paydayAllocation.markPaid")}
-                              </Button>
+                                  onClick={() => requestSettle(env)}
+                                >
+                                  <Check className="size-3.5" />
+                                  {env.paid || env.paymentTransactionId
+                                    ? t("paydayAllocation.paid")
+                                    : env.kind === "GOALS"
+                                      ? t("paydayAllocation.settleGoalPay")
+                                      : t("paydayAllocation.settlePay")}
+                                </Button>
+                              ) : null}
                             </div>
                             <CurrencyAmountInput
                               currency={currency}
@@ -826,7 +897,9 @@ export default function PaydayAllocationPage() {
         <DialogContent showCloseButton={settlingKey == null}>
           <DialogHeader>
             <DialogTitle>
-              {t("paydayAllocation.settleConfirmTitle")}
+              {confirmEnv?.kind === "GOALS"
+                ? t("paydayAllocation.settleGoalConfirmTitle")
+                : t("paydayAllocation.settleConfirmTitle")}
             </DialogTitle>
             <DialogDescription>
               {confirmEnv ? (
@@ -839,7 +912,9 @@ export default function PaydayAllocationPage() {
                     {money(confirmEnv.amount)}
                   </span>
                   <br />
-                  {t("paydayAllocation.settleConfirm")}
+                  {confirmEnv.kind === "GOALS"
+                    ? t("paydayAllocation.settleGoalConfirm")
+                    : t("paydayAllocation.settleConfirm")}
                 </>
               ) : (
                 t("paydayAllocation.settleConfirm")

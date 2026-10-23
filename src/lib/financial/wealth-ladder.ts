@@ -1,6 +1,8 @@
+import mongoose from "mongoose";
 import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { SavingsGoal } from "@/models/SavingsGoal";
+import { Transaction } from "@/models/Transaction";
 import {
   getFinancialProfile,
   getSpendingAnalytics,
@@ -80,12 +82,13 @@ export interface WealthLadderResult {
 
 /**
  * Idempotent upsert for system BASIC_SAVINGS goal.
- * Syncs from eligible liquid without lowering manual contributions.
+ * Progress is contribution-only (Goals → Nabung & catat / contribute).
+ * Does not import BCA/ATM liquid balances as "sudah nabung".
  */
 export async function ensureStarterCashGoal(
   userId: string,
   currency: Currency,
-  liquidCash: number
+  _liquidCash: number
 ) {
   if (currency !== "IDR") return null;
 
@@ -103,8 +106,6 @@ export async function ensureStarterCashGoal(
     existing.find((g) => isStarterCashGoal(g.name, g.targetAmount)) ??
     null;
 
-  const synced = syncStarterGoalAmount(goal?.currentAmount ?? 0, liquidCash);
-
   if (!goal) {
     try {
       return await SavingsGoal.create({
@@ -113,11 +114,11 @@ export async function ensureStarterCashGoal(
         goalType: "BASIC_SAVINGS",
         isSystem: true,
         targetAmount: LADDER_CASH_TARGET_IDR,
-        currentAmount: synced,
+        currentAmount: 0,
         currency: "IDR",
         priority: 100,
-        notes: "Auto dari Tangga Ternak Uang · step 1",
-        status: synced >= LADDER_CASH_TARGET_IDR ? "COMPLETED" : "ACTIVE",
+        notes: "Auto dari Tangga Ternak Uang · step 1 · isi via kontribusi Goals",
+        status: "ACTIVE",
       });
     } catch {
       // Concurrent create — reload
@@ -142,15 +143,31 @@ export async function ensureStarterCashGoal(
     goal.targetAmount = LADDER_CASH_TARGET_IDR;
     dirty = true;
   }
-  if (synced > (goal.currentAmount ?? 0)) {
-    goal.currentAmount = synced;
+
+  // Correct legacy auto-synced liquid amounts: only real goal contributions count.
+  const contributionRows = await Transaction.aggregate<{ total: number }>([
+    {
+      $match: {
+        userId: new mongoose.Types.ObjectId(userId),
+        goalId: goal._id,
+        type: "EXPENSE",
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  const corrected = syncStarterGoalAmount(contributionRows[0]?.total ?? 0);
+  if ((goal.currentAmount ?? 0) !== corrected) {
+    goal.currentAmount = corrected;
     dirty = true;
   }
-  if (
-    (goal.currentAmount ?? 0) >= LADDER_CASH_TARGET_IDR &&
-    goal.status === "ACTIVE"
-  ) {
-    goal.status = "COMPLETED";
+
+  if (corrected >= LADDER_CASH_TARGET_IDR) {
+    if (goal.status !== "COMPLETED") {
+      goal.status = "COMPLETED";
+      dirty = true;
+    }
+  } else if (goal.status !== "ACTIVE") {
+    goal.status = "ACTIVE";
     dirty = true;
   }
   if (dirty) await goal.save();
@@ -439,11 +456,11 @@ export async function evaluateWealthLadder(
     pack(
       1,
       "Nabung cash 10 juta",
-      "Goal Tabungan dasar 10jt — sync dari saldo likuid IDR eligible + kontribusi Goals.",
+      "Goal Tabungan dasar 10jt — hanya dari kontribusi Goals (Nabung & catat). Kas di rekening tidak dihitung otomatis.",
       step1Reason.code,
       step1Reason.text,
       currency === "IDR"
-        ? `${starterGoal?.name ?? LADDER_STARTER_GOAL_NAME}: ${money(starterAmount)} / ${money(starterTarget)} (saldo likuid eligible ${money(liquidCash)})`
+        ? `${starterGoal?.name ?? LADDER_STARTER_GOAL_NAME}: ${money(starterAmount)} / ${money(starterTarget)} · kas rekening sekarang ${money(liquidCash)} (tidak dihitung otomatis)`
         : `Saldo non-IDR tidak dihitung ke target Rp10jt pada MVP`,
       "VIEW_GOALS",
       currency === "IDR"

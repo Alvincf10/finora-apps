@@ -198,13 +198,18 @@ export function calculateEligibleLiquidBalanceIdr(
     .reduce((sum, a) => sum + Math.max(0, a.currentBalance ?? 0), 0);
 }
 
+/**
+ * Starter cash goal progress is contribution-only (capped at target).
+ * Account liquid balances are NOT auto-counted — otherwise BCA/ATM cash
+ * looks like "sudah nabung" when the user hasn't contributed to the goal.
+ */
 export function syncStarterGoalAmount(
   manualContribution: number,
-  eligibleLiquidBalanceIdr: number
+  _eligibleLiquidBalanceIdr?: number
 ) {
   return Math.min(
     LADDER_CASH_TARGET_IDR,
-    Math.max(0, manualContribution, eligibleLiquidBalanceIdr)
+    Math.max(0, manualContribution)
   );
 }
 

@@ -100,7 +100,7 @@ export const en = {
     baseCurrency: "Base currency",
     payCycle: "Pay cycle & salary",
     payCycleDesc:
-      "Salary is applied automatically each cycle (payday → day before next payday) and posted to your primary account. No need to enter a salary transaction manually.",
+      "Payday sets the cycle window (payday → day before next payday). Salary here is for planning (budget / allocation) — when you get paid, add an income transaction so account balances stay accurate.",
     payday: "Payday (day of month)",
     paydayHint:
       "Example: 25 → cycle from payday. If the 25th is Sat/Sun, pay advances to the previous Friday (e.g. Oct 2026 → 23 Oct).",
@@ -144,8 +144,8 @@ export const en = {
     bufferConfigured:
       "Left after salary, opening balance, expenses, debts, and fixed costs this cycle",
     bufferUnconfigured:
-      "Set monthly salary in Settings — calculated each cycle, no re-entry needed",
-    autoSalary: "Salary (automatic)",
+      "Set monthly salary in Settings for cycle planning",
+    autoSalary: "Salary (planned)",
     cycleSalary: "Actual salary this cycle",
     startingBalance: "Opening balance",
     otherIncome: "Other income",
@@ -231,6 +231,14 @@ export const en = {
     adviceDailyOnly: "Spend max {daily}/day until payday.",
     cashInAccounts: "Cash in accounts",
     cashInAccountsHint: "Bank/cash ledger balances (not the cycle buffer)",
+    pocketSpendable: "Spendable",
+    pocketSpendableHint: "Free cash in bank/wallet (not fixed-cost reserve)",
+    pocketFixedReserve: "Fixed reserve",
+    pocketFixedReserveHint: "Cash locked for subscriptions on their due dates",
+    pocketCcDebit: "CC available (debit)",
+    pocketCcDebitHint:
+      "Daily spend ceiling — outstanding {outstanding} · pay next month",
+    pocketCcDebitEmpty: "No debit-mode credit card yet",
     goalsSavings: "Goals savings",
     ofTarget: "Of target {amount}",
     noActiveGoalHint: "No active goals yet",
@@ -267,6 +275,9 @@ export const en = {
     created: "Transaction created",
     updated: "Transaction updated",
     deleted: "Transaction deleted",
+    deleteConfirmTitle: "Delete transaction?",
+    deleteConfirm:
+      "This cannot be undone. The amount will be reversed on the linked account.",
     transferNoEdit: "Transfers cannot be edited — delete and recreate",
     selectAccountFirst: "Select an account first",
     income: "Income",
@@ -325,7 +336,7 @@ export const en = {
     statementDueDay: "Statement due day",
     debitMode: "Use like debit",
     debitModeHint:
-      "Spend only up to cash you already reserved in the payday split.",
+      "Daily spending against the CC limit; outstanding is paid on the next cycle.",
     availableCredit: "Available",
     utilization: "{pct}% used",
     ccOutstandingHint: "For credit cards, this is how much you currently owe.",
@@ -343,21 +354,28 @@ export const en = {
     startingCash: "Cash on hand",
     totalIn: "Total available",
     allocated: "Allocated",
+    allocatedPaidHint: "Includes {amount} already paid",
     remaining: "Unallocated",
     envelopes: "Envelopes",
     waterfallTitle: "Waterfall this cycle",
     waterfallSubtitle:
-      "Pay in order: debts → fixed → buffer → fun → goals. Later steps only use what’s left.",
+      "Order: debts → fixed → goals/savings → cash buffer → fun. Daily CC spend uses the card limit (separate).",
     stepDebts: "1 · Debts & CC statement",
     stepDebtsDesc: "Must clear first from this cycle’s money.",
     stepFixed: "2 · Fixed costs",
-    stepFixedDesc: "Subscriptions and recurring bills.",
-    stepBuffer: "3 · Cash buffer",
-    stepBufferDesc: "Emergency cash — don’t touch for fun spending.",
-    stepFun: "4 · Fun / monthly living",
-    stepFunDesc: "Hepi, food, CC spend cap for the month.",
-    stepGoals: "5 · Goals",
-    stepGoalsDesc: "Only after debts, fixed, and a buffer are covered.",
+    stepFixedDesc:
+      "This is the bill list + due dates — not proof of payment. If cash is already in ATM Fixed, leave it; pay on each due date from Fixed costs (choose ATM Fixed).",
+    stepFixedReserveHint:
+      "Fixed reserve account: {amount} · covers this cycle’s fixed total. Don’t mark paid here unless you actually paid the subscription.",
+    stepGoals: "3 · Goals / savings",
+    stepGoalsDesc:
+      "Suggested from free cash in accounts (after debts & fixed) — raise or lower as you like.",
+    goalAdviceTitle: "Fill this pocket first",
+    goalAdviceBody: "{reason} This cycle’s suggestion: {amount}.",
+    stepBuffer: "4 · Cash buffer",
+    stepBufferDesc: "What’s left after goals — for ATM cash / physical float.",
+    stepFun: "5 · Fun / living",
+    stepFunDesc: "Last cash leftover for fun. CC spending uses the card limit.",
     stepOther: "Other",
     afterStep: "Left after this step: {amount}",
     stepLocked: "Locked until earlier steps fit in your total available.",
@@ -375,13 +393,20 @@ export const en = {
     paid: "Paid",
     markPaid: "Mark paid",
     settlePay: "Pay & record",
+    settleGoalPay: "Save & record",
     settleConfirmTitle: "Record this payment?",
     settleConfirm:
       "Creates a transaction from your bank/cash account and syncs it to Payday.",
+    settleGoalConfirmTitle: "Record goal contribution?",
+    settleGoalConfirm:
+      "Deducts from BCA and adds to the goal’s progress — not an empty checkmark.",
     settleConfirmAction: "Yes, record it",
     settleDone: "Payment recorded in transactions",
     settleAlready: "Already paid this cycle",
-    settleOnlyDebt: "Only debts / CC / fixed costs create transactions",
+    settleOnlyDebt:
+      "Only debts / CC / fixed costs / goals can be recorded here",
+    settleGoalMissing:
+      "Goals envelope isn’t linked to a goal — reset to suggestions first",
     empty: "No envelopes yet. Set monthly salary in Settings first.",
     overAllocated: "Allocated more than available — trim envelopes.",
     notConfigured: "Set your monthly salary in Settings to unlock suggestions.",

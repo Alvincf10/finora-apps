@@ -11,11 +11,7 @@ import { Transaction } from "@/models/Transaction";
 import { User } from "@/models/User";
 import { Category } from "@/models/Category";
 import { PaydayAllocation } from "@/models/PaydayAllocation";
-import {
-  isLiabilityAccount,
-  recalculateAccountBalance,
-} from "@/lib/financial/balances";
-import { resolveDefaultFundingAccountId } from "@/lib/financial/record-debt-payment";
+import { isLiabilityAccount } from "@/lib/financial/balances";
 import {
   getDebtsDueInRange,
   type DebtDueItem,
@@ -28,6 +24,7 @@ import { percent } from "@/lib/money";
 import { resolvePaydayInMonth } from "@/lib/financial/payday";
 import type { AccountType, Currency } from "@/types";
 
+/** Legacy tag from when salary was auto-posted to the ledger. */
 const AUTO_SALARY_TAG = "auto-salary";
 
 export type PayCycleBounds = {
@@ -282,94 +279,12 @@ function isLoggedSalaryIncome(
   ) {
     return true;
   }
-  // Same nominal as auto salary — common when user also records the deposit.
+  // Same nominal as Settings salary — common when user records the deposit.
   if (monthlySalary > 0 && tx.amount === monthlySalary) {
     return true;
   }
   const text = `${tx.description ?? ""} ${tx.merchant ?? ""}`.toLowerCase();
   return /\b(gaji|salary|payroll)\b/.test(text);
-}
-
-async function ensureSalaryCategory(userId: string) {
-  let category = await Category.findOne({
-    userId,
-    name: "Salary",
-    type: "INCOME",
-  });
-  if (!category) {
-    category = await Category.create({
-      userId,
-      name: "Salary",
-      type: "INCOME",
-      isSystem: true,
-      isActive: true,
-    });
-  }
-  return category;
-}
-
-/**
- * Settings/allocation salary is planning income — also post it once per cycle
- * onto the primary cash account so "uang di rekening" stays in sync with buffer.
- */
-async function ensurePayCycleSalaryIncome(
-  userId: string,
-  cycle: PayCycleBounds,
-  monthlySalary: number,
-  currency: Currency
-): Promise<boolean> {
-  if (monthlySalary <= 0) return false;
-
-  const incomeTxs = await Transaction.find({
-    userId,
-    type: "INCOME",
-    date: { $gte: cycle.start, $lte: cycle.end },
-  }).lean();
-
-  const categoryIds = [
-    ...new Set(
-      incomeTxs
-        .filter((tx) => tx.categoryId)
-        .map((tx) => tx.categoryId!.toString())
-    ),
-  ];
-  const categories =
-    categoryIds.length > 0
-      ? await Category.find({ _id: { $in: categoryIds } })
-          .select("name")
-          .lean()
-      : [];
-  const salaryCategoryIds = new Set(
-    categories
-      .filter((c) => /^salary$/i.test(String(c.name ?? "").trim()))
-      .map((c) => c._id.toString())
-  );
-
-  if (
-    incomeTxs.some((tx) =>
-      isLoggedSalaryIncome(tx, salaryCategoryIds, monthlySalary)
-    )
-  ) {
-    return false;
-  }
-
-  const accountId = await resolveDefaultFundingAccountId(userId);
-  if (!accountId) return false;
-
-  const salaryCategory = await ensureSalaryCategory(userId);
-  await Transaction.create({
-    userId,
-    accountId,
-    type: "INCOME",
-    amount: monthlySalary,
-    currency,
-    categoryId: salaryCategory._id,
-    description: `Gaji · ${cycle.label}`,
-    date: cycle.start,
-    tags: [AUTO_SALARY_TAG],
-  });
-  await recalculateAccountBalance(accountId);
-  return true;
 }
 
 export async function getPayCycleBuffer(
@@ -392,15 +307,12 @@ export async function getPayCycleBuffer(
     .lean();
 
   // Prefer cycle override from Alokasi gajian when saved; else Settings base.
+  // Settings salary is planning only — actual deposit is a manual INCOME tx.
   const salaryFromAllocation =
     allocation != null && typeof allocation.salary === "number";
   const monthlySalary = salaryFromAllocation
     ? Math.max(0, allocation!.salary)
     : baseSalary;
-
-  // Post paycheck to primary account once per cycle (ledger), without
-  // double-counting it later as "other income" in the buffer formula.
-  await ensurePayCycleSalaryIncome(userId, cycle, monthlySalary, currency);
 
   const [accounts, transactions, debtsDue, fixedCosts] = await Promise.all([
     Account.find({ userId, isActive: true }).lean(),
@@ -420,8 +332,8 @@ export async function getPayCycleBuffer(
     }
   }
 
-  // Salary is applied from Settings/allocation — do not also count salary
-  // income transactions as "other income" (that double-counts the paycheck).
+  // Planning salary comes from Settings/allocation — do not also count
+  // matching salary income txs as "other income" (would double-count).
   const incomeCategoryIds = [
     ...new Set(
       transactions
@@ -442,7 +354,7 @@ export async function getPayCycleBuffer(
   );
 
   let otherIncome = 0;
-  /** Income txs that mirror the auto-applied paycheck (backed out of cash only). */
+  /** Manual salary income txs (backed out of cash reconstruction only). */
   let salaryIncomeLogged = 0;
   let expenses = 0;
   for (const tx of transactions) {

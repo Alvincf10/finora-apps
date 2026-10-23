@@ -12,6 +12,8 @@ import { CurrencyAmountInput } from "@/components/currency-amount-input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -142,6 +144,8 @@ export default function TransactionsPage() {
   const [editDate, setEditDate] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Tx | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const money = (amount: number, currency: Currency) =>
     formatMoney(amount, currency, intlLocale);
@@ -329,15 +333,20 @@ export default function TransactionsPage() {
     }
   }
 
-  async function onDelete(id: string) {
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
-      await api(`/api/transactions/${id}`, { method: "DELETE" });
+      await api(`/api/transactions/${deleteTarget._id}`, { method: "DELETE" });
       toast.success(t("transactions.deleted"));
+      setDeleteTarget(null);
       await refreshList();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t("common.failed")
       );
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -726,7 +735,7 @@ export default function TransactionsPage() {
                     variant="ghost"
                     size="sm"
                     className="touch-manipulation"
-                    onClick={() => onDelete(tx._id)}
+                    onClick={() => setDeleteTarget(tx)}
                   >
                     {t("common.delete")}
                   </Button>
@@ -791,7 +800,7 @@ export default function TransactionsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => onDelete(tx._id)}
+                          onClick={() => setDeleteTarget(tx)}
                         >
                           {t("common.delete")}
                         </Button>
@@ -891,6 +900,58 @@ export default function TransactionsPage() {
               </Button>
             </form>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent showCloseButton={!deleting}>
+          <DialogHeader>
+            <DialogTitle>{t("transactions.deleteConfirmTitle")}</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {txLabel(deleteTarget)}
+                  </span>
+                  {" · "}
+                  <span className="font-mono tabular-nums">
+                    {money(deleteTarget.amount, deleteTarget.currency)}
+                  </span>
+                  <br />
+                  {t("transactions.deleteConfirm")}
+                </>
+              ) : (
+                t("transactions.deleteConfirm")
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="touch-manipulation"
+              disabled={deleting}
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="touch-manipulation"
+              disabled={deleteTarget == null || deleting}
+              onClick={() => {
+                void confirmDelete();
+              }}
+            >
+              {deleting ? t("common.saving") : t("common.delete")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

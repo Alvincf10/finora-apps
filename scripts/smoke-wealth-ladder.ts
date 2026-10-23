@@ -99,9 +99,9 @@ function section(name: string) {
 
 // —— Starter sync ——
 {
-  section("starter sync never lowers manual");
-  assert.equal(syncStarterGoalAmount(3_000_000, 1_000_000), 3_000_000);
-  assert.equal(syncStarterGoalAmount(1_000_000, 4_000_000), 4_000_000);
+  section("starter sync is contribution-only");
+  assert.equal(syncStarterGoalAmount(0, 3_420_000), 0);
+  assert.equal(syncStarterGoalAmount(1_000_000, 4_000_000), 1_000_000);
   assert.equal(
     syncStarterGoalAmount(12_000_000, 20_000_000),
     LADDER_CASH_TARGET_IDR
