@@ -26,7 +26,8 @@ Income:
 • ${pre}gaji 10jt
 • ${pre}freelance 2 juta
 
-Cek total:
+Cek saldo / total (tanpa AI):
+• ${pre}saldo
 • ${pre}total pengeluaran
 • ${pre}pengeluaran hari ini
 • ${pre}total pemasukan

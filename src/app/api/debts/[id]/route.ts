@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { ok, handleError } from "@/lib/api";
 import { requireUser } from "@/lib/session";
 import { updateDebtSchema } from "@/lib/validations";
@@ -40,6 +41,14 @@ export async function PATCH(request: Request, { params }: Params) {
       debt.targetPayoffDate = new Date(input.targetPayoffDate);
     if (input.notes !== undefined) debt.notes = input.notes;
     if (input.status !== undefined) debt.status = input.status;
+    if (input.obligationType !== undefined)
+      debt.obligationType = input.obligationType;
+    if (input.linkedAccountId !== undefined) {
+      debt.linkedAccountId =
+        input.linkedAccountId === null
+          ? undefined
+          : new mongoose.Types.ObjectId(input.linkedAccountId);
+    }
 
     // Keep paid amount when correcting original principal.
     if (input.originalAmount !== undefined) {

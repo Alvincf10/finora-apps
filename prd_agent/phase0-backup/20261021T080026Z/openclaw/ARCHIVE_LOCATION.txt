@@ -1,0 +1,6 @@
+Full OpenClaw backups (outside ~/.openclaw; contain secrets — do not commit):
+  /var/backups/openclaw-phase0/openclaw-config-only.tar.gz   (verified)
+  /var/backups/openclaw-phase0/openclaw.json.bak
+  /var/backups/openclaw-phase0/openclaw.json.last-good
+Note: full state archive (--no-include-workspace) timed out during Phase 0;
+re-run later with: openclaw backup create --no-include-workspace --output /var/backups/openclaw-phase0/openclaw-state.tar.gz --verify

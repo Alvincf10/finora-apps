@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Check } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
@@ -34,18 +35,39 @@ type FixedCost = {
   dueDay: number;
   isActive: boolean;
   notes?: string;
+  paidThisCycle?: boolean;
+  cycleLabel?: string;
+};
+
+type Account = {
+  _id: string;
+  name: string;
+  type: string;
+  currency: Currency;
+  isActive: boolean;
 };
 
 export default function FixedCostsPage() {
   const { t, intlLocale } = useI18n();
   const [items, setItems] = useState<FixedCost[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
+  const [payOpen, setPayOpen] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
 
   async function load() {
-    const list = await api<FixedCost[]>("/api/fixed-costs");
+    const [list, accountList] = await Promise.all([
+      api<FixedCost[]>("/api/fixed-costs"),
+      api<Account[]>("/api/accounts"),
+    ]);
     setItems(list);
+    setAccounts(
+      accountList.filter(
+        (a) => a.isActive && ["BANK", "CASH", "E_WALLET"].includes(a.type)
+      )
+    );
   }
 
   useEffect(() => {
@@ -107,9 +129,45 @@ export default function FixedCostsPage() {
     }
   }
 
+  async function onPay(e: React.FormEvent<HTMLFormElement>, item: FixedCost) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setPaying(true);
+    try {
+      const result = await api<{ alreadyPaidThisCycle?: boolean }>(
+        `/api/fixed-costs/${item._id}/pay`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            accountId: form.get("accountId") || undefined,
+            amount: toMinorUnits(Number(form.get("amount")), item.currency),
+            date: form.get("date") || undefined,
+            notes: form.get("notes") || undefined,
+          }),
+        }
+      );
+      toast.success(
+        result.alreadyPaidThisCycle
+          ? t("fixedCosts.alreadyPaid")
+          : t("fixedCosts.paymentRecorded")
+      );
+      setPayOpen(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setPaying(false);
+    }
+  }
+
   const activeTotal = items
     .filter((i) => i.isActive && i.currency === "IDR")
     .reduce((sum, i) => sum + i.amount, 0);
+
+  const defaultAccountId =
+    accounts.find((a) => /bca/i.test(a.name))?._id ?? accounts[0]?._id ?? "";
+
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -119,6 +177,11 @@ export default function FixedCostsPage() {
             {t("fixedCosts.title")}
           </h1>
           <p className="text-muted-foreground">{t("fixedCosts.subtitle")}</p>
+          {items[0]?.cycleLabel ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Cycle: {items[0].cycleLabel}
+            </p>
+          ) : null}
         </div>
         <Dialog
           open={open}
@@ -207,15 +270,29 @@ export default function FixedCostsPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {items.map((item) => (
-          <Card key={item._id}>
+          <Card
+            key={item._id}
+            className={
+              item.paidThisCycle
+                ? "border-emerald-500/40 bg-emerald-50/40 dark:bg-emerald-950/20"
+                : undefined
+            }
+          >
             <CardHeader>
               <CardTitle className="flex items-center justify-between gap-2">
-                <span>{item.name}</span>
-                <Badge variant={item.isActive ? "secondary" : "outline"}>
-                  {item.isActive
-                    ? t("fixedCosts.statusOn")
-                    : t("fixedCosts.statusOff")}
-                </Badge>
+                <span className="min-w-0 truncate">{item.name}</span>
+                <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  {item.paidThisCycle ? (
+                    <Badge variant="secondary">
+                      {t("fixedCosts.paidThisCycle")}
+                    </Badge>
+                  ) : null}
+                  <Badge variant={item.isActive ? "secondary" : "outline"}>
+                    {item.isActive
+                      ? t("fixedCosts.statusOn")
+                      : t("fixedCosts.statusOff")}
+                  </Badge>
+                </div>
               </CardTitle>
               <CardDescription>
                 {t("fixedCosts.dueEvery", { day: item.dueDay })}
@@ -225,13 +302,105 @@ export default function FixedCostsPage() {
               <p className="font-mono text-xl">
                 {formatMoney(item.amount, item.currency, intlLocale)}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                {item.isActive ? (
+                  <Dialog
+                    open={payOpen === item._id}
+                    onOpenChange={(v) => setPayOpen(v ? item._id : null)}
+                  >
+                    <DialogTrigger
+                      render={
+                        <Button
+                          className="min-w-[7.5rem] flex-1 touch-manipulation"
+                          disabled={item.paidThisCycle || accounts.length === 0}
+                        />
+                      }
+                    >
+                      <Check className="size-3.5" />
+                      {item.paidThisCycle
+                        ? t("fixedCosts.paidThisCycle")
+                        : t("fixedCosts.pay")}
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>
+                          {t("fixedCosts.payTitle", { name: item.name })}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <p className="text-sm text-muted-foreground">
+                        {t("fixedCosts.payHint")}
+                      </p>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(e) => onPay(e, item)}
+                      >
+                        <div className="space-y-2">
+                          <Label>{t("fixedCosts.selectAccount")}</Label>
+                          <select
+                            name="accountId"
+                            required
+                            defaultValue={defaultAccountId}
+                            className="flex h-9 w-full rounded-md border px-3 text-sm"
+                          >
+                            {accounts.map((a) => (
+                              <option key={a._id} value={a._id}>
+                                {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t("common.amount")}</Label>
+                          <CurrencyAmountInput
+                            name="amount"
+                            currency={item.currency}
+                            required
+                            defaultValue={fromMinorUnits(
+                              item.amount,
+                              item.currency
+                            )}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t("fixedCosts.payDate")}</Label>
+                          <Input
+                            name="date"
+                            type="date"
+                            required
+                            defaultValue={today}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t("common.notes")}</Label>
+                          <Input
+                            name="notes"
+                            defaultValue={item.notes ?? ""}
+                            placeholder={t("common.optional")}
+                          />
+                        </div>
+                        <Button
+                          type="submit"
+                          className="w-full"
+                          disabled={paying}
+                        >
+                          {t("fixedCosts.pay")}
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                ) : null}
+
                 <Dialog
                   open={editOpen === item._id}
                   onOpenChange={(v) => setEditOpen(v ? item._id : null)}
                 >
                   <DialogTrigger
-                    render={<Button variant="outline" className="flex-1" />}
+                    render={
+                      <Button
+                        variant="outline"
+                        className="flex-1 touch-manipulation"
+                      />
+                    }
                   >
                     {t("common.edit")}
                   </DialogTrigger>
@@ -298,7 +467,7 @@ export default function FixedCostsPage() {
                 </Dialog>
                 <Button
                   variant="ghost"
-                  className="flex-1"
+                  className="flex-1 touch-manipulation"
                   onClick={() => onDelete(item._id)}
                 >
                   {t("common.delete")}

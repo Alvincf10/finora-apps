@@ -1,0 +1,62 @@
+# Task router — Phase 1
+# Deterministic paths skip LLM. Finance reads go through Finora Vira (WA prefix).
+
+version: 1
+
+routes:
+  - id: saldo
+    match:
+      patterns:
+        - "^/?saldo\\b"
+        - "^/?balance\\b"
+        - "^cek saldo\\b"
+      # Vira shared-number: user must send "finora saldo"
+      channel: whatsapp_vira
+    path: deterministic_finora
+    handler: balance
+    llm: false
+
+  - id: pengeluaran
+    match:
+      patterns:
+        - "pengeluaran"
+        - "total pengeluaran"
+        - "total pemasukan"
+        - "ringkasan"
+    channel: whatsapp_vira
+    path: deterministic_finora
+    handler: totals
+    llm: false
+
+  - id: reminder_simple
+    match:
+      patterns:
+        - "^add task\\b"
+        - "^done\\b"
+        - "^today$"
+        - "^daily review$"
+    channel: daily_planner
+    path: deterministic_planner
+    llm: false
+
+  - id: chat_economy
+    match:
+      default: true
+    path: llm
+    model_tier: economy
+    # Resolved by OpenClaw primary (gemini-flash) unless diskusi-router upgrades
+
+  - id: chat_complex
+    match:
+      triggers:
+        - diskusi
+        - brainstorm
+        - bahas
+    path: llm
+    model_tier: strong
+    # Blocked by cost-guard when monthly spend >= softBlockProAtPct
+
+policy:
+  never_let_model_pick_provider: true
+  fallback_no_duplicate_writes: true
+  finance_writes_require_confirm: true  # enforced in Phase 2 API

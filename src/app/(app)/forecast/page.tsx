@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 type Forecast = {
   projectedIncome: number;
   projectedExpenses: number;
+  projectedFixedCosts: number;
   projectedDebtPayment: number;
   projectedSavings: number;
   startingBalance: number;
@@ -30,6 +31,7 @@ type Forecast = {
   assumptions: string[];
   confidence: "LOW" | "MEDIUM" | "HIGH";
   currency: Currency;
+  incomeSource: "SALARY" | "HISTORY";
 };
 
 function confidenceVariant(c: Forecast["confidence"]) {
@@ -218,13 +220,20 @@ export default function ForecastPage() {
                 <CardDescription>{t("forecast.breakdownDesc")}</CardDescription>
               </CardHeader>
               <CardContent className="divide-y">
-                <Row
-                  label={t("forecast.projectedIncome")}
-                  amount={data.projectedIncome}
-                  currency={data.currency}
-                  intlLocale={intlLocale}
-                  tone="positive"
-                />
+                <div className="py-2.5">
+                  <Row
+                    label={t("forecast.projectedIncome")}
+                    amount={data.projectedIncome}
+                    currency={data.currency}
+                    intlLocale={intlLocale}
+                    tone="positive"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {data.incomeSource === "SALARY"
+                      ? t("forecast.incomeFromSalary")
+                      : t("forecast.incomeFromHistory")}
+                  </p>
+                </div>
                 <Row
                   label={t("forecast.projectedExpenses")}
                   amount={data.projectedExpenses}
@@ -232,6 +241,15 @@ export default function ForecastPage() {
                   intlLocale={intlLocale}
                   tone="negative"
                 />
+                {data.projectedFixedCosts > 0 ? (
+                  <Row
+                    label={t("forecast.fixedCosts")}
+                    amount={data.projectedFixedCosts}
+                    currency={data.currency}
+                    intlLocale={intlLocale}
+                    tone="muted"
+                  />
+                ) : null}
                 <Row
                   label={t("forecast.debtPayments")}
                   amount={data.projectedDebtPayment}
@@ -304,6 +322,14 @@ export default function ForecastPage() {
                     )}
                   >
                     {t("forecast.monthlyReview")}
+                  </Link>
+                  <Link
+                    href="/payday"
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "sm" })
+                    )}
+                  >
+                    {t("forecast.openPayday")}
                   </Link>
                 </div>
               </CardContent>

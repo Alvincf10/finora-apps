@@ -205,14 +205,14 @@ function SurvivalCard({
     survival.maxSafeGoalContribution
   );
 
-  const paydayLabel = new Date(survival.nextPayday).toLocaleDateString(
-    intlLocale,
-    {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }
-  );
+  const nextPaydayDate = new Date(survival.nextPayday);
+  const paydayLabel = nextPaydayDate.toLocaleDateString(intlLocale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  // Actual receipt day (weekend-adjusted), not the nominal paydayDay setting.
+  const paydayDayShown = nextPaydayDate.getDate();
 
   let advice: string;
   if (survival.status === "PAYDAY") {
@@ -266,7 +266,7 @@ function SurvivalCard({
       <CardHeader>
         <CardDescription>
           {t("dashboard.survivalUntilPayday", {
-            day: survival.paydayDay,
+            day: paydayDayShown,
             label: paydayLabel,
           })}
         </CardDescription>

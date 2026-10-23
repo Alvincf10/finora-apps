@@ -1,5 +1,6 @@
 import { ok, handleError } from "@/lib/api";
 import {
+  applyTransactionEffect,
   getAccountOrThrow,
   recalculateAccountBalance,
 } from "@/lib/financial/balances";
@@ -7,20 +8,20 @@ import { requireUser } from "@/lib/session";
 import { updateAccountSchema } from "@/lib/validations";
 import { Account } from "@/models/Account";
 import { Transaction } from "@/models/Transaction";
+import type { AccountType } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
 
-async function transactionEffects(accountId: string): Promise<number> {
+async function transactionEffects(
+  accountId: string,
+  accountType: AccountType
+): Promise<number> {
   const txs = await Transaction.find({ accountId }).lean();
   let effects = 0;
   for (const tx of txs) {
-    if (tx.type === "INCOME") {
-      effects += tx.amount;
-    } else if (tx.type === "EXPENSE") {
-      effects -= tx.amount;
-    } else if (tx.type === "TRANSFER") {
-      effects += tx.transferDirection === "IN" ? tx.amount : -tx.amount;
-    }
+    const next = applyTransactionEffect(0, tx, accountType);
+    // applyTransactionEffect from 0 gives signed delta for this tx
+    effects += next;
   }
   return effects;
 }
@@ -49,8 +50,23 @@ export async function PATCH(request: Request, { params }: Params) {
     if (fields.type !== undefined) account.type = fields.type;
     if (fields.isActive !== undefined) account.isActive = fields.isActive;
 
+    if (fields.creditLimit !== undefined) {
+      account.creditLimit = fields.creditLimit ?? undefined;
+    }
+    if (fields.statementDueAmount !== undefined) {
+      account.statementDueAmount = fields.statementDueAmount ?? undefined;
+    }
+    if (fields.statementDueDay !== undefined) {
+      account.statementDueDay = fields.statementDueDay ?? undefined;
+    }
+    if (fields.debitMode !== undefined) {
+      account.debitMode = fields.debitMode;
+    }
+
+    const accountType = account.type as AccountType;
+
     if (desiredCurrent !== undefined) {
-      const effects = await transactionEffects(id);
+      const effects = await transactionEffects(id, accountType);
       account.initialBalance = desiredCurrent - effects;
     } else if (fields.initialBalance !== undefined) {
       account.initialBalance = fields.initialBalance;

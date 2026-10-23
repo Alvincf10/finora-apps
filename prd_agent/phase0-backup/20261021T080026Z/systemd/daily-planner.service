@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily Planner AI Agent for OpenClaw
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/daily-planner
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=/root/.openclaw/daily-planner/.env
+
+[Install]
+WantedBy=multi-user.target

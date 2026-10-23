@@ -1,0 +1,214 @@
+{
+  "wizard": {
+    "lastRunAt": "2026-07-01T16:06:17.940Z",
+    "lastRunVersion": "2026.6.11",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/root/.openclaw/workspace",
+      "models": {
+        "google/gemini-2.5-flash": {
+          "alias": "gemini-flash"
+        },
+        "google/gemini-3.1-pro-preview": {
+          "alias": "pro"
+        },
+        "openrouter/qwen/qwen3-coder:free": {
+          "alias": "qwen-free"
+        },
+        "openrouter/openai/gpt-oss-120b:free": {
+          "alias": "gpt-oss-free"
+        },
+        "openrouter/meta-llama/llama-3.3-70b-instruct:free": {
+          "alias": "llama-free"
+        }
+      },
+      "model": {
+        "primary": "google/gemini-2.5-flash",
+        "fallbacks": [
+          "openrouter/qwen/qwen3-coder:free",
+          "openrouter/openai/gpt-oss-120b:free",
+          "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+        ]
+      },
+      "memorySearch": {
+        "provider": "gemini",
+        "model": "gemini-embedding-001"
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": "<REDACTED>",
+    "port": 18789,
+    "bind": "loopback",
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "controlUi": {
+      "allowInsecureAuth": "<REDACTED>",
+      "allowedOrigins": [
+        "http://31.97.37.38:18789",
+        "https://31.97.37.38",
+        "http://127.0.0.1:18789",
+        "http://localhost:18789"
+      ]
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "contacts.add",
+        "calendar.add",
+        "reminders.add",
+        "sms.send",
+        "sms.search"
+      ]
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding"
+  },
+  "plugins": {
+    "entries": {
+      "google": {
+        "enabled": true
+      },
+      "telegram": {
+        "enabled": true
+      },
+      "whatsapp": {
+        "enabled": true
+      },
+      "openrouter": {
+        "enabled": true
+      },
+      "diskusi-router": {
+        "enabled": true,
+        "hooks": {
+          "allowConversationAccess": true
+        }
+      }
+    },
+    "allow": [
+      "whatsapp",
+      "diskusi-router",
+      "google",
+      "openrouter",
+      "telegram"
+    ]
+  },
+  "auth": "<REDACTED>",
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    },
+    "entries": {
+      "1password": "<REDACTED>",
+      "camsnap": {
+        "enabled": false
+      },
+      "coding-agent": {
+        "enabled": false
+      },
+      "gh-issues": {
+        "enabled": false
+      },
+      "github": {
+        "enabled": true
+      },
+      "gog": {
+        "enabled": true
+      },
+      "goplaces": {
+        "enabled": false
+      },
+      "himalaya": {
+        "enabled": false
+      },
+      "mcporter": {
+        "enabled": false
+      },
+      "nano-pdf": {
+        "enabled": false
+      },
+      "obsidian": {
+        "enabled": false
+      },
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      },
+      "openhue": {
+        "enabled": false
+      },
+      "oracle": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "sherpa-onnx-tts": {
+        "enabled": false
+      },
+      "songsee": {
+        "enabled": false
+      },
+      "spotify-player": {
+        "enabled": false
+      },
+      "summarize": {
+        "enabled": false
+      },
+      "trello": {
+        "enabled": false
+      },
+      "xurl": {
+        "enabled": false
+      }
+    }
+  },
+  "hooks": {
+    "internal": {
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "boot-md": {
+          "enabled": true
+        },
+        "compaction-notifier": {
+          "enabled": true
+        }
+      },
+      "enabled": true
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.6.11",
+    "lastTouchedAt": "2026-10-13T17:33:23.090Z"
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "dmPolicy": "pairing"
+    }
+  },
+  "commands": {
+    "ownerAllowFrom": [
+      "whatsapp:+6281285922587"
+    ]
+  }
+}

@@ -11,13 +11,7 @@ export const SYSTEM_CATEGORIES = [
     name: "Food",
     type: "EXPENSE" as const,
     icon: "utensils",
-    children: ["Groceries", "Restaurant", "Coffee", "Delivery"],
-  },
-  {
-    name: "Transport",
-    type: "EXPENSE" as const,
-    icon: "car",
-    children: ["Public Transport", "Fuel", "Taxi", "Parking"],
+    children: ["Groceries", "Coffee", "Delivery"],
   },
   {
     name: "Housing",
@@ -30,6 +24,11 @@ export const SYSTEM_CATEGORIES = [
     type: "EXPENSE" as const,
     icon: "sparkles",
     children: ["Shopping", "Entertainment", "Travel", "Subscription"],
+  },
+  {
+    name: "Relationship",
+    type: "EXPENSE" as const,
+    icon: "heart",
   },
   { name: "Bills", type: "EXPENSE" as const, icon: "receipt" },
   { name: "Debt Payment", type: "EXPENSE" as const, icon: "landmark" },

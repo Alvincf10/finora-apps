@@ -1,8 +1,6 @@
 import {
-  addMonths,
   differenceInCalendarDays,
   endOfDay,
-  setDate,
   startOfDay,
   subDays,
 } from "date-fns";
@@ -11,6 +9,7 @@ import { Transaction } from "@/models/Transaction";
 import { User } from "@/models/User";
 import { isLiabilityAccount } from "@/lib/financial/balances";
 import { getFixedCostsInRange } from "@/lib/financial/fixed-costs";
+import { getNextPayday } from "@/lib/financial/payday";
 import {
   SURVIVAL_SAFE_RESERVE_DAYS,
   computeSurvivalFromCash,
@@ -34,19 +33,7 @@ export type SurvivalPlan = {
   status: "ACTIVE" | "PAYDAY" | "NO_CASH";
 };
 
-export function getNextPayday(
-  paydayDay: number,
-  now: Date = new Date()
-): Date {
-  const day = Math.min(28, Math.max(1, paydayDay));
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const todayDate = now.getDate();
-  const thisPayday = startOfDay(setDate(new Date(y, m, 1), day));
-
-  if (todayDate <= day) return thisPayday;
-  return startOfDay(setDate(addMonths(new Date(y, m, 1), 1), day));
-}
+export { getNextPayday };
 
 export async function getSurvivalPlan(
   userId: string,

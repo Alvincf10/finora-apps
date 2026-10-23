@@ -1,10 +1,8 @@
 import {
   endOfDay,
   endOfMonth,
-  startOfDay,
   subDays,
   addMonths,
-  setDate,
   max as maxDate,
 } from "date-fns";
 import { Account } from "@/models/Account";
@@ -19,6 +17,7 @@ import {
   getFixedCostsInRange,
   type FixedCostDueItem,
 } from "@/lib/financial/fixed-costs";
+import { resolvePaydayInMonth } from "@/lib/financial/payday";
 import type { AccountType, Currency } from "@/types";
 
 export type PayCycleBounds = {
@@ -32,7 +31,8 @@ export type PayCycleBounds = {
  * Pay cycle for salary buffer: payday → day before next payday.
  *
  * Uses this month's payday as the anchor (upcoming or already started),
- * so e.g. on 13 Okt with payday 25 → 25 Okt – 24 Nov.
+ * weekend-adjusted (Sat/Sun → previous Friday).
+ * e.g. on 13 Okt 2026 with payday 25 (Sunday) → 23 Okt – 24 Nov.
  */
 export function getPayCycleBounds(
   paydayDay: number,
@@ -42,8 +42,13 @@ export function getPayCycleBounds(
   const y = now.getFullYear();
   const m = now.getMonth();
 
-  const cycleStart = startOfDay(setDate(new Date(y, m, 1), day));
-  const nextPayday = startOfDay(setDate(addMonths(cycleStart, 1), day));
+  const cycleStart = resolvePaydayInMonth(day, y, m);
+  const nextMonth = addMonths(new Date(y, m, 1), 1);
+  const nextPayday = resolvePaydayInMonth(
+    day,
+    nextMonth.getFullYear(),
+    nextMonth.getMonth()
+  );
   const cycleEnd = endOfDay(subDays(nextPayday, 1));
 
   const label = `${cycleStart.toLocaleDateString("id-ID", {

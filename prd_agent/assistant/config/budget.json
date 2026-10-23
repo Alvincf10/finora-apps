@@ -1,0 +1,10 @@
+{
+  "currency": "USD",
+  "monthlyTargetUsd": 6,
+  "hardLimitUsd": 10,
+  "warnAtPct": [0.7, 0.85],
+  "softBlockProAtPct": 0.7,
+  "ledgerPath": "/var/lib/openclaw-cost/ledger.jsonl",
+  "alertStatePath": "/var/lib/openclaw-cost/alert-state.json",
+  "monthTimezone": "Asia/Jakarta"
+}

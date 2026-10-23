@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "/root/.openclaw/hooks/forward-wa.sh",
+        "failClosed": false
+      }
+    ]
+  }
+}

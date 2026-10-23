@@ -92,6 +92,8 @@ export interface BudgetCategoryRecommendation {
   rationale: string[];
 }
 
+export type IncomeSource = "SALARY" | "HISTORY";
+
 export interface BudgetRecommendationResult {
   month: number;
   year: number;
@@ -100,8 +102,11 @@ export interface BudgetRecommendationResult {
   totalIncome: number;
   totalExpenses: number;
   totalDebtPayment: number;
+  /** Fixed costs from planning model (when configured). */
+  totalFixedCosts: number;
   totalSavings: number;
   buffer: number;
+  incomeSource: IncomeSource;
   rationale: string[];
   confidence: Confidence;
   conflict?: {
@@ -116,6 +121,8 @@ export interface BudgetRecommendationResult {
 export interface CashFlowForecast {
   projectedIncome: number;
   projectedExpenses: number;
+  /** Variable + fixed (when Fixed costs model is used, fixed is included here). */
+  projectedFixedCosts: number;
   projectedDebtPayment: number;
   projectedSavings: number;
   startingBalance: number;
@@ -123,6 +130,7 @@ export interface CashFlowForecast {
   assumptions: string[];
   confidence: Confidence;
   currency: Currency;
+  incomeSource: IncomeSource;
 }
 
 export interface DebtScenario {

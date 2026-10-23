@@ -41,7 +41,15 @@ type Account = {
   currentBalance: number;
   initialBalance: number;
   isActive: boolean;
+  creditLimit?: number;
+  statementDueAmount?: number;
+  statementDueDay?: number;
+  debitMode?: boolean;
 };
+
+function isCreditCard(type: string) {
+  return type === "CREDIT_CARD";
+}
 
 export default function AccountsPage() {
   const { t, intlLocale } = useI18n();
@@ -49,6 +57,7 @@ export default function AccountsPage() {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
+  const [createType, setCreateType] = useState("BANK");
 
   const editing = accounts.find((a) => a._id === editOpen) ?? null;
 
@@ -64,18 +73,38 @@ export default function AccountsPage() {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     const currency = String(form.get("currency")) as Currency;
+    const type = String(form.get("type"));
+    const cc = isCreditCard(type);
     try {
       await api("/api/accounts", {
         method: "POST",
         body: JSON.stringify({
           name: form.get("name"),
-          type: form.get("type"),
+          type,
           currency,
-          initialBalance: toMinorUnits(Number(form.get("initialBalance")), currency),
+          initialBalance: toMinorUnits(
+            Number(form.get("initialBalance")),
+            currency
+          ),
+          ...(cc
+            ? {
+                creditLimit: toMinorUnits(
+                  Number(form.get("creditLimit") || 0),
+                  currency
+                ),
+                statementDueAmount: toMinorUnits(
+                  Number(form.get("statementDueAmount") || 0),
+                  currency
+                ),
+                statementDueDay: Number(form.get("statementDueDay") || 0) || undefined,
+                debitMode: form.get("debitMode") === "on",
+              }
+            : {}),
         }),
       });
       toast.success(t("accounts.created"));
       setOpen(false);
+      setCreateType("BANK");
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -85,16 +114,38 @@ export default function AccountsPage() {
   async function onEdit(e: React.FormEvent<HTMLFormElement>, account: Account) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const type = String(form.get("type"));
+    const cc = isCreditCard(type);
     try {
       await api(`/api/accounts/${account._id}`, {
         method: "PATCH",
         body: JSON.stringify({
           name: form.get("name"),
-          type: form.get("type"),
+          type,
           currentBalance: toMinorUnits(
             Number(form.get("currentBalance")),
             account.currency
           ),
+          ...(cc
+            ? {
+                creditLimit: toMinorUnits(
+                  Number(form.get("creditLimit") || 0),
+                  account.currency
+                ),
+                statementDueAmount: toMinorUnits(
+                  Number(form.get("statementDueAmount") || 0),
+                  account.currency
+                ),
+                statementDueDay:
+                  Number(form.get("statementDueDay") || 0) || null,
+                debitMode: form.get("debitMode") === "on",
+              }
+            : {
+                creditLimit: null,
+                statementDueAmount: null,
+                statementDueDay: null,
+                debitMode: false,
+              }),
         }),
       });
       toast.success(t("accounts.updated"));
@@ -187,7 +238,10 @@ export default function AccountsPage() {
           open={open}
           onOpenChange={(v) => {
             setOpen(v);
-            if (v) setFormCurrency("IDR");
+            if (v) {
+              setFormCurrency("IDR");
+              setCreateType("BANK");
+            }
           }}
         >
           <DialogTrigger
@@ -213,7 +267,8 @@ export default function AccountsPage() {
                 <select
                   name="type"
                   className="flex h-9 w-full rounded-md border px-3 text-sm"
-                  defaultValue="BANK"
+                  value={createType}
+                  onChange={(e) => setCreateType(e.target.value)}
                 >
                   {typeOptions}
                 </select>
@@ -234,7 +289,11 @@ export default function AccountsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("accounts.initialBalance")}</Label>
+                  <Label>
+                    {isCreditCard(createType)
+                      ? t("accounts.outstanding")
+                      : t("accounts.initialBalance")}
+                  </Label>
                   <CurrencyAmountInput
                     name="initialBalance"
                     currency={formCurrency}
@@ -242,6 +301,50 @@ export default function AccountsPage() {
                   />
                 </div>
               </div>
+              {isCreditCard(createType) ? (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-2">
+                    <Label>{t("accounts.creditLimit")}</Label>
+                    <CurrencyAmountInput
+                      name="creditLimit"
+                      currency={formCurrency}
+                      defaultValue={0}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("accounts.statementDue")}</Label>
+                    <CurrencyAmountInput
+                      name="statementDueAmount"
+                      currency={formCurrency}
+                      defaultValue={0}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("accounts.statementDueDay")}</Label>
+                    <Input
+                      name="statementDueDay"
+                      type="number"
+                      min={1}
+                      max={31}
+                      placeholder="15"
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="debitMode"
+                      className="mt-1"
+                      defaultChecked
+                    />
+                    <span>
+                      {t("accounts.debitMode")}
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t("accounts.debitModeHint")}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
               <Button type="submit" className="w-full">
                 {t("common.create")}
               </Button>
@@ -265,9 +368,30 @@ export default function AccountsPage() {
                   {a.isActive ? t("common.active") : t("common.archived")}
                 </Badge>
               </div>
-              <p className="font-mono text-lg text-emerald-800 dark:text-emerald-300">
-                {formatMoney(a.currentBalance, a.currency, intlLocale)}
+              <p
+                className={`font-mono text-lg ${
+                  isCreditCard(a.type)
+                    ? "text-amber-800 dark:text-amber-300"
+                    : "text-emerald-800 dark:text-emerald-300"
+                }`}
+              >
+                {isCreditCard(a.type)
+                  ? `${t("accounts.outstanding")}: ${formatMoney(a.currentBalance, a.currency, intlLocale)}`
+                  : formatMoney(a.currentBalance, a.currency, intlLocale)}
               </p>
+              {isCreditCard(a.type) ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("accounts.creditLimit")}:{" "}
+                  {formatMoney(a.creditLimit ?? 0, a.currency, intlLocale)}
+                  {" · "}
+                  {t("accounts.statementDue")}:{" "}
+                  {formatMoney(
+                    a.statementDueAmount ?? 0,
+                    a.currency,
+                    intlLocale
+                  )}
+                </p>
+              ) : null}
               <AccountActions account={a} />
             </CardContent>
           </Card>
@@ -351,7 +475,11 @@ export default function AccountsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("accounts.currentBalance")}</Label>
+                  <Label>
+                    {isCreditCard(editing.type)
+                      ? t("accounts.outstanding")
+                      : t("accounts.currentBalance")}
+                  </Label>
                   <CurrencyAmountInput
                     name="currentBalance"
                     currency={editing.currency}
@@ -362,9 +490,61 @@ export default function AccountsPage() {
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    {t("accounts.balanceHint")}
+                    {isCreditCard(editing.type)
+                      ? t("accounts.ccOutstandingHint")
+                      : t("accounts.balanceHint")}
                   </p>
                 </div>
+                {isCreditCard(editing.type) ? (
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="space-y-2">
+                      <Label>{t("accounts.creditLimit")}</Label>
+                      <CurrencyAmountInput
+                        name="creditLimit"
+                        currency={editing.currency}
+                        defaultValue={fromMinorUnits(
+                          editing.creditLimit ?? 0,
+                          editing.currency
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("accounts.statementDue")}</Label>
+                      <CurrencyAmountInput
+                        name="statementDueAmount"
+                        currency={editing.currency}
+                        defaultValue={fromMinorUnits(
+                          editing.statementDueAmount ?? 0,
+                          editing.currency
+                        )}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("accounts.statementDueDay")}</Label>
+                      <Input
+                        name="statementDueDay"
+                        type="number"
+                        min={1}
+                        max={31}
+                        defaultValue={editing.statementDueDay ?? ""}
+                      />
+                    </div>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="debitMode"
+                        className="mt-1"
+                        defaultChecked={Boolean(editing.debitMode)}
+                      />
+                      <span>
+                        {t("accounts.debitMode")}
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {t("accounts.debitModeHint")}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
                 <Button type="submit" className="w-full">
                   {t("common.save")}
                 </Button>

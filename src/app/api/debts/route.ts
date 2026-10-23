@@ -35,6 +35,8 @@ export async function POST(request: Request) {
         ? new Date(input.targetPayoffDate)
         : undefined,
       notes: input.notes,
+      obligationType: input.obligationType ?? "INSTALLMENT",
+      linkedAccountId: input.linkedAccountId,
       status: "ACTIVE",
     });
 

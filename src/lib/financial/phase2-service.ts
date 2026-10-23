@@ -24,6 +24,10 @@ import {
   weightedAverage3,
 } from "@/lib/financial/phase2-math";
 import { getBudgetOverview, getFinancialSummary } from "@/lib/financial/summary";
+import {
+  getPlanningBaselines,
+  resolveExpectedIncome,
+} from "@/lib/financial/planning-baselines";
 import { formatMoney, percent } from "@/lib/money";
 import type {
   CategoryMonthlySpend,
@@ -292,18 +296,23 @@ export async function getSmartBudgetRecommendation(
 ) {
   const data = await buildCategorySpendingSeries(userId, current, 3);
   const profile = await getFinancialProfile(userId, current);
-  const debts = await Debt.find({ userId, status: "ACTIVE" }).lean();
   const goals = await SavingsGoal.find({ userId, status: "ACTIVE" }).lean();
+  const baselines = await getPlanningBaselines(userId, current);
 
-  const expectedIncome =
-    data.currentIncome > 0
-      ? data.currentIncome
-      : Math.round(weightedAverage3([...data.incomeHistory].reverse()));
-
-  const minimumDebtPayment = debts.reduce(
-    (sum, d) => sum + (d.minimumPayment ?? d.plannedPayment ?? 0),
-    0
+  const historyIncome = Math.round(
+    weightedAverage3([...data.incomeHistory].reverse())
   );
+  const expectedIncome = resolveExpectedIncome(
+    baselines,
+    historyIncome,
+    data.currentIncome
+  );
+
+  const fallbackDebt = (
+    await Debt.find({ userId, status: "ACTIVE" }).lean()
+  ).reduce((sum, d) => sum + (d.minimumPayment ?? d.plannedPayment ?? 0), 0);
+  const minimumDebtPayment =
+    baselines.debtDueTotal > 0 ? baselines.debtDueTotal : fallbackDebt;
 
   // Goal-based monthly savings requirement (simple remaining / months left)
   let targetSavings = 0;
@@ -333,6 +342,8 @@ export async function getSmartBudgetRecommendation(
     expectedIncome,
     categories: data.series,
     minimumDebtPayment,
+    fixedObligations: baselines.fixedCostsTotal,
+    incomeSource: baselines.incomeSource,
     targetSavings,
     historicalMonthsAvailable: data.historicalMonthsAvailable,
   });
@@ -836,40 +847,79 @@ export async function getCashFlowForecastForUser(
 ) {
   const data = await buildCategorySpendingSeries(userId, period, 3);
   const profile = await getFinancialProfile(userId, period);
-  const debts = await Debt.find({ userId, status: "ACTIVE" }).lean();
+  const baselines = await getPlanningBaselines(userId, period);
   const accounts = await Account.find({ userId, isActive: true }).lean();
 
-  const projectedIncome =
-    data.currentIncome > 0
-      ? // blend known month-to-date with historical remainder roughly
-        Math.max(
-          data.currentIncome,
-          Math.round(weightedAverage3([...data.incomeHistory].reverse()))
-        )
-      : Math.round(weightedAverage3([...data.incomeHistory].reverse()));
-
-  const projectedExpenses = data.series.reduce((sum, s) => {
-    const newestFirst = [...s.amounts].reverse();
-    return sum + weightedAverage3(newestFirst);
-  }, 0);
-
-  const projectedDebtPayment = debts.reduce(
-    (sum, d) => sum + (d.plannedPayment ?? d.minimumPayment ?? 0),
-    0
+  const historyIncome = Math.round(
+    weightedAverage3([...data.incomeHistory].reverse())
   );
+  const projectedIncome = resolveExpectedIncome(
+    baselines,
+    historyIncome,
+    data.currentIncome
+  );
+
+  const useFixedModel = baselines.fixedCostsTotal > 0;
+  const weightedSeriesTotal = (rows: typeof data.series) =>
+    Math.round(
+      rows.reduce((sum, s) => {
+        const newestFirst = [...s.amounts].reverse();
+        return sum + weightedAverage3(newestFirst);
+      }, 0)
+    );
+
+  let projectedFixedCosts: number;
+  let projectedExpenses: number;
+  if (useFixedModel) {
+    projectedFixedCosts = baselines.fixedCostsTotal;
+    const variableProjected = weightedSeriesTotal(
+      data.series.filter((s) => s.nature !== "FIXED")
+    );
+    projectedExpenses = variableProjected + projectedFixedCosts;
+  } else {
+    projectedExpenses = weightedSeriesTotal(data.series);
+    projectedFixedCosts = weightedSeriesTotal(
+      data.series.filter((s) => s.nature === "FIXED")
+    );
+  }
+
+  const fallbackDebt = (
+    await Debt.find({ userId, status: "ACTIVE" }).lean()
+  ).reduce((sum, d) => sum + (d.plannedPayment ?? d.minimumPayment ?? 0), 0);
+  const projectedDebtPayment =
+    baselines.debtDueTotal > 0 ? baselines.debtDueTotal : fallbackDebt;
 
   const startingBalance = accounts
     .filter((a) => a.type !== "CREDIT_CARD")
     .reduce((sum, a) => sum + a.currentBalance, 0);
 
+  const assumptions = [
+    baselines.incomeSource === "SALARY"
+      ? "Income uses Settings monthly salary (max with history / month-to-date)."
+      : "Income from weighted transaction history (set monthly salary in Settings for a stable baseline).",
+    useFixedModel
+      ? "Fixed costs come from Fixed costs planning; variable spend from weighted 3-month history."
+      : "Spending assumed similar to the previous 3 months (weighted).",
+    baselines.debtDueTotal > 0
+      ? "Debt uses obligations due in this calendar month."
+      : "Debt payment uses planned/minimum obligation on active debts.",
+    "Transfers are excluded from expenses.",
+    "Payday split allocates this cycle's cash — Forecast projects the calendar month.",
+  ];
+
   return forecastMonthlyCashflow({
     projectedIncome,
-    projectedExpenses: Math.round(projectedExpenses),
+    projectedExpenses,
+    projectedFixedCosts,
     projectedDebtPayment,
     startingBalance,
     currency: data.currency,
     historicalMonthsAvailable: data.historicalMonthsAvailable,
-    incomeStable: profile.incomeStability === "STABLE",
+    incomeStable:
+      profile.incomeStability === "STABLE" ||
+      baselines.incomeSource === "SALARY",
+    incomeSource: baselines.incomeSource,
+    assumptions,
   });
 }
 

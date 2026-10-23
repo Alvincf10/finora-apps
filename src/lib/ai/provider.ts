@@ -1,3 +1,5 @@
+import { appendFileSync, existsSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export interface AIRequest {
@@ -10,6 +12,28 @@ export interface AIResponse {
   text: string;
   model: string;
   provider: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCostUsd?: number;
+}
+
+const FINORA_LEDGER =
+  process.env.FINORA_COST_LEDGER_PATH ?? "/var/lib/openclaw-cost/ledger.jsonl";
+
+/** GPT-4o-mini-ish defaults; override via env later if needed. */
+const DEFAULT_PRICE = { input: 0.15, output: 0.6 };
+
+function appendFinoraCost(entry: Record<string, unknown>) {
+  try {
+    const dir = dirname(FINORA_LEDGER);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(FINORA_LEDGER, `${JSON.stringify(entry)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  } catch {
+    // Never fail the user-facing AI call because of ledger I/O
+  }
 }
 
 export interface AIProvider {
@@ -52,7 +76,7 @@ export class OpenRouterProvider implements AIProvider {
             { role: "system", content: input.system },
             { role: "user", content: input.prompt },
           ],
-          max_tokens: input.maxTokens ?? 500,
+          max_tokens: input.maxTokens ?? 400,
         }),
       }
     );
@@ -65,12 +89,51 @@ export class OpenRouterProvider implements AIProvider {
     const json = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
       model?: string;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
     };
+
+    const inputTokens = json.usage?.prompt_tokens ?? 0;
+    const outputTokens = json.usage?.completion_tokens ?? 0;
+    const estimatedCostUsd =
+      Math.round(
+        ((inputTokens * DEFAULT_PRICE.input +
+          outputTokens * DEFAULT_PRICE.output) /
+          1_000_000) *
+          1e8
+      ) / 1e8;
+
+    const model = json.model ?? this.model;
+    appendFinoraCost({
+      request_id: null,
+      agent_name: "finora",
+      task_type: "ai_explain",
+      provider: "openrouter",
+      model,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      estimated_cost_usd: estimatedCostUsd,
+      status: "ok",
+      ts: new Date().toISOString(),
+      month_key: new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+      })
+        .format(new Date())
+        .slice(0, 7),
+    });
 
     return {
       text: json.choices?.[0]?.message?.content ?? "",
-      model: json.model ?? this.model,
+      model,
       provider: "openrouter",
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd,
     };
   }
 }

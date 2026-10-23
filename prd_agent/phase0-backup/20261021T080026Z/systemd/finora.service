@@ -1,0 +1,27 @@
+[Unit]
+Description=Finora Personal Finance (Next.js)
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=finora
+Group=finora
+WorkingDirectory=/root/.openclaw/finora-apps
+Environment=NODE_ENV=production
+Environment=PATH=/root/.nvm/versions/node/v24.18.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+EnvironmentFile=/root/.openclaw/finora-apps/.env.local
+ExecStart=/root/.nvm/versions/node/v24.18.0/bin/npm run start
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/root/.openclaw/finora-apps
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=finora
+
+[Install]
+WantedBy=multi-user.target

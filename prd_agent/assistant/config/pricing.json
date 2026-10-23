@@ -1,0 +1,53 @@
+{
+  "_comment": "USD per 1M tokens. Update when provider rates change. cacheRead/cacheWrite optional.",
+  "models": {
+    "google/gemini-2.5-flash": {
+      "input": 0.3,
+      "output": 2.5,
+      "cacheRead": 0.03,
+      "cacheWrite": 0.3
+    },
+    "google/gemini-3.1-pro-preview": {
+      "input": 1.25,
+      "output": 10.0,
+      "cacheRead": 0.125,
+      "cacheWrite": 1.25
+    },
+    "gemini-2.5-flash": {
+      "input": 0.3,
+      "output": 2.5,
+      "cacheRead": 0.03,
+      "cacheWrite": 0.3
+    },
+    "gemini-3.1-pro-preview": {
+      "input": 1.25,
+      "output": 10.0,
+      "cacheRead": 0.125,
+      "cacheWrite": 1.25
+    },
+    "openrouter/qwen/qwen3-coder:free": {
+      "input": 0,
+      "output": 0
+    },
+    "openrouter/openai/gpt-oss-120b:free": {
+      "input": 0,
+      "output": 0
+    },
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free": {
+      "input": 0,
+      "output": 0
+    },
+    "openai/gpt-4o-mini": {
+      "input": 0.15,
+      "output": 0.6
+    },
+    "deepseek/deepseek-chat": {
+      "input": 0.27,
+      "output": 1.1
+    }
+  },
+  "default": {
+    "input": 0.5,
+    "output": 1.5
+  }
+}

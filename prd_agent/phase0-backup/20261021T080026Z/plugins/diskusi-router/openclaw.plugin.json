@@ -1,0 +1,17 @@
+{
+  "id": "diskusi-router",
+  "name": "Diskusi Router",
+  "description": "Otomatis pakai Gemini 3.1 Pro saat mode diskusi (sticky per sesi), lalu kembali ke model default (Flash) saat diskusi selesai.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      }
+    }
+  }
+}

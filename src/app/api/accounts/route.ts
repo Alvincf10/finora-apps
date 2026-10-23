@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const { userId } = await requireUser();
     const input = createAccountSchema.parse(await request.json());
 
+    const isCc = input.type === "CREDIT_CARD";
     const account = await Account.create({
       userId,
       name: input.name,
@@ -26,6 +27,10 @@ export async function POST(request: Request) {
       initialBalance: input.initialBalance,
       currentBalance: input.initialBalance,
       isActive: true,
+      creditLimit: isCc ? (input.creditLimit ?? 0) : undefined,
+      statementDueAmount: isCc ? (input.statementDueAmount ?? 0) : undefined,
+      statementDueDay: isCc ? input.statementDueDay : undefined,
+      debitMode: isCc ? Boolean(input.debitMode) : false,
     });
 
     return ok(account, 201);

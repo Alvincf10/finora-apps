@@ -19,6 +19,10 @@ export const createAccountSchema = z.object({
   type: z.enum(["CASH", "BANK", "E_WALLET", "CREDIT_CARD", "OTHER"]),
   currency: currencySchema,
   initialBalance: z.number().int(),
+  creditLimit: z.number().int().min(0).optional(),
+  statementDueAmount: z.number().int().min(0).optional(),
+  statementDueDay: z.number().int().min(1).max(31).optional(),
+  debitMode: z.boolean().optional(),
 });
 
 export const updateAccountSchema = z.object({
@@ -31,9 +35,14 @@ export const updateAccountSchema = z.object({
   /**
    * Desired current balance. Adjusts initialBalance so that
    * initialBalance + transaction effects = this value.
+   * For CREDIT_CARD this is outstanding owed.
    */
   currentBalance: z.number().int().optional(),
   isActive: z.boolean().optional(),
+  creditLimit: z.number().int().min(0).nullable().optional(),
+  statementDueAmount: z.number().int().min(0).nullable().optional(),
+  statementDueDay: z.number().int().min(1).max(31).nullable().optional(),
+  debitMode: z.boolean().optional(),
 });
 
 export const createCategorySchema = z.object({
@@ -103,6 +112,14 @@ export const createBudgetSchema = z.object({
 
 export const debtKindSchema = z.enum(["CONSUMER", "MORTGAGE", "OTHER"]);
 
+export const debtObligationTypeSchema = z.enum([
+  "INSTALLMENT",
+  "CREDIT_STATEMENT",
+  "PAYOFF",
+  "TRANSFER",
+  "OTHER",
+]);
+
 export const createDebtSchema = z.object({
   name: z.string().min(1).max(100),
   kind: debtKindSchema.optional(),
@@ -116,10 +133,88 @@ export const createDebtSchema = z.object({
   startDate: z.string().or(z.date()).optional(),
   targetPayoffDate: z.string().or(z.date()).optional(),
   notes: z.string().optional(),
+  obligationType: debtObligationTypeSchema.optional(),
+  linkedAccountId: z.string().min(1).optional(),
 });
 
 export const updateDebtSchema = createDebtSchema.partial().extend({
   status: z.enum(["ACTIVE", "PAID", "CANCELLED"]).optional(),
+  linkedAccountId: z.string().min(1).nullable().optional(),
+});
+
+export const paydayEnvelopeSchema = z.object({
+  key: z.string().min(1).max(100),
+  label: z.string().min(1).max(120),
+  amount: z.number().int().min(0),
+  source: z.enum(["AUTO", "MANUAL"]).optional(),
+  kind: z
+    .enum([
+      "CC_STATEMENT",
+      "DEBT",
+      "FIXED",
+      "CASH_BUFFER",
+      "CC_SPEND_CAP",
+      "LIVING",
+      "GOALS",
+      "OTHER",
+    ])
+    .optional(),
+  linkedDebtId: z.string().optional(),
+  linkedAccountId: z.string().optional(),
+  linkedFixedCostId: z.string().optional(),
+  paid: z.boolean().optional(),
+});
+
+export const savePaydayAllocationSchema = z
+  .object({
+    salary: z.number().int().min(0).optional(),
+    startingCash: z.number().int().min(0).optional(),
+    envelopes: z.array(paydayEnvelopeSchema).optional(),
+    status: z.enum(["DRAFT", "ACTIVE", "COMPLETED"]).optional(),
+    notes: z.string().max(2000).optional(),
+    resetToSuggestion: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.resetToSuggestion) return;
+    if (!data.envelopes || data.envelopes.length < 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "envelopes required",
+        path: ["envelopes"],
+      });
+    }
+  });
+
+export const payFixedCostSchema = z.object({
+  accountId: z.string().min(1).optional(),
+  amount: z.number().int().positive().optional(),
+  date: z.string().or(z.date()).optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export const settlePaydayEnvelopeSchema = z.object({
+  envelopeKey: z.string().min(1),
+  amount: z.number().int().positive(),
+  kind: z.enum([
+    "CC_STATEMENT",
+    "DEBT",
+    "FIXED",
+    "CASH_BUFFER",
+    "CC_SPEND_CAP",
+    "LIVING",
+    "GOALS",
+    "OTHER",
+  ]),
+  label: z.string().min(1).max(120),
+  linkedDebtId: z.string().min(1).optional(),
+  linkedAccountId: z.string().min(1).optional(),
+  linkedFixedCostId: z.string().min(1).optional(),
+  /** Funding account (BCA etc). Defaults to preferred bank/cash. */
+  accountId: z.string().min(1).optional(),
+  salary: z.number().int().min(0).optional(),
+  startingCash: z.number().int().min(0).optional(),
+  /** Full envelopes snapshot so we can upsert allocation if needed. */
+  envelopes: z.array(paydayEnvelopeSchema).optional(),
 });
 
 export const createDebtPaymentSchema = z.object({
@@ -164,43 +259,6 @@ export const createFixedCostSchema = z.object({
 });
 
 export const updateFixedCostSchema = createFixedCostSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
-
-export const createRecurringSchema = z
-  .object({
-    type: z.enum(["INCOME", "EXPENSE"]),
-    amount: z.number().int().positive(),
-    currency: currencySchema,
-    accountId: z.string().min(1),
-    categoryId: z.string().min(1),
-    description: z.string().max(500).optional(),
-    frequency: z.enum(["MONTHLY", "WEEKLY"]).default("MONTHLY"),
-    dayOfMonth: z.number().int().min(1).max(31).optional(),
-    nextOccurrence: z.string().or(z.date()).optional(),
-    endDate: z.string().or(z.date()).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.frequency === "MONTHLY" && data.dayOfMonth == null) {
-      ctx.addIssue({
-        code: "custom",
-        message: "dayOfMonth is required for monthly recurring",
-        path: ["dayOfMonth"],
-      });
-    }
-  });
-
-export const updateRecurringSchema = z.object({
-  type: z.enum(["INCOME", "EXPENSE"]).optional(),
-  amount: z.number().int().positive().optional(),
-  currency: currencySchema.optional(),
-  accountId: z.string().min(1).optional(),
-  categoryId: z.string().min(1).optional(),
-  description: z.string().max(500).nullable().optional(),
-  frequency: z.enum(["MONTHLY", "WEEKLY"]).optional(),
-  dayOfMonth: z.number().int().min(1).max(31).nullable().optional(),
-  nextOccurrence: z.string().or(z.date()).optional(),
-  endDate: z.string().or(z.date()).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 

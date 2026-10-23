@@ -271,22 +271,41 @@ export function generateBudgetRecommendation(input: {
   expectedIncome: number;
   categories: CategoryMonthlySpend[];
   minimumDebtPayment: number;
+  /** When > 0, Fixed costs model replaces FIXED-nature category caps. */
+  fixedObligations?: number;
+  incomeSource?: BudgetRecommendationResult["incomeSource"];
   targetSavings: number;
   historicalMonthsAvailable: number;
 }): BudgetRecommendationResult {
+  const fixedObligations = Math.max(0, input.fixedObligations ?? 0);
+  const useFixedModel = fixedObligations > 0;
+  const incomeSource = input.incomeSource ?? "HISTORY";
+
   const categoryRecs = input.categories
     .filter((c) => c.classification !== "UNKNOWN" || c.amounts.length > 0)
     .map(recommendCategoryBudget);
 
+  if (useFixedModel) {
+    for (const c of categoryRecs) {
+      if (c.nature === "FIXED") {
+        c.recommendedAmount = 0;
+        c.rationale.push(
+          "Covered by Fixed costs planning — set category cap to 0 to avoid double-count."
+        );
+      }
+    }
+  }
+
   const mandatoryFromCats = categoryRecs
-    .filter(
-      (c) =>
-        c.classification === "ESSENTIAL" ||
-        c.nature === "FIXED"
-    )
+    .filter((c) => {
+      if (c.classification === "ESSENTIAL") return true;
+      if (useFixedModel) return false;
+      return c.nature === "FIXED";
+    })
     .reduce((sum, c) => sum + c.recommendedAmount, 0);
 
-  const mandatory = mandatoryFromCats + input.minimumDebtPayment;
+  const mandatory =
+    mandatoryFromCats + input.minimumDebtPayment + fixedObligations;
   const targetSavings = Math.max(0, input.targetSavings);
 
   let discretionaryCapacity =
@@ -333,32 +352,36 @@ export function generateBudgetRecommendation(input: {
     0
   );
 
+  const obligations = input.minimumDebtPayment + fixedObligations;
+
   // Recompute savings after scaling
   const effectiveSavings = Math.max(
     0,
     Math.min(
       targetSavings,
-      input.expectedIncome - totalExpenses - input.minimumDebtPayment
+      input.expectedIncome - totalExpenses - obligations
     )
   );
   const buffer = Math.max(
     0,
-    input.expectedIncome -
-      totalExpenses -
-      input.minimumDebtPayment -
-      effectiveSavings
+    input.expectedIncome - totalExpenses - obligations - effectiveSavings
   );
 
-  const confidence: Confidence =
+  let confidence: Confidence =
     input.historicalMonthsAvailable >= 6
       ? "HIGH"
       : input.historicalMonthsAvailable >= 3
         ? "MEDIUM"
         : "LOW";
+  if (incomeSource === "SALARY" && confidence === "LOW") {
+    confidence = "MEDIUM";
+  }
 
   const rationale = [
-    `Expected income: ${input.expectedIncome}`,
-    `Mandatory (essentials/fixed + min debt): ${mandatory}`,
+    `Expected income (${incomeSource === "SALARY" ? "Settings salary" : "transaction history"}): ${input.expectedIncome}`,
+    `Mandatory (essentials${useFixedModel ? "" : "/fixed cats"} + debt${useFixedModel ? " + fixed costs" : ""}): ${mandatory}`,
+    `Fixed costs obligation: ${fixedObligations}`,
+    `Debt due this month: ${input.minimumDebtPayment}`,
     `Target savings: ${targetSavings}`,
     `Effective savings after guardrails: ${effectiveSavings}`,
     `Discretionary capacity before scaling: ${input.expectedIncome - mandatory - targetSavings}`,
@@ -376,8 +399,10 @@ export function generateBudgetRecommendation(input: {
     totalIncome: input.expectedIncome,
     totalExpenses,
     totalDebtPayment: input.minimumDebtPayment,
+    totalFixedCosts: fixedObligations,
     totalSavings: effectiveSavings,
     buffer,
+    incomeSource,
     rationale,
     confidence,
     conflict,
@@ -387,39 +412,51 @@ export function generateBudgetRecommendation(input: {
 export function forecastMonthlyCashflow(input: {
   projectedIncome: number;
   projectedExpenses: number;
+  projectedFixedCosts?: number;
   projectedDebtPayment: number;
   startingBalance: number;
   currency: Currency;
   historicalMonthsAvailable: number;
   incomeStable: boolean;
+  incomeSource?: CashFlowForecast["incomeSource"];
+  assumptions?: string[];
 }): CashFlowForecast {
   const projectedSavings =
     input.projectedIncome -
     input.projectedExpenses -
     input.projectedDebtPayment;
   const projectedEndingBalance = input.startingBalance + projectedSavings;
+  const incomeSource = input.incomeSource ?? "HISTORY";
 
   let confidence: Confidence = "LOW";
-  if (input.historicalMonthsAvailable >= 6 && input.incomeStable) {
+  if (
+    (input.historicalMonthsAvailable >= 6 && input.incomeStable) ||
+    (incomeSource === "SALARY" && input.historicalMonthsAvailable >= 3)
+  ) {
     confidence = "HIGH";
-  } else if (input.historicalMonthsAvailable >= 3) {
+  } else if (
+    input.historicalMonthsAvailable >= 3 ||
+    incomeSource === "SALARY"
+  ) {
     confidence = "MEDIUM";
   }
 
   return {
     projectedIncome: input.projectedIncome,
     projectedExpenses: input.projectedExpenses,
+    projectedFixedCosts: input.projectedFixedCosts ?? 0,
     projectedDebtPayment: input.projectedDebtPayment,
     projectedSavings,
     startingBalance: input.startingBalance,
     projectedEndingBalance,
-    assumptions: [
+    assumptions: input.assumptions ?? [
       "Forecast assumes spending remains similar to the previous 3 months (weighted).",
       "Debt payment uses planned/minimum obligation.",
       "Transfers are excluded from expenses.",
     ],
     confidence,
     currency: input.currency,
+    incomeSource,
   };
 }
 
@@ -474,13 +511,16 @@ export function defaultClassification(name: string): ExpenseClass {
   ) {
     return "ESSENTIAL";
   }
-  if (["transport", "fuel", "public"].some((k) => n.includes(k))) {
-    return "IMPORTANT";
-  }
   if (
-    ["restaurant", "coffee", "shopping", "entertainment", "travel", "subscription", "lifestyle"].some(
-      (k) => n.includes(k)
-    )
+    [
+      "coffee",
+      "shopping",
+      "entertainment",
+      "travel",
+      "subscription",
+      "lifestyle",
+      "relationship",
+    ].some((k) => n.includes(k))
   ) {
     return "DISCRETIONARY";
   }

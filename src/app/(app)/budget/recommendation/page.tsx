@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CurrencyAmountInput } from "@/components/currency-amount-input";
@@ -17,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type Rec = {
   month: number;
@@ -34,8 +36,10 @@ type Rec = {
   totalIncome: number;
   totalExpenses: number;
   totalDebtPayment: number;
+  totalFixedCosts: number;
   totalSavings: number;
   buffer: number;
+  incomeSource: "SALARY" | "HISTORY";
   rationale: string[];
   confidence: string;
   conflict?: { message: string };
@@ -75,7 +79,10 @@ export default function SmartBudgetPage() {
 
   const adjustedTotal = Object.values(amounts).reduce((a, b) => a + b, 0);
   const savingsImpact = data
-    ? data.totalIncome - adjustedTotal - data.totalDebtPayment
+    ? data.totalIncome -
+      adjustedTotal -
+      data.totalDebtPayment -
+      (data.totalFixedCosts ?? 0)
     : 0;
 
   async function accept() {
@@ -133,7 +140,7 @@ export default function SmartBudgetPage() {
         <p className="text-muted-foreground">{t("smartBudget.loading")}</p>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>
@@ -142,6 +149,11 @@ export default function SmartBudgetPage() {
                 <CardTitle className="font-mono text-xl">
                   {formatMoney(data.totalIncome, data.currency, intlLocale)}
                 </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {data.incomeSource === "SALARY"
+                    ? t("smartBudget.incomeFromSalary")
+                    : t("smartBudget.incomeFromHistory")}
+                </p>
               </CardHeader>
             </Card>
             <Card>
@@ -151,6 +163,20 @@ export default function SmartBudgetPage() {
                 </CardDescription>
                 <CardTitle className="font-mono text-xl">
                   {formatMoney(adjustedTotal, data.currency, intlLocale)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>
+                  {t("smartBudget.fixedCostsReserve")}
+                </CardDescription>
+                <CardTitle className="font-mono text-xl">
+                  {formatMoney(
+                    data.totalFixedCosts ?? 0,
+                    data.currency,
+                    intlLocale
+                  )}
                 </CardTitle>
               </CardHeader>
             </Card>
@@ -176,6 +202,15 @@ export default function SmartBudgetPage() {
                 </CardTitle>
               </CardHeader>
             </Card>
+          </div>
+
+          <div>
+            <Link
+              href="/payday"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              {t("smartBudget.openPayday")}
+            </Link>
           </div>
 
           {data.conflict ? (

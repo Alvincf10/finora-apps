@@ -33,9 +33,28 @@ const DebtSchema = new Schema(
       default: "ACTIVE",
     },
     notes: { type: String },
+    /**
+     * How this obligation behaves in a pay cycle.
+     * CREDIT_STATEMENT → use linked CC statementDueAmount when present.
+     */
+    obligationType: {
+      type: String,
+      enum: ["INSTALLMENT", "CREDIT_STATEMENT", "PAYOFF", "TRANSFER", "OTHER"],
+      default: "INSTALLMENT",
+    },
+    /** Optional link to a CREDIT_CARD (or other) account. */
+    linkedAccountId: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+    },
   },
   { timestamps: true }
 );
+
+// HMR may keep an older compiled model without obligation fields.
+if (models.Debt && !models.Debt.schema.path("obligationType")) {
+  delete models.Debt;
+}
 
 DebtSchema.index({ userId: 1, status: 1 });
 

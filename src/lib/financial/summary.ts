@@ -57,21 +57,25 @@ export async function getFinancialSummary(userId: string, period: Period) {
 
   for (const account of accounts) {
     if (isLiabilityAccount(account.type as AccountType)) {
-      // credit card: positive currentBalance means amount owed
-      creditCardLiability += Math.max(0, -account.currentBalance);
-      if (account.currentBalance < 0) {
-        // treat negative balance as liability magnitude already handled
-      } else if (account.currentBalance > 0) {
-        // some users track CC as positive owed
-        creditCardLiability += account.currentBalance;
-      }
+      // CREDIT_CARD currentBalance = outstanding owed (positive).
+      // Also accept legacy negative balances as liability magnitude.
+      const bal = account.currentBalance ?? 0;
+      creditCardLiability += Math.abs(bal);
     } else {
       totalAssets += account.currentBalance;
     }
   }
 
-  const totalDebt =
-    debts.reduce((sum, d) => sum + d.remainingAmount, 0) + creditCardLiability;
+  // CREDIT_STATEMENT debts linked to a CC account mirror that card's
+  // outstanding — count the card once, not debt + card.
+  const debtPrincipal = debts.reduce((sum, d) => {
+    const isLinkedCcStatement =
+      d.obligationType === "CREDIT_STATEMENT" && d.linkedAccountId;
+    if (isLinkedCcStatement) return sum;
+    return sum + d.remainingAmount;
+  }, 0);
+
+  const totalDebt = debtPrincipal + creditCardLiability;
   const totalLiabilities = totalDebt;
   const netWorth = totalAssets - totalLiabilities;
 

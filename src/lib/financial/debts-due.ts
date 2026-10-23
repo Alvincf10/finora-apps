@@ -1,7 +1,15 @@
+import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { DebtPayment } from "@/models/DebtPayment";
 import { getPeriodBounds, type Period } from "@/lib/financial/summary";
 import type { Currency } from "@/types";
+
+export type DebtObligationType =
+  | "INSTALLMENT"
+  | "CREDIT_STATEMENT"
+  | "PAYOFF"
+  | "TRANSFER"
+  | "OTHER";
 
 export type DebtDueItem = {
   debtId: string;
@@ -17,6 +25,8 @@ export type DebtDueItem = {
   monthlyPayment: number | null;
   installmentMonths: number | null;
   isInstallment: boolean;
+  obligationType: DebtObligationType;
+  linkedAccountId?: string;
 };
 
 export type DebtsDueThisMonth = {
@@ -145,13 +155,18 @@ export async function getDebtsDueInRange(
   end: Date,
   preferredCurrency: Currency = "IDR"
 ): Promise<Omit<DebtsDueThisMonth, "period">> {
-  const [debts, payments] = await Promise.all([
+  const [debts, payments, ccAccounts] = await Promise.all([
     Debt.find({ userId, status: "ACTIVE" }).lean(),
     DebtPayment.find({
       userId,
       date: { $gte: start, $lte: end },
     }).lean(),
+    Account.find({ userId, isActive: true, type: "CREDIT_CARD" }).lean(),
   ]);
+
+  const ccById = new Map(
+    ccAccounts.map((a) => [a._id.toString(), a] as const)
+  );
 
   const paidByDebt = new Map<string, number>();
   for (const p of payments) {
@@ -166,8 +181,35 @@ export async function getDebtsDueInRange(
   >();
 
   for (const debt of debts) {
-    const { dueAmount, monthlyPayment, installmentMonths, isInstallment } =
-      monthlyDebtObligation(debt, start, end);
+    const obligationType = (debt.obligationType ??
+      "INSTALLMENT") as DebtObligationType;
+    const linkedAccountId = debt.linkedAccountId?.toString();
+
+    let dueAmount = 0;
+    let monthlyPayment: number | null = null;
+    let installmentMonths: number | null = null;
+    let isInstallment = false;
+
+    if (obligationType === "CREDIT_STATEMENT" && linkedAccountId) {
+      const card = ccById.get(linkedAccountId);
+      const statementDue = Math.max(
+        0,
+        card?.statementDueAmount ??
+          debt.plannedPayment ??
+          debt.minimumPayment ??
+          0
+      );
+      dueAmount = Math.min(statementDue, debt.remainingAmount);
+      monthlyPayment = dueAmount > 0 ? dueAmount : null;
+      isInstallment = true;
+    } else {
+      const derived = monthlyDebtObligation(debt, start, end);
+      dueAmount = derived.dueAmount;
+      monthlyPayment = derived.monthlyPayment;
+      installmentMonths = derived.installmentMonths;
+      isInstallment = derived.isInstallment;
+    }
+
     if (dueAmount <= 0) continue;
 
     const debtId = debt._id.toString();
@@ -187,6 +229,8 @@ export async function getDebtsDueInRange(
       monthlyPayment,
       installmentMonths,
       isInstallment,
+      obligationType,
+      linkedAccountId,
     });
 
     const bucket = currencyTotals.get(currency) ?? {

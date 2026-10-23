@@ -1,0 +1,8 @@
+Backup skipped 295 volatile files (live sessions, cron logs, queues, sockets, pid/tmp).
+Backup archive: /root/2026-10-21T15-00-33.191+07-00-openclaw-backup.tar.gz
+Included 1 path:
+- state: ~/.openclaw
+Skipped 1 path:
+- workspace: ~/.openclaw/workspace (covered by ~/.openclaw)
+Created /root/2026-10-21T15-00-33.191+07-00-openclaw-backup.tar.gz
+Skipped 295 volatile files (live sessions, cron logs, queues, sockets, pid/tmp).

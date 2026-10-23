@@ -9,6 +9,7 @@ import { fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { SettingsCategories } from "@/components/settings-categories";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,6 +141,8 @@ export default function SettingsPage() {
           <LanguageSwitcher />
         </CardContent>
       </Card>
+
+      <SettingsCategories />
 
       <Card>
         <CardHeader>

@@ -21,8 +21,8 @@ import {
   MessageCircle,
   Ellipsis,
   TrendingUp,
-  Repeat,
   Bell,
+  WalletCards,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useT } from "@/components/i18n-provider";
@@ -66,10 +66,14 @@ const navGroupDefs = [
         labelKey: "nav.smartBudget",
         icon: Sparkles,
       },
+      {
+        href: "/payday",
+        labelKey: "nav.paydayAllocation",
+        icon: WalletCards,
+      },
       { href: "/budget", labelKey: "nav.budget", icon: PiggyBank },
       { href: "/debts", labelKey: "nav.debts", icon: Landmark },
       { href: "/fixed-costs", labelKey: "nav.fixedCosts", icon: Receipt },
-      { href: "/recurring", labelKey: "nav.recurring", icon: Repeat },
       { href: "/goals", labelKey: "nav.goals", icon: Target },
     ],
   },

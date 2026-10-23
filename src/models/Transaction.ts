@@ -30,9 +30,8 @@ const TransactionSchema = new Schema(
     transferDirection: { type: String, enum: ["OUT", "IN"] },
     counterpartyAccountId: { type: Schema.Types.ObjectId, ref: "Account" },
     debtId: { type: Schema.Types.ObjectId, ref: "Debt" },
+    fixedCostId: { type: Schema.Types.ObjectId, ref: "FixedCost" },
     goalId: { type: Schema.Types.ObjectId, ref: "SavingsGoal" },
-    recurring: { type: Boolean, default: false },
-    recurringId: { type: Schema.Types.ObjectId, ref: "RecurringTransaction" },
   },
   { timestamps: true }
 );
@@ -47,8 +46,8 @@ export type TransactionDocument = InferSchemaType<typeof TransactionSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-// HMR can keep an older compiled model without recurringId.
-if (models.Transaction && !models.Transaction.schema.path("recurringId")) {
+// HMR can keep an older compiled model without newer paths.
+if (models.Transaction && !models.Transaction.schema.path("fixedCostId")) {
   delete models.Transaction;
 }
 

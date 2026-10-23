@@ -104,6 +104,7 @@ async function loadAppModules() {
   const moneyMod = await import("../src/lib/money");
   const helpMod = await import("../src/lib/whatsapp/help-text");
   const totalsMod = await import("../src/lib/whatsapp/query-totals");
+  const balanceMod = await import("../src/lib/whatsapp/query-balance");
   const prefixMod = await import("../src/lib/whatsapp/prefix");
   return {
     WhatsAppSession: sessionMod.WhatsAppSession,
@@ -115,6 +116,8 @@ async function loadAppModules() {
     getViraHelpText: helpMod.getViraHelpText,
     parseTotalsQuery: totalsMod.parseTotalsQuery,
     buildTotalsReply: totalsMod.buildTotalsReply,
+    parseBalanceQuery: balanceMod.parseBalanceQuery,
+    buildBalanceReply: balanceMod.buildBalanceReply,
     stripWaPrefix: prefixMod.stripWaPrefix,
     getWaPrefix: prefixMod.getWaPrefix,
     formatPrefixExamples: prefixMod.formatPrefixExamples,
@@ -392,6 +395,16 @@ async function handleMessage(
     lower === "menu"
   ) {
     await sock.sendMessage(jid, { text: mods.getViraHelpText() });
+    return;
+  }
+
+  // Deterministic /saldo — no LLM (Phase 1)
+  if (mods.parseBalanceQuery(body)) {
+    const reply = await mods.buildBalanceReply(userId);
+    await sock.sendMessage(jid, { text: reply });
+    await patchSession(mods.WhatsAppSession, userId, {
+      lastMessageAt: new Date(),
+    });
     return;
   }
 

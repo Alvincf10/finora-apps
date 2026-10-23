@@ -6,7 +6,6 @@ import {
 } from "date-fns";
 import { Debt } from "@/models/Debt";
 import { FixedCost } from "@/models/FixedCost";
-import { RecurringTransaction } from "@/models/RecurringTransaction";
 import { getBudgetOverview } from "@/lib/financial/summary";
 import { formatMoney } from "@/lib/money";
 import { daysInMonth } from "@/lib/financial/phase2-math";
@@ -19,8 +18,7 @@ export type AlertKind =
   | "DEBT_DUE_SOON"
   | "FIXED_COST_DUE"
   | "BUDGET_OVERFLOW"
-  | "BUDGET_WARNING"
-  | "RECURRING_DUE";
+  | "BUDGET_WARNING";
 
 export type AppAlert = {
   id: string;
@@ -52,14 +50,9 @@ export async function getAlertsForUser(userId: string): Promise<AppAlert[]> {
   const soon = endOfDay(addDays(today, DUE_SOON_DAYS));
   const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
 
-  const [debts, fixedCosts, recurrings, budgets] = await Promise.all([
+  const [debts, fixedCosts, budgets] = await Promise.all([
     Debt.find({ userId, status: "ACTIVE" }).lean(),
     FixedCost.find({ userId, isActive: true }).lean(),
-    RecurringTransaction.find({
-      userId,
-      isActive: true,
-      nextOccurrence: { $lte: soon },
-    }).lean(),
     getBudgetOverview(userId, period),
   ]);
 
@@ -141,26 +134,6 @@ export async function getAlertsForUser(userId: string): Promise<AppAlert[]> {
         href: "/budget",
       });
     }
-  }
-
-  for (const r of recurrings) {
-    const next = startOfDay(new Date(r.nextOccurrence));
-    if (next > soon) continue;
-    const days = differenceInCalendarDays(next, today);
-    const currency = r.currency as Currency;
-    const label = r.description || r.type;
-    alerts.push({
-      id: `recurring:${r._id}:${next.toISOString().slice(0, 10)}`,
-      kind: "RECURRING_DUE",
-      severity: next <= today ? "WARNING" : "INFO",
-      title:
-        next <= today
-          ? `Recurring ready: ${label}`
-          : `${label} in ${days}d`,
-      message: `${r.type} ${formatMoney(r.amount, currency)} — post dari halaman Recurring`,
-      href: "/recurring",
-      dueDate: next.toISOString(),
-    });
   }
 
   const rank: Record<AlertSeverity, number> = {

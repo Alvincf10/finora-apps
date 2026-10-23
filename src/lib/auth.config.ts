@@ -30,7 +30,7 @@ export const authConfig = {
         pathname.startsWith("/settings") ||
         pathname.startsWith("/alerts") ||
         pathname.startsWith("/forecast") ||
-        pathname.startsWith("/recurring");
+        pathname.startsWith("/payday");
 
       if (isAuthPage) {
         if (isLoggedIn) {

@@ -11,7 +11,10 @@
     "smoke:phase2": "node scripts/smoke-phase2.mjs",
     "smoke:wa-parse": "node scripts/smoke-wa-parse.mjs",
     "smoke:ladder": "tsx --tsconfig tsconfig.json scripts/smoke-wealth-ladder.ts",
-    "wa:vira": "tsx --tsconfig tsconfig.json scripts/wa-vira.ts"
+    "wa:vira": "tsx --tsconfig tsconfig.json scripts/wa-vira.ts",
+    "smoke:wa-balance": "node scripts/smoke-wa-balance.mjs",
+    "cost:report": "node prd_agent/assistant/scripts/cost-report.mjs",
+    "test:cost": "node prd_agent/assistant/tests/cost-calc.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
