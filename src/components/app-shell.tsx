@@ -13,15 +13,12 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Sparkles,
   Lightbulb,
   FlaskConical,
-  CalendarRange,
   CalendarDays,
   Receipt,
   MessageCircle,
   Ellipsis,
-  TrendingUp,
   Bell,
   WalletCards,
   type LucideIcon,
@@ -74,12 +71,6 @@ const navGroupDefs: ReadonlyArray<{
     labelKey: "nav.planning",
     items: [
       {
-        href: "/budget/recommendation",
-        labelKey: "nav.smartBudget",
-        icon: Sparkles,
-        featured: true,
-      },
-      {
         href: "/payday",
         labelKey: "nav.paydayAllocation",
         icon: WalletCards,
@@ -98,12 +89,6 @@ const navGroupDefs: ReadonlyArray<{
         href: "/insights",
         labelKey: "nav.financialInsights",
         icon: Lightbulb,
-      },
-      { href: "/forecast", labelKey: "nav.forecast", icon: TrendingUp },
-      {
-        href: "/reports/monthly",
-        labelKey: "nav.monthlyReview",
-        icon: CalendarRange,
       },
       {
         href: "/reports/weekly",

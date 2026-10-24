@@ -29,7 +29,6 @@ export const authConfig = {
         pathname.startsWith("/whatsapp") ||
         pathname.startsWith("/settings") ||
         pathname.startsWith("/alerts") ||
-        pathname.startsWith("/forecast") ||
         pathname.startsWith("/payday");
 
       if (isAuthPage) {

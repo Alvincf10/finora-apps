@@ -12,7 +12,7 @@ const WhatsAppOutboundSchema = new Schema(
     body: { type: String, required: true },
     kind: {
       type: String,
-      enum: ["WEEKLY_REPORT", "MANUAL"],
+      enum: ["WEEKLY_REPORT", "FIXED_COST_DUE", "MANUAL"],
       default: "MANUAL",
     },
     status: {
@@ -35,6 +35,19 @@ export type WhatsAppOutboundDocument = InferSchemaType<
   _id: mongoose.Types.ObjectId;
 };
 
+// Refresh compiled model when FIXED_COST_DUE was added to kind enum (HMR).
+const existingKind = models.WhatsAppOutbound?.schema.path("kind") as
+  | { options?: { enum?: string[] } }
+  | undefined;
+if (
+  models.WhatsAppOutbound &&
+  !(existingKind?.options?.enum ?? []).includes("FIXED_COST_DUE")
+) {
+  delete models.WhatsAppOutbound;
+}
+
 export const WhatsAppOutbound =
-  models.WhatsAppOutbound ||
-  model("WhatsAppOutbound", WhatsAppOutboundSchema);
+  (models.WhatsAppOutbound as
+    | mongoose.Model<WhatsAppOutboundDocument>
+    | undefined) ||
+  model<WhatsAppOutboundDocument>("WhatsAppOutbound", WhatsAppOutboundSchema);

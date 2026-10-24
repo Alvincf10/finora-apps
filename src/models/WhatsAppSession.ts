@@ -39,6 +39,10 @@ const WhatsAppSessionSchema = new Schema(
     weeklyReportEnabled: { type: Boolean, default: true },
     /** Last scheduled weekly report week key (YYYY-MM-DD of that week's Monday). */
     lastWeeklyReportWeekKey: { type: String, default: null },
+    /** Auto-send fixed-cost H-0 due reminder every day 08:00 Asia/Jakarta. */
+    fixedCostReminderEnabled: { type: Boolean, default: true },
+    /** Last scheduled fixed-cost reminder day key (YYYY-MM-DD Asia/Jakarta). */
+    lastFixedCostReminderDayKey: { type: String, default: null },
   },
   { timestamps: true }
 );

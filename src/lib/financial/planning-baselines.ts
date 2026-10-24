@@ -23,7 +23,7 @@ export type PlanningBaselines = {
 };
 
 /**
- * Shared payday-aware baselines for Forecast + Smart Budget.
+ * Shared payday-aware baselines for planning (Payday, insights context).
  * Period window = pay cycle for that month's payday (not calendar month).
  * Income prefers Settings.monthlySalary when set.
  */

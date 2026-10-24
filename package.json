@@ -14,6 +14,7 @@
     "wa:vira": "tsx --tsconfig tsconfig.json scripts/wa-vira.ts",
     "smoke:wa-balance": "node scripts/smoke-wa-balance.mjs",
     "test:wa-weekly": "tsx --tsconfig tsconfig.json scripts/test-wa-weekly-loop.ts",
+    "test:wa-fixed-cost": "tsx --tsconfig tsconfig.json scripts/test-fixed-cost-reminder.ts",
     "cost:report": "node prd_agent/assistant/scripts/cost-report.mjs",
     "test:cost": "node prd_agent/assistant/tests/cost-calc.test.mjs"
   },

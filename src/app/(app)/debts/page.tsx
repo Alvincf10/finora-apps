@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { ChevronDown } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
-import { cn } from "@/lib/utils";
 import type { Currency, DebtKind } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useI18n } from "@/components/i18n-provider";
+
 
 type Debt = {
   _id: string;
@@ -123,17 +123,12 @@ export default function DebtsPage() {
   const [savingTenor, setSavingTenor] = useState<string | null>(null);
 
   const [simCtx, setSimCtx] = useState<SimContext | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
 
   const money = (amount: number, currency: Currency) =>
     formatMoney(amount, currency, intlLocale);
 
   const activeDebts = useMemo(
     () => debts.filter((d) => d.status === "ACTIVE"),
-    [debts]
-  );
-  const historyDebts = useMemo(
-    () => debts.filter((d) => d.status === "PAID" || d.status === "CANCELLED"),
     [debts]
   );
 
@@ -352,113 +347,121 @@ export default function DebtsPage() {
           </h1>
           <p className="text-muted-foreground">{t("debts.subtitle")}</p>
         </div>
-        <Dialog
-          open={open}
-          onOpenChange={(v) => {
-            setOpen(v);
-            if (v) {
-              setFormCurrency("IDR");
-              setCreateMonths(6);
-              setCreateAmountMajor(0);
-            }
-          }}
-        >
-          <DialogTrigger render={<Button />}>{t("debts.add")}</DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("debts.newDebt")}</DialogTitle>
-            </DialogHeader>
-            <form className="space-y-3" onSubmit={onCreate}>
-              <div className="space-y-2">
-                <Label>{t("common.name")}</Label>
-                <Input name="name" required />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("debts.kind")}</Label>
-                <select
-                  name="kind"
-                  defaultValue="CONSUMER"
-                  className="flex h-9 w-full rounded-md border px-3 text-sm"
-                >
-                  <option value="CONSUMER">{t("debts.kindConsumer")}</option>
-                  <option value="MORTGAGE">{t("debts.kindMortgage")}</option>
-                  <option value="OTHER">{t("debts.kindOther")}</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            render={<Link href="/debts/history" />}
+          >
+            {t("debts.historyTitle")}
+          </Button>
+          <Dialog
+            open={open}
+            onOpenChange={(v) => {
+              setOpen(v);
+              if (v) {
+                setFormCurrency("IDR");
+                setCreateMonths(6);
+                setCreateAmountMajor(0);
+              }
+            }}
+          >
+            <DialogTrigger render={<Button />}>{t("debts.add")}</DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t("debts.newDebt")}</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-3" onSubmit={onCreate}>
                 <div className="space-y-2">
-                  <Label>{t("debts.totalDebtAmount")}</Label>
-                  <CurrencyAmountInput
-                    name="originalAmount"
-                    currency={formCurrency}
-                    required
-                    onValueChange={setCreateAmountMajor}
-                  />
+                  <Label>{t("common.name")}</Label>
+                  <Input name="name" required />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("common.currency")}</Label>
+                  <Label>{t("debts.kind")}</Label>
                   <select
-                    name="currency"
+                    name="kind"
+                    defaultValue="CONSUMER"
                     className="flex h-9 w-full rounded-md border px-3 text-sm"
-                    value={formCurrency}
-                    onChange={(e) =>
-                      setFormCurrency(e.target.value as Currency)
-                    }
                   >
-                    <option value="IDR">IDR</option>
-                    <option value="EUR">EUR</option>
+                    <option value="CONSUMER">{t("debts.kindConsumer")}</option>
+                    <option value="MORTGAGE">{t("debts.kindMortgage")}</option>
+                    <option value="OTHER">{t("debts.kindOther")}</option>
                   </select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("debts.howManyMonths")}</Label>
-                <div className="flex flex-wrap gap-2">
-                  {TENOR_PRESETS.map((m) => (
-                    <Button
-                      key={m}
-                      type="button"
-                      size="sm"
-                      variant={createMonths === m ? "default" : "outline"}
-                      onClick={() => setCreateMonths(m)}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>{t("debts.totalDebtAmount")}</Label>
+                    <CurrencyAmountInput
+                      name="originalAmount"
+                      currency={formCurrency}
+                      required
+                      onValueChange={setCreateAmountMajor}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("common.currency")}</Label>
+                    <select
+                      name="currency"
+                      className="flex h-9 w-full rounded-md border px-3 text-sm"
+                      value={formCurrency}
+                      onChange={(e) =>
+                        setFormCurrency(e.target.value as Currency)
+                      }
                     >
-                      {t("debts.monthsShort", { months: m })}
-                    </Button>
-                  ))}
+                      <option value="IDR">IDR</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
                 </div>
-                <Input
-                  name="installmentMonths"
-                  type="number"
-                  min={1}
-                  max={600}
-                  value={createMonths}
-                  onChange={(e) =>
-                    setCreateMonths(Math.max(1, Number(e.target.value) || 1))
-                  }
-                />
-              </div>
-              {createPreviewMonthly > 0 ? (
-                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {t("debts.payThisMonthApprox")}
-                  </span>
-                  <span className="font-mono font-semibold">
-                    {money(createPreviewMonthly, formCurrency)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {t("debts.timesMonths", { months: createMonths })}
-                  </span>
+                <div className="space-y-2">
+                  <Label>{t("debts.howManyMonths")}</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {TENOR_PRESETS.map((m) => (
+                      <Button
+                        key={m}
+                        type="button"
+                        size="sm"
+                        variant={createMonths === m ? "default" : "outline"}
+                        onClick={() => setCreateMonths(m)}
+                      >
+                        {t("debts.monthsShort", { months: m })}
+                      </Button>
+                    ))}
+                  </div>
+                  <Input
+                    name="installmentMonths"
+                    type="number"
+                    min={1}
+                    max={600}
+                    value={createMonths}
+                    onChange={(e) =>
+                      setCreateMonths(Math.max(1, Number(e.target.value) || 1))
+                    }
+                  />
                 </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label>{t("debts.firstDueOptional")}</Label>
-                <Input name="dueDate" type="date" />
-              </div>
-              <Button type="submit" className="w-full">
-                {t("common.create")}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                {createPreviewMonthly > 0 ? (
+                  <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">
+                      {t("debts.payThisMonthApprox")}
+                    </span>
+                    <span className="font-mono font-semibold">
+                      {money(createPreviewMonthly, formCurrency)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {t("debts.timesMonths", { months: createMonths })}
+                    </span>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <Label>{t("debts.firstDueOptional")}</Label>
+                  <Input name="dueDate" type="date" />
+                </div>
+                <Button type="submit" className="w-full">
+                  {t("common.create")}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {thisMonthByCurrency.length > 0 ? (
@@ -851,125 +854,7 @@ export default function DebtsPage() {
             : t("debts.emptyActive")}
         </p>
       ) : null}
-
-      {historyDebts.length > 0 ? (
-        <Card className="border-dashed">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 p-4 text-left touch-manipulation"
-            onClick={() => setHistoryOpen((v) => !v)}
-          >
-            <div className="min-w-0">
-              <p className="font-heading text-base font-semibold">
-                {t("debts.historyTitle")}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {t("debts.historyDesc")} ·{" "}
-                {t("debts.historyCount", { count: historyDebts.length })}
-              </p>
-            </div>
-            <ChevronDown
-              className={cn(
-                "size-4 shrink-0 text-muted-foreground transition-transform",
-                historyOpen && "rotate-180"
-              )}
-            />
-          </button>
-          {historyOpen ? (
-            <CardContent className="space-y-2 border-t pt-3">
-              {historyDebts.map((debt) => (
-                <div
-                  key={debt._id}
-                  className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{debt.name}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline" className="h-5 text-[10px]">
-                        {statusLabel(debt.status, t)}
-                      </Badge>
-                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                        {money(debt.originalAmount, debt.currency)}
-                      </span>
-                    </div>
-                  </div>
-                  <Dialog
-                    open={editOpen === debt._id}
-                    onOpenChange={(v) => setEditOpen(v ? debt._id : null)}
-                  >
-                    <DialogTrigger
-                      render={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 touch-manipulation"
-                        />
-                      }
-                    >
-                      {t("common.edit")}
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>
-                          {t("debts.editDebt", { name: debt.name })}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <form
-                        key={debt._id + debt.status + debt.name}
-                        className="space-y-3"
-                        onSubmit={(e) => onEdit(e, debt)}
-                      >
-                        <div className="space-y-2">
-                          <Label>{t("common.name")}</Label>
-                          <Input
-                            name="name"
-                            required
-                            defaultValue={debt.name}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>{t("common.status")}</Label>
-                          <select
-                            name="status"
-                            className="flex h-9 w-full rounded-md border px-3 text-sm"
-                            defaultValue={debt.status}
-                          >
-                            <option value="ACTIVE">
-                              {t("debts.statusActive")}
-                            </option>
-                            <option value="PAID">
-                              {t("debts.statusPaid")}
-                            </option>
-                            <option value="CANCELLED">
-                              {t("debts.statusCancelled")}
-                            </option>
-                          </select>
-                        </div>
-                        <input
-                          type="hidden"
-                          name="kind"
-                          value={debt.kind ?? "CONSUMER"}
-                        />
-                        <input
-                          type="hidden"
-                          name="originalAmount"
-                          value={fromMinorUnits(
-                            debt.originalAmount,
-                            debt.currency
-                          )}
-                        />
-                        <Button type="submit" className="w-full">
-                          {t("debts.saveChanges")}
-                        </Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              ))}
-            </CardContent>
-          ) : null}
-        </Card>
-      ) : null}
     </div>
   );
 }
+

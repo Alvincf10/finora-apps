@@ -39,6 +39,8 @@ type WaSession = {
   lastHeartbeatAt: string | null;
   weeklyReportEnabled: boolean;
   lastWeeklyReportWeekKey: string | null;
+  fixedCostReminderEnabled: boolean;
+  lastFixedCostReminderDayKey: string | null;
   finoraStatus: FinoraLiveStatus;
   finoraStatusLabel: string;
   finoraDownReason: string | null;
@@ -133,6 +135,8 @@ export default function WhatsAppPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [allowedFrom, setAllowedFrom] = useState("");
   const [weeklyReportEnabled, setWeeklyReportEnabled] = useState(true);
+  const [fixedCostReminderEnabled, setFixedCostReminderEnabled] =
+    useState(true);
   const [busy, setBusy] = useState(false);
 
   const statusLabel: Record<WaSession["status"], string> = {
@@ -152,6 +156,7 @@ export default function WhatsAppPage() {
     setAccounts(accs.filter((a) => a.isActive));
     setAllowedFrom(wa.allowedFrom ?? "");
     setWeeklyReportEnabled(wa.weeklyReportEnabled !== false);
+    setFixedCostReminderEnabled(wa.fixedCostReminderEnabled !== false);
   }, []);
 
   useEffect(() => {
@@ -217,10 +222,12 @@ export default function WhatsAppPage() {
           defaultAccountId,
           allowedFrom: from,
           weeklyReportEnabled,
+          fixedCostReminderEnabled,
         }),
       });
       setSession(wa);
       setWeeklyReportEnabled(wa.weeklyReportEnabled !== false);
+      setFixedCostReminderEnabled(wa.fixedCostReminderEnabled !== false);
       toast.success(t("whatsapp.savedToast"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -420,6 +427,24 @@ export default function WhatsAppPage() {
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {t("whatsapp.weeklyReportHint")}
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-1 size-4"
+                checked={fixedCostReminderEnabled}
+                onChange={(e) =>
+                  setFixedCostReminderEnabled(e.target.checked)
+                }
+              />
+              <span className="min-w-0 space-y-0.5">
+                <span className="block text-sm font-medium">
+                  {t("whatsapp.fixedCostReminder")}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {t("whatsapp.fixedCostReminderHint")}
                 </span>
               </span>
             </label>

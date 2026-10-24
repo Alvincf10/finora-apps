@@ -94,7 +94,7 @@ function ladderHref(actionType: string) {
   if (actionType === "VIEW_ACCOUNTS") return "/accounts";
   if (actionType === "VIEW_DEBT") return "/debts";
   if (actionType === "VIEW_GOALS") return "/goals";
-  if (actionType === "VIEW_BUDGET_REC") return "/budget/recommendation";
+  if (actionType === "VIEW_BUDGET_REC") return "/budget";
   if (actionType === "VIEW_SPENDING") return "/transactions";
   return "/insights";
 }
@@ -262,24 +262,24 @@ function InsightCard({
 
   function actionLabel(actionType?: string) {
     if (actionType === "VIEW_BUDGET") return t("insights.actionBudget");
-    if (actionType === "VIEW_BUDGET_REC") return t("insights.actionBudgetRec");
+    if (actionType === "VIEW_BUDGET_REC") return t("insights.actionBudget");
     if (actionType === "SIMULATE") return t("insights.actionSimulate");
     if (actionType === "VIEW_SPENDING") return t("insights.actionSpending");
     if (actionType === "VIEW_DEBT") return t("insights.actionDebt");
     if (actionType === "VIEW_GOALS") return t("insights.actionGoals");
-    if (actionType === "VIEW_FORECAST") return t("insights.actionForecast");
+    if (actionType === "VIEW_FORECAST") return t("nav.paydayAllocation");
     return t("insights.actionDefault");
   }
 
   function actionHref(actionType?: string) {
     if (actionType === "VIEW_BUDGET") return "/budget";
-    if (actionType === "VIEW_BUDGET_REC") return "/budget/recommendation";
+    if (actionType === "VIEW_BUDGET_REC") return "/budget";
     if (actionType === "SIMULATE") return "/simulator";
     if (actionType === "VIEW_SPENDING") return "/transactions";
     if (actionType === "VIEW_DEBT") return "/debts";
     if (actionType === "VIEW_GOALS") return "/goals";
-    if (actionType === "VIEW_FORECAST") return "/forecast";
-    return "/budget/recommendation";
+    if (actionType === "VIEW_FORECAST") return "/payday";
+    return "/budget";
   }
 
   function priorityLabel(priority: Insight["priority"]) {
@@ -349,7 +349,7 @@ function LadderPanel({ ladder }: { ladder: WealthLadder }) {
     if (actionType === "VIEW_DEBT") return t("insights.ladderActionDebt");
     if (actionType === "VIEW_GOALS") return t("insights.ladderActionGoals");
     if (actionType === "VIEW_BUDGET_REC")
-      return t("insights.ladderActionBudgetRec");
+      return t("insights.actionBudget");
     if (actionType === "VIEW_SPENDING")
       return t("insights.ladderActionSpending");
     return t("insights.actionDefault");

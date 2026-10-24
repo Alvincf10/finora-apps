@@ -405,8 +405,6 @@ export default function DashboardPage() {
   const [phase2, setPhase2] = useState<{
     insightsCount: number;
     trends: Array<{ categoryName: string; percentageChange: number; trend: string }>;
-    forecastSavings: number | null;
-    currency: Currency;
   } | null>(null);
 
   useEffect(() => {
@@ -424,16 +422,13 @@ export default function DashboardPage() {
         }>;
         profile: { currency: Currency };
       }>("/api/analytics"),
-      api<{ projectedSavings: number; currency: Currency }>("/api/forecast"),
     ])
-      .then(([insights, analytics, forecast]) => {
+      .then(([insights, analytics]) => {
         setPhase2({
           insightsCount: insights.insights.length,
           trends: analytics.spending
             .filter((s) => s.trend === "INCREASING" || s.trend === "DECREASING")
             .slice(0, 3),
-          forecastSavings: forecast.projectedSavings,
-          currency: forecast.currency ?? analytics.profile.currency,
         });
       })
       .catch(() => {
@@ -733,7 +728,7 @@ export default function DashboardPage() {
       </Card>
 
       {phase2 ? (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
               <CardDescription>{t("dashboard.financialInsights")}</CardDescription>
@@ -762,27 +757,6 @@ export default function DashboardPage() {
                   </p>
                 ))
               )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>{t("dashboard.budgetForecast")}</CardDescription>
-              <CardTitle className="font-mono text-xl">
-                {phase2.forecastSavings == null
-                  ? "—"
-                  : money(phase2.forecastSavings, phase2.currency)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/forecast"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "touch-manipulation"
-                )}
-              >
-                {t("dashboard.openForecast")}
-              </Link>
             </CardContent>
           </Card>
         </div>
@@ -920,7 +894,13 @@ export default function DashboardPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {tx.accountId?.name} ·{" "}
-                    {new Date(tx.date).toLocaleDateString(intlLocale)}
+                    {new Date(tx.date).toLocaleString(intlLocale, {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </p>
                 </div>
                 <span className="font-mono">

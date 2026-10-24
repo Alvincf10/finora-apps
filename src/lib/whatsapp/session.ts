@@ -94,6 +94,8 @@ export function serializeWhatsAppSession(session: {
   lastHeartbeatAt?: Date | null;
   weeklyReportEnabled?: boolean | null;
   lastWeeklyReportWeekKey?: string | null;
+  fixedCostReminderEnabled?: boolean | null;
+  lastFixedCostReminderDayKey?: string | null;
   updatedAt?: Date;
 }) {
   const live = resolveFinoraLive(session);
@@ -113,6 +115,8 @@ export function serializeWhatsAppSession(session: {
     lastHeartbeatAt: session.lastHeartbeatAt ?? null,
     weeklyReportEnabled: session.weeklyReportEnabled !== false,
     lastWeeklyReportWeekKey: session.lastWeeklyReportWeekKey ?? null,
+    fixedCostReminderEnabled: session.fixedCostReminderEnabled !== false,
+    lastFixedCostReminderDayKey: session.lastFixedCostReminderDayKey ?? null,
     updatedAt: session.updatedAt ?? null,
     ...live,
     workerHint:

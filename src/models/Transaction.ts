@@ -36,7 +36,7 @@ const TransactionSchema = new Schema(
   { timestamps: true }
 );
 
-TransactionSchema.index({ userId: 1, date: -1 });
+TransactionSchema.index({ userId: 1, date: -1, createdAt: -1, _id: -1 });
 TransactionSchema.index({ userId: 1, accountId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, categoryId: 1, date: -1 });
 TransactionSchema.index({ userId: 1, type: 1, date: -1 });

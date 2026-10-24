@@ -7,8 +7,23 @@ import type { z } from "zod";
 
 type CreateInput = z.infer<typeof createTransactionSchema>;
 
+/** Parse transaction date. Date-only (YYYY-MM-DD) keeps today's clock so same-day sort stays newest-first. */
 function toDate(value: string | Date): Date {
-  return value instanceof Date ? value : new Date(value);
+  if (value instanceof Date) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const now = new Date();
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(
+      y,
+      m - 1,
+      d,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds()
+    );
+  }
+  return new Date(value);
 }
 
 export async function createTransaction(userId: string, input: CreateInput) {

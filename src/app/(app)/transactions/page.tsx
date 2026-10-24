@@ -69,8 +69,24 @@ type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
 
 const PAGE_SIZE = 50;
 
-function toDateInputValue(value: string) {
-  return new Date(value).toISOString().slice(0, 10);
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/** Local `YYYY-MM-DDTHH:mm` for datetime-local inputs (avoids UTC day shift). */
+function toDateTimeLocalValue(value?: string | Date) {
+  const d = value ? new Date(value) : new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function formatTxDateTime(value: string, locale: string) {
+  return new Date(value).toLocaleString(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function txLabel(tx: Tx) {
@@ -300,7 +316,7 @@ export default function TransactionsPage() {
     setEditing(tx);
     setEditCurrency(tx.currency);
     setEditAmountMajor(fromMinorUnits(tx.amount, tx.currency));
-    setEditDate(toDateInputValue(tx.date));
+    setEditDate(toDateTimeLocalValue(tx.date));
     setEditDescription(tx.description ?? "");
     setEditCategoryId(tx.categoryId?._id ?? "");
     setEditOpen(true);
@@ -521,9 +537,9 @@ export default function TransactionsPage() {
                 <Label>{t("common.date")}</Label>
                 <Input
                   name="date"
-                  type="date"
+                  type="datetime-local"
                   required
-                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  defaultValue={toDateTimeLocalValue()}
                 />
               </div>
               <div className="space-y-2">
@@ -698,7 +714,7 @@ export default function TransactionsPage() {
                 <div className="min-w-0 space-y-1">
                   <p className="truncate font-medium">{txLabel(tx)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(tx.date).toLocaleDateString(intlLocale)} ·{" "}
+                    {formatTxDateTime(tx.date, intlLocale)} ·{" "}
                     {typeLabel(tx.type, t)}
                     {tx.accountId?.name ? ` · ${tx.accountId.name}` : ""}
                     {tx.categoryId?.name ? ` · ${tx.categoryId.name}` : ""}
@@ -776,8 +792,8 @@ export default function TransactionsPage() {
               ) : (
                 txs.map((tx) => (
                   <TableRow key={tx._id}>
-                    <TableCell>
-                      {new Date(tx.date).toLocaleDateString(intlLocale)}
+                    <TableCell className="whitespace-nowrap tabular-nums">
+                      {formatTxDateTime(tx.date, intlLocale)}
                     </TableCell>
                     <TableCell>{typeLabel(tx.type, t)}</TableCell>
                     <TableCell>{txLabel(tx)}</TableCell>
@@ -879,7 +895,7 @@ export default function TransactionsPage() {
               <div className="space-y-2">
                 <Label>{t("common.date")}</Label>
                 <Input
-                  type="date"
+                  type="datetime-local"
                   required
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}

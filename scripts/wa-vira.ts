@@ -108,6 +108,9 @@ async function loadAppModules() {
   const balanceMod = await import("../src/lib/whatsapp/query-balance");
   const prefixMod = await import("../src/lib/whatsapp/prefix");
   const weeklyMod = await import("../src/lib/financial/weekly-review");
+  const fixedReminderMod = await import(
+    "../src/lib/financial/fixed-cost-reminders"
+  );
   const enqueueMod = await import("../src/lib/whatsapp/outbound");
   const echoGuardMod = await import("../src/lib/whatsapp/echo-guard");
   return {
@@ -132,6 +135,10 @@ async function loadAppModules() {
     isWeeklyReportCronWindow: weeklyMod.isWeeklyReportCronWindow,
     weeklyReportWeekKey: weeklyMod.weeklyReportWeekKey,
     enqueueWeeklyReport: enqueueMod.enqueueWeeklyReport,
+    isFixedCostReminderCronWindow:
+      fixedReminderMod.isFixedCostReminderCronWindow,
+    fixedCostReminderDayKey: fixedReminderMod.fixedCostReminderDayKey,
+    enqueueFixedCostDueReminder: enqueueMod.enqueueFixedCostDueReminder,
     shouldIgnoreWaEcho: echoGuardMod.shouldIgnoreWaEcho,
   };
 }
@@ -587,6 +594,41 @@ async function maybeEnqueueWeeklyReports(mods: AppModules) {
   }
 }
 
+async function maybeEnqueueFixedCostReminders(mods: AppModules) {
+  if (!mods.isFixedCostReminderCronWindow()) return;
+  const dayKey = mods.fixedCostReminderDayKey();
+  const sessions = await mods.WhatsAppSession.find({
+    desiredState: "running",
+    status: "connected",
+    fixedCostReminderEnabled: { $ne: false },
+    lastFixedCostReminderDayKey: { $ne: dayKey },
+  });
+
+  for (const session of sessions) {
+    const userId = String(session.userId);
+    if (!digitsOnly(session.allowedFrom)) continue;
+    try {
+      const queued = await mods.enqueueFixedCostDueReminder(userId);
+      // Mark day even when empty so the 08:00 window does not re-query every tick
+      session.lastFixedCostReminderDayKey = dayKey;
+      await session.save();
+      if (queued) {
+        logger.info(
+          { userId, dayKey, itemCount: queued.itemCount },
+          "queued scheduled fixed-cost due reminder"
+        );
+      } else {
+        logger.info(
+          { userId, dayKey },
+          "no unpaid fixed costs due today — skipped WA"
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, "failed to enqueue fixed-cost reminder");
+    }
+  }
+}
+
 async function tick(mods: AppModules) {
   const runningOrFlagged = await mods.WhatsAppSession.find({
     $or: [{ desiredState: "running" }, { clearAuthRequested: true }],
@@ -661,6 +703,7 @@ async function tick(mods: AppModules) {
   }
 
   await maybeEnqueueWeeklyReports(mods);
+  await maybeEnqueueFixedCostReminders(mods);
 }
 
 async function main() {

@@ -80,43 +80,7 @@ export interface InsightRecommendation {
   period: Period;
 }
 
-export interface BudgetCategoryRecommendation {
-  categoryId: string;
-  categoryName: string;
-  recommendedAmount: number;
-  historicalAverage: number;
-  currentAmount: number;
-  percentageChange: number;
-  classification: ExpenseClass;
-  nature: ExpenseNature;
-  rationale: string[];
-}
-
 export type IncomeSource = "SALARY" | "HISTORY";
-
-export interface BudgetRecommendationResult {
-  month: number;
-  year: number;
-  currency: Currency;
-  categories: BudgetCategoryRecommendation[];
-  totalIncome: number;
-  totalExpenses: number;
-  totalDebtPayment: number;
-  /** Fixed costs from planning model (when configured). */
-  totalFixedCosts: number;
-  totalSavings: number;
-  buffer: number;
-  incomeSource: IncomeSource;
-  rationale: string[];
-  confidence: Confidence;
-  conflict?: {
-    code: "BUDGET_CONFLICT";
-    message: string;
-    mandatory: number;
-    targetSavings: number;
-    expectedIncome: number;
-  };
-}
 
 export interface CashFlowForecast {
   projectedIncome: number;

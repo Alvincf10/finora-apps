@@ -110,6 +110,10 @@ export async function PATCH(request: Request) {
       session.weeklyReportEnabled = body.weeklyReportEnabled;
     }
 
+    if (body.fixedCostReminderEnabled !== undefined) {
+      session.fixedCostReminderEnabled = body.fixedCostReminderEnabled;
+    }
+
     await session.save();
     return ok(serializeWhatsAppSession(session));
   } catch (error) {

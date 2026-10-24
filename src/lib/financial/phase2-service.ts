@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import { Transaction } from "@/models/Transaction";
 import { Category } from "@/models/Category";
 import { Debt } from "@/models/Debt";
-import { Budget } from "@/models/Budget";
 import { Account } from "@/models/Account";
 import { SavingsGoal } from "@/models/SavingsGoal";
 import { FinancialRecommendation } from "@/models/FinancialRecommendation";
@@ -15,7 +14,6 @@ import {
   detectAnomaly,
   detectSpendingTrend,
   forecastMonthlyCashflow,
-  generateBudgetRecommendation,
   mean,
   projectCategorySpend,
   runWhatIf,
@@ -297,96 +295,6 @@ export async function getSpendingAnalytics(
   });
 }
 
-export async function getSmartBudgetRecommendation(
-  userId: string,
-  current: Period
-) {
-  const data = await buildCategorySpendingSeries(userId, current, 3);
-  const profile = await getFinancialProfile(userId, current);
-  const goals = await SavingsGoal.find({ userId, status: "ACTIVE" }).lean();
-  const baselines = await getPlanningBaselines(userId, current);
-
-  const historyIncome = Math.round(
-    weightedAverage3([...data.incomeHistory].reverse())
-  );
-  const expectedIncome = resolveExpectedIncome(
-    baselines,
-    historyIncome,
-    data.currentIncome
-  );
-
-  const fallbackDebt = (
-    await Debt.find({ userId, status: "ACTIVE" }).lean()
-  ).reduce((sum, d) => sum + (d.minimumPayment ?? d.plannedPayment ?? 0), 0);
-  const minimumDebtPayment =
-    baselines.debtDueTotal > 0 ? baselines.debtDueTotal : fallbackDebt;
-
-  // Goal-based monthly savings requirement (simple remaining / months left)
-  let targetSavings = 0;
-  for (const goal of goals) {
-    const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
-    if (goal.targetDate) {
-      const monthsLeft = Math.max(
-        1,
-        Math.ceil(
-          (new Date(goal.targetDate).getTime() - Date.now()) /
-            (1000 * 60 * 60 * 24 * 30)
-        )
-      );
-      targetSavings += Math.ceil(remaining / monthsLeft);
-    } else {
-      targetSavings += Math.ceil(remaining / 12);
-    }
-  }
-  if (targetSavings === 0 && profile.averageMonthlySavings > 0) {
-    targetSavings = profile.averageMonthlySavings;
-  }
-
-  return {
-    ...generateBudgetRecommendation({
-      year: current.year,
-      month: current.month,
-      currency: data.currency,
-      expectedIncome,
-      categories: data.series,
-      minimumDebtPayment,
-      fixedObligations: baselines.fixedCostsTotal,
-      incomeSource: baselines.incomeSource,
-      targetSavings,
-      historicalMonthsAvailable: data.historicalMonthsAvailable,
-    }),
-    cycleLabel: baselines.cycleLabel,
-    periodStart: baselines.periodStart,
-    periodEnd: baselines.periodEnd,
-  };
-}
-
-export async function acceptBudgetRecommendation(
-  userId: string,
-  period: Period,
-  categories: Array<{ categoryId: string; amount: number }>,
-  currency: Currency
-) {
-  const ops = categories.map((c) =>
-    Budget.findOneAndUpdate(
-      {
-        userId,
-        year: period.year,
-        month: period.month,
-        categoryId: c.categoryId,
-      },
-      {
-        $set: {
-          amount: c.amount,
-          currency,
-        },
-      },
-      { upsert: true, new: true }
-    )
-  );
-  return Promise.all(ops);
-}
-
 export async function generatePhase2Insights(
   userId: string,
   period: Period
@@ -462,7 +370,7 @@ export async function generatePhase2Insights(
             changePercent: b.utilizationPercentage,
           },
         ],
-        actionType: "VIEW_BUDGET_REC",
+        actionType: "VIEW_BUDGET",
         period,
       });
     } else if (b.utilizationPercentage >= 80) {
@@ -482,7 +390,7 @@ export async function generatePhase2Insights(
             changePercent: b.utilizationPercentage,
           },
         ],
-        actionType: "VIEW_BUDGET_REC",
+        actionType: "VIEW_BUDGET",
         period,
       });
     } else {
@@ -506,7 +414,7 @@ export async function generatePhase2Insights(
               budget: b.budgetAmount,
             },
           ],
-          actionType: "VIEW_BUDGET_REC",
+          actionType: "VIEW_BUDGET",
           period,
         });
       }
@@ -561,7 +469,7 @@ export async function generatePhase2Insights(
           expense: summary.expense,
         },
       ],
-      actionType: "VIEW_BUDGET_REC",
+      actionType: "VIEW_BUDGET",
       period,
     });
   }
@@ -807,7 +715,7 @@ export async function generatePhase2Insights(
             changePercent: incomeChange,
           },
         ],
-        actionType: "VIEW_FORECAST",
+        actionType: "VIEW_BUDGET",
         period,
       });
     }
@@ -1001,78 +909,6 @@ export async function getEmergencyFundAnalysis(userId: string, period: Period) {
     essentialMonthlyExpenses:
       profile.averageFixedExpense || profile.averageMonthlyExpense,
     coverageMonths: coverage,
-  };
-}
-
-export async function getMonthlyReview(userId: string, period: Period) {
-  const paydayDay = await getUserPaydayDay(userId);
-  const cycle = getPayCycleForPeriod(paydayDay, period);
-  const summary = await getFinancialSummary(userId, period);
-  const analytics = await getSpendingAnalytics(userId, period);
-  const budgets = await getBudgetOverview(userId, period);
-  const prev = shiftPeriod(period, 1);
-  const prevSummary = await getFinancialSummary(userId, prev);
-  const goals = await SavingsGoal.find({ userId }).lean();
-
-  return {
-    period,
-    label: cycle.label,
-    cycleLabel: cycle.label,
-    cycleStart: cycle.start.toISOString(),
-    cycleEnd: cycle.end.toISOString(),
-    income: summary.income,
-    expenses: summary.expense,
-    savings: summary.savings,
-    debtPayment: summary.debtPayment,
-    netCashFlow: summary.netCashFlow,
-    topCategories: analytics
-      .sort((a, b) => b.currentAmount - a.currentAmount)
-      .slice(0, 5),
-    biggestChanges: analytics
-      .filter((a) => a.trend !== "INSUFFICIENT_DATA")
-      .sort((a, b) => Math.abs(b.percentageChange) - Math.abs(a.percentageChange))
-      .slice(0, 5)
-      .map((a) => ({
-        categoryName: a.categoryName,
-        percentageChange: a.percentageChange,
-        trend: a.trend,
-      })),
-    budgetPerformance: {
-      within: budgets.filter((b) => !b.overBudget).length,
-      over: budgets.filter((b) => b.overBudget).length,
-      items: budgets,
-    },
-    comparison: {
-      previous: prev,
-      incomeChange: percent(
-        summary.income - prevSummary.income,
-        prevSummary.income
-      ),
-      expenseChange: percent(
-        summary.expense - prevSummary.expense,
-        prevSummary.expense
-      ),
-      savingsChange: percent(
-        summary.savings - prevSummary.savings,
-        prevSummary.savings
-      ),
-      debtChange: percent(
-        summary.debtPayment - prevSummary.debtPayment,
-        prevSummary.debtPayment
-      ),
-      netCashFlowChange: percent(
-        summary.netCashFlow - prevSummary.netCashFlow,
-        Math.abs(prevSummary.netCashFlow) || 1
-      ),
-    },
-    goals: goals.map((g) => ({
-      name: g.name,
-      currentAmount: g.currentAmount,
-      targetAmount: g.targetAmount,
-      status: g.status,
-      currency: g.currency,
-    })),
-    currency: summary.currency,
   };
 }
 

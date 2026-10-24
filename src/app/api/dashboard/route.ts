@@ -115,7 +115,7 @@ export async function GET(request: Request) {
           { transferDirection: "OUT" },
         ],
       })
-        .sort({ date: -1 })
+        .sort({ date: -1, createdAt: -1, _id: -1 })
         .limit(8)
         .populate("accountId", "name")
         .populate("categoryId", "name"),

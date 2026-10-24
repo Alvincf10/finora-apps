@@ -474,20 +474,6 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/reports/monthly"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-            >
-              {t("reports.monthlyReview")}
-            </Link>
-            <Link
-              href="/forecast"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-            >
-              {t("reports.forecast")}
-            </Link>
-          </div>
         </>
       ) : !loading ? (
         <Card>
