@@ -203,9 +203,9 @@ export default function DebtsPage() {
     }
   }
 
+  /** Preview only — does not PATCH debt until user confirms Save. */
   function pickTenor(debt: Debt, months: number) {
     setTenor(debt._id, months);
-    void saveCicilan(debt, months);
   }
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {

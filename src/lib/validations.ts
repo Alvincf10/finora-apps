@@ -94,6 +94,7 @@ export const createTransactionSchema = z
 
 export const updateTransactionSchema = z.object({
   amount: z.number().int().positive().optional(),
+  accountId: z.string().min(1).optional(),
   categoryId: z.string().optional(),
   description: z.string().max(500).optional(),
   date: z.string().or(z.date()).optional(),
@@ -248,6 +249,9 @@ export const aiChatSchema = z.object({
 export const updateSettingsSchema = z.object({
   paydayDay: z.number().int().min(1).max(28).optional(),
   monthlySalary: z.number().int().min(0).optional(),
+  educationGoalApplicability: z
+    .enum(["APPLICABLE", "NOT_APPLICABLE", "UNSET"])
+    .optional(),
 });
 
 export const createFixedCostSchema = z.object({

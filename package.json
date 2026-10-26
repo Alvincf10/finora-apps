@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3010",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "smoke:money": "node scripts/smoke-money.mjs",
     "smoke:phase2": "node scripts/smoke-phase2.mjs",
     "smoke:wa-parse": "node scripts/smoke-wa-parse.mjs",
@@ -52,6 +54,8 @@
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.7"
   }
 }

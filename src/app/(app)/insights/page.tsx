@@ -63,6 +63,10 @@ type WealthLadder = {
   progressPercent?: number;
   currency: Currency;
   steps: LadderStep[];
+  starterGoalMissing?: boolean;
+  preferences?: {
+    educationGoalApplicability?: "APPLICABLE" | "NOT_APPLICABLE" | "UNSET";
+  };
 };
 
 function isLadderFocus(status: LadderStepStatus) {
@@ -332,9 +336,46 @@ function InsightCard({
   );
 }
 
-function LadderPanel({ ladder }: { ladder: WealthLadder }) {
+function LadderPanel({
+  ladder,
+  onRefresh,
+}: {
+  ladder: WealthLadder;
+  onRefresh: () => Promise<void>;
+}) {
   const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
   const current = ladder.steps.find((s) => isLadderFocus(s.status));
+
+  async function ensureStarter() {
+    setBusy(true);
+    try {
+      await api("/api/roadmap/ensure-starter", { method: "POST" });
+      toast.success("Goal tabungan dasar siap");
+      await onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setEducationApplicability(
+    value: "APPLICABLE" | "NOT_APPLICABLE" | "UNSET"
+  ) {
+    setBusy(true);
+    try {
+      await api("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ educationGoalApplicability: value }),
+      });
+      await onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
   const progressPct =
     typeof ladder.progressPercent === "number"
       ? ladder.progressPercent
@@ -390,6 +431,36 @@ function LadderPanel({ ladder }: { ladder: WealthLadder }) {
             <p className="text-sm leading-relaxed text-emerald-900/70 dark:text-emerald-100/65">
               {t("insights.ladderSubtitle")}
             </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {ladder.starterGoalMissing ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void ensureStarter()}
+                >
+                  Setup tabungan dasar
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void setEducationApplicability(
+                    ladder.preferences?.educationGoalApplicability ===
+                      "NOT_APPLICABLE"
+                      ? "APPLICABLE"
+                      : "NOT_APPLICABLE"
+                  )
+                }
+              >
+                {ladder.preferences?.educationGoalApplicability ===
+                "NOT_APPLICABLE"
+                  ? "Aktifkan step pendidikan"
+                  : "Tandai pendidikan tidak relevan"}
+              </Button>
+            </div>
           </div>
           <div className="rounded-2xl border border-emerald-900/10 bg-white/70 px-4 py-3 text-center backdrop-blur-sm dark:border-emerald-400/15 dark:bg-emerald-950/50">
             <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-800/60 dark:text-emerald-200/55">
@@ -766,7 +837,9 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      {ladder ? <LadderPanel ladder={ladder} /> : null}
+      {ladder ? (
+        <LadderPanel ladder={ladder} onRefresh={() => load(false)} />
+      ) : null}
 
       <Card>
         <CardContent className="flex flex-wrap gap-x-4 gap-y-1 pt-6 text-sm">

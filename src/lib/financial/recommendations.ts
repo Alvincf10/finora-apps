@@ -64,7 +64,11 @@ export async function generateRecommendations(
   const spendingAlerts = await detectSpendingIncreases(userId, period);
   recommendations.push(...spendingAlerts);
 
-  if (summary.income > 0 && summary.savingsRate < 10) {
+  if (
+    summary.income > 0 &&
+    summary.savingsRate != null &&
+    summary.savingsRate < 10
+  ) {
     recommendations.push({
       type: "SAVING_TARGET_RISK",
       severity: "WARNING",

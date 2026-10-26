@@ -1,11 +1,14 @@
 import type { DebtKind } from "@/types";
+import { calculateEligibleLiquidBalance } from "@/lib/financial/shared/liquid-assets";
 
 export const LADDER_CASH_TARGET_IDR = 10_000_000;
 export const LADDER_STARTER_GOAL_NAME = "Tabungan dasar 10jt";
 export const LADDER_EMERGENCY_MONTHS = 3;
 export const LADDER_EMERGENCY_STRETCH_MONTHS = 6;
 export const LADDER_INVEST_RATIO = 0.2;
-export const LADDER_RULE_VERSION = "phase3-p0p1-1";
+export const LADDER_RULE_VERSION = "phase3-fr03-1";
+
+export type GoalApplicability = "APPLICABLE" | "NOT_APPLICABLE" | "UNSET";
 
 export type LadderStepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -30,6 +33,30 @@ export type LadderActionType =
   | "NONE";
 
 export type LadderProgressUnit = "IDR" | "MONTHS" | "PERCENT" | "BOOLEAN";
+
+export type LadderStepProvenance = {
+  criteria: string;
+  formula: string;
+  sources: string[];
+  /** Remaining gap toward completion when computable. */
+  gapRemaining?: number | null;
+  gapUnit?: LadderProgressUnit;
+  /** True when classification relied on name regex instead of typed fields. */
+  nameInferred?: boolean;
+};
+
+/** Prefer structured goalType; fall back to name patterns with inference flag. */
+export function resolveGoalByType<T extends { goalType?: string | null; name: string }>(
+  goals: T[],
+  goalType: string,
+  namePatterns: RegExp[]
+): { goal: T | null; nameInferred: boolean } {
+  const typed = goals.find((g) => g.goalType === goalType) ?? null;
+  if (typed) return { goal: typed, nameInferred: false };
+  const named = goals.find((g) => nameMatches(g.name, namePatterns)) ?? null;
+  if (named) return { goal: named, nameInferred: true };
+  return { goal: null, nameInferred: false };
+}
 
 export interface LadderConditionInput {
   step: LadderStepId;
@@ -186,16 +213,7 @@ export function calculateEligibleLiquidBalanceIdr(
     currentBalance?: number;
   }>
 ) {
-  const LIQUID = new Set(["CASH", "BANK", "E_WALLET"]);
-  return accounts
-    .filter(
-      (a) =>
-        a.isActive !== false &&
-        a.currency === "IDR" &&
-        LIQUID.has(a.type) &&
-        a.type !== "CREDIT_CARD"
-    )
-    .reduce((sum, a) => sum + Math.max(0, a.currentBalance ?? 0), 0);
+  return calculateEligibleLiquidBalance(accounts, "IDR");
 }
 
 /**

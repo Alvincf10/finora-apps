@@ -20,54 +20,102 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-type AppAlert = {
+type ActionItem = {
   id: string;
-  kind: string;
-  severity: "CRITICAL" | "WARNING" | "INFO";
+  issueKey: string;
+  source: "ALERT" | "RECOMMENDATION";
+  type: string;
+  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
   title: string;
   message: string;
-  href: string;
-  dueDate?: string;
+  href?: string;
+  status?: string;
+  dueDate?: string | null;
+  ruleVersion?: string | null;
 };
 
-type AlertsResponse = {
-  count: number;
-  critical: number;
-  alerts: AppAlert[];
+type ActionCenterResponse = {
+  actions: ActionItem[];
+  counts: {
+    total: number;
+    critical: number;
+    high: number;
+    alerts: number;
+    recommendations: number;
+  };
+  period: { year: number; month: number };
 };
 
-function kindLabel(kind: string) {
-  return kind
+function typeLabel(type: string) {
+  return type
+    .replace(/^ALERT_/, "")
     .split("_")
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(" ");
 }
 
+function priorityVariant(
+  priority: ActionItem["priority"]
+): "destructive" | "secondary" | "outline" {
+  if (priority === "CRITICAL" || priority === "HIGH") return "destructive";
+  if (priority === "MEDIUM") return "secondary";
+  return "outline";
+}
+
 export default function AlertsPage() {
   const { t, intlLocale } = useI18n();
-  const [alerts, setAlerts] = useState<AppAlert[]>([]);
+  const [actions, setActions] = useState<ActionItem[]>([]);
+  const [counts, setCounts] = useState<ActionCenterResponse["counts"] | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api<AlertsResponse>("/api/alerts");
-      const dismissed = getDismissedAlertIds();
-      setAlerts(data.alerts.filter((a) => !dismissed.has(a.id)));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("common.failed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const load = useCallback(
+    async (refresh = false) => {
+      setLoading(true);
+      try {
+        const qs = refresh ? "?refresh=1" : "";
+        const data = await api<ActionCenterResponse>(
+          `/api/action-center${qs}`
+        );
+        const dismissed = getDismissedAlertIds();
+        setActions(
+          data.actions.filter(
+            (a) => a.source !== "ALERT" || !dismissed.has(a.id)
+          )
+        );
+        setCounts(data.counts);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t("common.failed"));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t]
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  function onDismiss(id: string) {
+  function onDismissAlert(id: string) {
     dismissAlert(id);
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    setActions((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  async function onRecStatus(
+    id: string,
+    status: "ACCEPTED" | "DISMISSED" | "VIEWED"
+  ) {
+    try {
+      await api("/api/action-center", {
+        method: "PATCH",
+        body: JSON.stringify({ id, status }),
+      });
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("common.failed"));
+    }
   }
 
   function onResetDismissals() {
@@ -80,10 +128,17 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">
-            {t("alerts.title")}
-          </h1>
-          <p className="text-muted-foreground">{t("alerts.subtitle")}</p>
+          <h1 className="font-heading text-3xl font-semibold">Action Center</h1>
+          <p className="text-muted-foreground">
+            Prioritas tindakan dari alert live + rekomendasi — deduplikasi
+            otomatis.
+          </p>
+          {counts ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {counts.total} aktif · {counts.critical} critical ·{" "}
+              {counts.alerts} alert · {counts.recommendations} rekomendasi
+            </p>
+          ) : null}
         </div>
         <div className="flex gap-2">
           <Button
@@ -97,7 +152,7 @@ export default function AlertsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void load()}
+            onClick={() => void load(true)}
             disabled={loading}
           >
             {loading ? t("common.refreshing") : t("common.refresh")}
@@ -107,62 +162,82 @@ export default function AlertsPage() {
 
       <Card>
         <CardContent className="space-y-1 pt-6 text-sm text-muted-foreground">
-          <p>{t("alerts.legend")}</p>
+          <p>
+            Alert bersifat live; rekomendasi tersimpan dengan issue key stabil.
+            Masalah yang sama tidak ditampilkan dua kali.
+          </p>
           <p>{t("alerts.dismissHint")}</p>
         </CardContent>
       </Card>
 
       <div className="space-y-3">
-        {alerts.length === 0 ? (
+        {actions.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
               {loading ? t("common.loading") : t("alerts.empty")}
             </CardContent>
           </Card>
         ) : (
-          alerts.map((alert) => (
-            <Card key={alert.id}>
+          actions.map((item) => (
+            <Card key={`${item.source}:${item.id}`}>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant={
-                      alert.severity === "CRITICAL"
-                        ? "destructive"
-                        : alert.severity === "WARNING"
-                          ? "secondary"
-                          : "outline"
-                    }
-                  >
-                    {alert.severity}
+                  <Badge variant={priorityVariant(item.priority)}>
+                    {item.priority}
                   </Badge>
-                  <Badge variant="outline">{kindLabel(alert.kind)}</Badge>
-                  <CardTitle className="text-lg">{alert.title}</CardTitle>
+                  <Badge variant="outline">{typeLabel(item.type)}</Badge>
+                  <Badge variant="outline">{item.source}</Badge>
+                  <CardTitle className="text-lg">{item.title}</CardTitle>
                 </div>
-                <CardDescription>{alert.message}</CardDescription>
-                {alert.dueDate ? (
+                <CardDescription>{item.message}</CardDescription>
+                {item.dueDate ? (
                   <p className="text-xs text-muted-foreground">
                     {t("alerts.due", {
-                      date: new Date(alert.dueDate).toLocaleDateString(
+                      date: new Date(item.dueDate).toLocaleDateString(
                         intlLocale
                       ),
                     })}
                   </p>
                 ) : null}
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  {item.issueKey}
+                </p>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
-                <Link
-                  href={alert.href}
-                  className="inline-flex h-8 items-center rounded-md border px-3 text-sm"
-                >
-                  {t("alerts.open")}
-                </Link>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onDismiss(alert.id)}
-                >
-                  {t("alerts.dismiss")}
-                </Button>
+                {item.href ? (
+                  <Link
+                    href={item.href}
+                    className="inline-flex h-8 items-center rounded-md border px-3 text-sm"
+                  >
+                    {t("alerts.open")}
+                  </Link>
+                ) : null}
+                {item.source === "ALERT" ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onDismissAlert(item.id)}
+                  >
+                    {t("alerts.dismiss")}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void onRecStatus(item.id, "ACCEPTED")}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void onRecStatus(item.id, "DISMISSED")}
+                    >
+                      {t("alerts.dismiss")}
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           ))

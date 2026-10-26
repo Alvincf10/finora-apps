@@ -3,6 +3,7 @@ import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { SavingsGoal } from "@/models/SavingsGoal";
 import { Transaction } from "@/models/Transaction";
+import { User } from "@/models/User";
 import {
   getFinancialProfile,
   getSpendingAnalytics,
@@ -32,13 +33,16 @@ import {
   isStarterCashGoal,
   nameMatches,
   resolveEssentialMonthly,
+  resolveGoalByType,
   syncStarterGoalAmount,
   toLegacyStatus,
   WEALTH_PATTERNS,
   type ConditionMet,
+  type GoalApplicability,
   type LadderActionType,
   type LadderProgressUnit,
   type LadderStepId,
+  type LadderStepProvenance,
   type LadderStepStatus,
   type LegacyLadderStatus,
 } from "@/lib/financial/wealth-ladder-math";
@@ -66,6 +70,8 @@ export interface LadderStep {
     target: number;
     unit: LadderProgressUnit;
   };
+  /** Explicit criteria / formula / sources (FR-03.1). */
+  provenance: LadderStepProvenance;
 }
 
 export interface WealthLadderResult {
@@ -78,17 +84,96 @@ export interface WealthLadderResult {
   ruleVersion: string;
   evaluatedAt: string;
   steps: LadderStep[];
+  preferences: {
+    educationGoalApplicability: GoalApplicability;
+  };
+  /** True when starter goal is missing — call POST /api/roadmap/ensure-starter. */
+  starterGoalMissing: boolean;
+}
+
+async function sumGoalContributions(
+  userId: string,
+  goalId: mongoose.Types.ObjectId
+) {
+  const contributionRows = await Transaction.aggregate<{ total: number }>([
+    {
+      $match: {
+        userId: new mongoose.Types.ObjectId(userId),
+        goalId,
+        type: "EXPENSE",
+      },
+    },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  return contributionRows[0]?.total ?? 0;
+}
+
+function pickStarterGoal<
+  T extends {
+    name: string;
+    targetAmount: number;
+    goalType?: string | null;
+  },
+>(goals: T[]): T | null {
+  return (
+    goals.find(
+      (g) =>
+        g.name === LADDER_STARTER_GOAL_NAME || g.goalType === "BASIC_SAVINGS"
+    ) ??
+    goals.find((g) => isStarterCashGoal(g.name, g.targetAmount)) ??
+    null
+  );
 }
 
 /**
- * Idempotent upsert for system BASIC_SAVINGS goal.
- * Progress is contribution-only (Goals → Nabung & catat / contribute).
- * Does not import BCA/ATM liquid balances as "sudah nabung".
+ * Read-only starter goal lookup. Does not create or mutate goals (FR-03 / GET safety).
+ * Amount is computed from contribution transactions, not account liquid balances.
+ */
+export async function findStarterCashGoal(userId: string, currency: Currency) {
+  if (currency !== "IDR") {
+    return {
+      goal: null as null,
+      amount: 0,
+      target: LADDER_CASH_TARGET_IDR,
+      missing: true as const,
+    };
+  }
+
+  const existing = await SavingsGoal.find({
+    userId,
+    status: { $in: ["ACTIVE", "COMPLETED"] },
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const goal = pickStarterGoal(existing);
+  if (!goal) {
+    return {
+      goal: null,
+      amount: 0,
+      target: LADDER_CASH_TARGET_IDR,
+      missing: true as const,
+    };
+  }
+
+  const contribution = await sumGoalContributions(userId, goal._id);
+  const amount = syncStarterGoalAmount(contribution);
+  return {
+    goal,
+    amount,
+    target: goal.targetAmount || LADDER_CASH_TARGET_IDR,
+    missing: false as const,
+  };
+}
+
+/**
+ * Explicit write path: create/sync system BASIC_SAVINGS goal.
+ * Call only from POST /api/roadmap/ensure-starter — never from evaluate/GET.
  */
 export async function ensureStarterCashGoal(
   userId: string,
   currency: Currency,
-  _liquidCash: number
+  _liquidCash = 0
 ) {
   if (currency !== "IDR") return null;
 
@@ -97,14 +182,7 @@ export async function ensureStarterCashGoal(
     status: { $in: ["ACTIVE", "COMPLETED"] },
   }).sort({ updatedAt: -1 });
 
-  let goal =
-    existing.find(
-      (g) =>
-        g.name === LADDER_STARTER_GOAL_NAME ||
-        (g as { goalType?: string }).goalType === "BASIC_SAVINGS"
-    ) ??
-    existing.find((g) => isStarterCashGoal(g.name, g.targetAmount)) ??
-    null;
+  let goal = pickStarterGoal(existing);
 
   if (!goal) {
     try {
@@ -121,7 +199,6 @@ export async function ensureStarterCashGoal(
         status: "ACTIVE",
       });
     } catch {
-      // Concurrent create — reload
       goal = await SavingsGoal.findOne({
         userId,
         name: LADDER_STARTER_GOAL_NAME,
@@ -144,18 +221,9 @@ export async function ensureStarterCashGoal(
     dirty = true;
   }
 
-  // Correct legacy auto-synced liquid amounts: only real goal contributions count.
-  const contributionRows = await Transaction.aggregate<{ total: number }>([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId),
-        goalId: goal._id,
-        type: "EXPENSE",
-      },
-    },
-    { $group: { _id: null, total: { $sum: "$amount" } } },
-  ]);
-  const corrected = syncStarterGoalAmount(contributionRows[0]?.total ?? 0);
+  const corrected = syncStarterGoalAmount(
+    await sumGoalContributions(userId, goal._id)
+  );
   if ((goal.currentAmount ?? 0) !== corrected) {
     goal.currentAmount = corrected;
     dirty = true;
@@ -174,16 +242,12 @@ export async function ensureStarterCashGoal(
   return goal;
 }
 
-function goalTypeOf(g: { goalType?: string; name: string }) {
-  return g.goalType ?? null;
-}
-
 export async function evaluateWealthLadder(
   userId: string,
   period: Period,
-  prefs?: { educationGoalApplicability?: "APPLICABLE" | "NOT_APPLICABLE" | "UNSET" }
+  prefs?: { educationGoalApplicability?: GoalApplicability }
 ): Promise<WealthLadderResult> {
-  const [accounts, debts, goals, summary, profile, analytics] =
+  const [accounts, debts, goals, summary, profile, analytics, user] =
     await Promise.all([
       Account.find({ userId, isActive: true }).lean(),
       Debt.find({ userId }).lean(),
@@ -191,7 +255,15 @@ export async function evaluateWealthLadder(
       getFinancialSummary(userId, period),
       getFinancialProfile(userId, period),
       getSpendingAnalytics(userId, period),
+      User.findById(userId).select("roadmapPreferences").lean(),
     ]);
+
+  const educationGoalApplicability: GoalApplicability =
+    prefs?.educationGoalApplicability ??
+    (user?.roadmapPreferences?.educationGoalApplicability as
+      | GoalApplicability
+      | undefined) ??
+    "UNSET";
 
   const activeGoals = goals.filter(
     (g) => g.status === "ACTIVE" || g.status === "COMPLETED"
@@ -211,15 +283,19 @@ export async function evaluateWealthLadder(
     }))
   );
 
-  const starterGoal = await ensureStarterCashGoal(userId, currency, liquidCash);
-  const starterAmount = starterGoal?.currentAmount ?? 0;
-  const starterTarget = starterGoal?.targetAmount ?? LADDER_CASH_TARGET_IDR;
+  const starter = await findStarterCashGoal(userId, currency);
+  const starterGoal = starter.goal;
+  const starterAmount = starter.amount;
+  const starterTarget = starter.target;
+  const starterGoalMissing = starter.missing;
 
   // —— Step conditions ——
   const step1Met: ConditionMet =
     currency !== "IDR"
       ? false
-      : starterAmount >= starterTarget || starterGoal?.status === "COMPLETED";
+      : starterGoalMissing
+        ? false
+        : starterAmount >= starterTarget || starterGoal?.status === "COMPLETED";
 
   const activeDebts = debts.filter(
     (d) => d.status === "ACTIVE" && d.remainingAmount > 0
@@ -227,9 +303,7 @@ export async function evaluateWealthLadder(
   const classified = activeDebts.map((d) => ({
     ...d,
     resolvedKind: inferDebtKind(d.name, (d as { kind?: DebtKind }).kind),
-    inferred:
-      !(d as { kind?: DebtKind }).kind &&
-      inferDebtKind(d.name, null) === "MORTGAGE",
+    inferred: !(d as { kind?: DebtKind }).kind,
   }));
   const smallDebts = classified.filter((d) => d.resolvedKind !== "MORTGAGE");
   const mortgages = classified.filter((d) => d.resolvedKind === "MORTGAGE");
@@ -239,12 +313,14 @@ export async function evaluateWealthLadder(
     (s, d) => s + d.originalAmount,
     0
   );
+  const debtNameInferred = classified.some((d) => d.inferred);
 
-  const emergencyGoal = activeGoals.find(
-    (g) =>
-      goalTypeOf(g as { goalType?: string; name: string }) ===
-        "EMERGENCY_FUND" || nameMatches(g.name, EMERGENCY_PATTERNS)
+  const emergencyResolved = resolveGoalByType(
+    activeGoals,
+    "EMERGENCY_FUND",
+    EMERGENCY_PATTERNS
   );
+  const emergencyGoal = emergencyResolved.goal;
   const essentialFromCategories = analytics
     .filter((row) => row.classification === "ESSENTIAL")
     .reduce((sum, row) => sum + (row.average3m || row.currentAmount || 0), 0);
@@ -269,15 +345,18 @@ export async function evaluateWealthLadder(
   const invest = calculateInvestmentRate(investAmount, incomeBase);
   const step4Met = invest.conditionMet;
 
-  const educationNA =
-    prefs?.educationGoalApplicability === "NOT_APPLICABLE";
-  const educationGoal = activeGoals.find(
-    (g) =>
-      goalTypeOf(g as { goalType?: string; name: string }) === "EDUCATION" ||
-      nameMatches(g.name, EDUCATION_PATTERNS)
+  const educationNA = educationGoalApplicability === "NOT_APPLICABLE";
+  const educationResolved = resolveGoalByType(
+    activeGoals,
+    "EDUCATION",
+    EDUCATION_PATTERNS
   );
-  // Having a valid education goal = planned (enough to clear gate).
-  const step5Met: ConditionMet = educationNA ? false : Boolean(educationGoal);
+  // Prefer typed EDUCATION goal. Name-only match is evidence but does NOT clear the gate (FR-03).
+  const educationGoal = educationResolved.goal;
+  const educationTyped = educationGoal && !educationResolved.nameInferred;
+  const step5Met: ConditionMet = educationNA
+    ? false
+    : Boolean(educationTyped);
 
   const paidMortgages = debts.filter(
     (d) =>
@@ -288,25 +367,40 @@ export async function evaluateWealthLadder(
   const mortgageTotal = mortgages.reduce((s, d) => s + d.remainingAmount, 0);
   const mortgageOriginal = mortgages.reduce((s, d) => s + d.originalAmount, 0);
 
-  const wealthOrGivingGoal = activeGoals.find((g) => {
-    const t = goalTypeOf(g as { goalType?: string; name: string });
-    return (
-      t === "CHARITY" ||
-      t === "WEALTH" ||
-      nameMatches(g.name, GIVING_PATTERNS) ||
-      nameMatches(g.name, WEALTH_PATTERNS)
-    );
-  });
+  const charityResolved = resolveGoalByType(
+    activeGoals,
+    "CHARITY",
+    GIVING_PATTERNS
+  );
+  const wealthResolved = resolveGoalByType(
+    activeGoals,
+    "WEALTH",
+    WEALTH_PATTERNS
+  );
+  const wealthOrGivingTyped =
+    (charityResolved.goal && !charityResolved.nameInferred) ||
+    (wealthResolved.goal && !wealthResolved.nameInferred)
+      ? charityResolved.goal && !charityResolved.nameInferred
+        ? charityResolved.goal
+        : wealthResolved.goal
+      : null;
+  const wealthOrGivingFallback =
+    wealthOrGivingTyped ??
+    charityResolved.goal ??
+    wealthResolved.goal;
+  const wealthNameInferred = Boolean(
+    wealthOrGivingFallback && !wealthOrGivingTyped
+  );
   const givingSpend = analytics
     .filter((row) => nameMatches(row.categoryName, GIVING_PATTERNS))
     .reduce((s, row) => s + row.currentAmount, 0);
-  // ACHIEVED only if goal target reached / COMPLETED — not a single donation.
+  // ACHIEVED only with typed CHARITY/WEALTH goal at target — not name-only / single donation.
   const step7Met: ConditionMet = Boolean(
-    wealthOrGivingGoal &&
-      (wealthOrGivingGoal.status === "COMPLETED" ||
-        (wealthOrGivingGoal.targetAmount > 0 &&
-          (wealthOrGivingGoal.currentAmount ?? 0) >=
-            wealthOrGivingGoal.targetAmount))
+    wealthOrGivingTyped &&
+      (wealthOrGivingTyped.status === "COMPLETED" ||
+        (wealthOrGivingTyped.targetAmount > 0 &&
+          (wealthOrGivingTyped.currentAmount ?? 0) >=
+            wealthOrGivingTyped.targetAmount))
   );
 
   const gates = applySequentialGate([
@@ -334,7 +428,8 @@ export async function evaluateWealthLadder(
     detail: string,
     actionType: LadderActionType,
     rawProgress: number,
-    progressMeta?: LadderStep["progressMeta"]
+    progressMeta: LadderStep["progressMeta"] | undefined,
+    provenance: LadderStepProvenance
   ): LadderStep {
     const g = gateByStep.get(id)!;
     const lockedDetail =
@@ -361,6 +456,7 @@ export async function evaluateWealthLadder(
       detail: lockedDetail,
       actionType,
       progressMeta,
+      provenance,
     };
   }
 
@@ -370,15 +466,20 @@ export async function evaluateWealthLadder(
           code: "STEP1_NON_IDR",
           text: "Target Rp10jt hanya untuk rekening IDR pada MVP.",
         }
-      : step1Met
+      : starterGoalMissing
         ? {
-            code: "STEP1_MET",
-            text: "Tabungan dasar mencapai target Rp10jt.",
+            code: "STEP1_SETUP_REQUIRED",
+            text: "Goal tabungan dasar belum dibuat — setup eksplisit diperlukan.",
           }
-        : {
-            code: "STEP1_BELOW_TARGET",
-            text: "Tabungan dasar masih di bawah Rp10jt.",
-          };
+        : step1Met
+          ? {
+              code: "STEP1_MET",
+              text: "Tabungan dasar mencapai target Rp10jt.",
+            }
+          : {
+              code: "STEP1_BELOW_TARGET",
+              text: "Tabungan dasar masih di bawah Rp10jt.",
+            };
 
   const step3Reason =
     step3Met === "UNKNOWN"
@@ -437,20 +538,40 @@ export async function evaluateWealthLadder(
         code: "STEP7_ACHIEVED",
         text: "Target goal berbagi/kekayaan tercapai.",
       }
-    : wealthOrGivingGoal
+    : wealthOrGivingTyped
       ? {
           code: "STEP7_PLANNED",
-          text: `Goal ada (${wealthOrGivingGoal.name}) tetapi target belum tercapai.`,
+          text: `Goal typed ada (${wealthOrGivingTyped.name}) tetapi target belum tercapai.`,
         }
-      : givingSpend > 0
+      : wealthNameInferred && wealthOrGivingFallback
         ? {
-            code: "STEP7_ACTIVITY_ONLY",
-            text: "Ada transaksi berbagi, tetapi belum ada target goal yang tercapai.",
+            code: "STEP7_NAME_ONLY",
+            text: `Goal “${wealthOrGivingFallback.name}” cocok nama saja — set goalType CHARITY/WEALTH.`,
           }
-        : {
-            code: "STEP7_MISSING",
-            text: "Belum ada goal berbagi/kekayaan dengan target terukur.",
-          };
+        : givingSpend > 0
+          ? {
+              code: "STEP7_ACTIVITY_ONLY",
+              text: "Ada transaksi berbagi, tetapi belum ada target goal typed yang tercapai.",
+            }
+          : {
+              code: "STEP7_MISSING",
+              text: "Belum ada goal berbagi/kekayaan dengan goalType CHARITY/WEALTH.",
+            };
+
+  const step5ReasonCode = educationNA
+    ? "STEP5_NOT_APPLICABLE"
+    : educationTyped
+      ? "STEP5_PLANNED"
+      : educationResolved.nameInferred
+        ? "STEP5_NAME_ONLY"
+        : "STEP5_MISSING";
+  const step5ReasonText = educationNA
+    ? "Pengguna menandai pendidikan anak tidak relevan."
+    : educationTyped
+      ? `Goal pendidikan typed: ${educationGoal!.name}.`
+      : educationResolved.nameInferred
+        ? `Goal “${educationGoal!.name}” cocok nama saja — set goalType EDUCATION agar step selesai.`
+        : "Belum ada goal dengan goalType EDUCATION.";
 
   const steps: LadderStep[] = [
     pack(
@@ -460,7 +581,9 @@ export async function evaluateWealthLadder(
       step1Reason.code,
       step1Reason.text,
       currency === "IDR"
-        ? `${starterGoal?.name ?? LADDER_STARTER_GOAL_NAME}: ${money(starterAmount)} / ${money(starterTarget)} · kas rekening sekarang ${money(liquidCash)} (tidak dihitung otomatis)`
+        ? starterGoalMissing
+          ? `Goal belum ada · kas rekening sekarang ${money(liquidCash)} (tidak dihitung otomatis) · POST /api/roadmap/ensure-starter`
+          : `${starterGoal?.name ?? LADDER_STARTER_GOAL_NAME}: ${money(starterAmount)} / ${money(starterTarget)} · kas rekening sekarang ${money(liquidCash)} (tidak dihitung otomatis)`
         : `Saldo non-IDR tidak dihitung ke target Rp10jt pada MVP`,
       "VIEW_GOALS",
       currency === "IDR"
@@ -470,6 +593,16 @@ export async function evaluateWealthLadder(
         current: starterAmount,
         target: starterTarget,
         unit: "IDR",
+      },
+      {
+        criteria: "BASIC_SAVINGS goal contributions ≥ Rp10.000.000 (IDR)",
+        formula: "sum(EXPENSE where goalId=starter) ≥ 10_000_000",
+        sources: [
+          "SavingsGoal.goalType=BASIC_SAVINGS",
+          "Transaction.goalId contributions",
+        ],
+        gapRemaining: Math.max(0, starterTarget - starterAmount),
+        gapUnit: "IDR",
       }
     ),
     pack(
@@ -495,6 +628,14 @@ export async function evaluateWealthLadder(
         current: Math.max(0, smallDebtOriginal - smallDebtTotal),
         target: Math.max(1, smallDebtOriginal),
         unit: "IDR",
+      },
+      {
+        criteria: "No ACTIVE non-mortgage debt with remainingAmount > 0",
+        formula: "count(debts where kind≠MORTGAGE && remaining>0) === 0",
+        sources: ["Debt.kind", "Debt.remainingAmount"],
+        gapRemaining: smallDebtTotal,
+        gapUnit: "IDR",
+        nameInferred: debtNameInferred,
       }
     ),
     pack(
@@ -523,7 +664,7 @@ export async function evaluateWealthLadder(
           )
         : emergencyGoal
           ? clampPct(
-              ((emergencyFund) / Math.max(1, emergencyGoal.targetAmount)) * 100
+              (emergencyFund / Math.max(1, emergencyGoal.targetAmount)) * 100
             )
           : 0,
       emergency.coverageMonths != null
@@ -532,7 +673,26 @@ export async function evaluateWealthLadder(
             target: LADDER_EMERGENCY_MONTHS,
             unit: "MONTHS",
           }
-        : undefined
+        : undefined,
+      {
+        criteria: `emergencyFund / essentialMonthly ≥ ${LADDER_EMERGENCY_MONTHS}`,
+        formula: "coverageMonths = reserve / essentials",
+        sources: [
+          emergencyResolved.nameInferred
+            ? "SavingsGoal name≈emergency (inferred)"
+            : "SavingsGoal.goalType=EMERGENCY_FUND",
+          `essentials:${essentialResolved.source}`,
+        ],
+        gapRemaining:
+          emergency.coverageMonths != null
+            ? Math.max(
+                0,
+                LADDER_EMERGENCY_MONTHS - emergency.coverageMonths
+              )
+            : null,
+        gapUnit: "MONTHS",
+        nameInferred: emergencyResolved.nameInferred,
+      }
     ),
     pack(
       4,
@@ -553,39 +713,60 @@ export async function evaluateWealthLadder(
             target: LADDER_INVEST_RATIO * 100,
             unit: "PERCENT",
           }
-        : undefined
+        : undefined,
+      {
+        criteria: `investmentSpend / eligibleIncome ≥ ${LADDER_INVEST_RATIO * 100}%`,
+        formula: "rate = investAmount / incomeBase",
+        sources: [
+          "Category name≈invest (inferred)",
+          "Transaction income/expense",
+        ],
+        gapRemaining:
+          invest.rate != null
+            ? Math.max(0, LADDER_INVEST_RATIO * 100 - invest.rate * 100)
+            : null,
+        gapUnit: "PERCENT",
+        nameInferred: true,
+      }
     ),
     pack(
       5,
       "Bikin dana pendidikan anak",
       educationNA
         ? "Ditandai tidak relevan — tidak menghalangi step berikutnya."
-        : "Selalu ditampilkan. Keberadaan goal = direncanakan (bukan dana sudah penuh).",
-      educationNA
-        ? "STEP5_NOT_APPLICABLE"
-        : educationGoal
-          ? "STEP5_PLANNED"
-          : "STEP5_MISSING",
-      educationNA
-        ? "Pengguna menandai pendidikan anak tidak relevan."
-        : educationGoal
-          ? `Goal pendidikan ada: ${educationGoal.name}.`
-          : "Belum ada goal pendidikan / sekolah / anak.",
+        : "Memerlukan SavingsGoal dengan goalType EDUCATION (bukan hanya nama).",
+      step5ReasonCode,
+      step5ReasonText,
       educationNA
         ? "Tidak relevan"
         : educationGoal
-          ? `${educationGoal.name}: ${money(educationGoal.currentAmount)} / ${money(educationGoal.targetAmount)}`
-          : "Belum ada goal pendidikan / sekolah / anak",
+          ? `${educationGoal.name}: ${money(educationGoal.currentAmount)} / ${money(educationGoal.targetAmount)}${
+              educationResolved.nameInferred ? " · name-inferred" : ""
+            }`
+          : "Belum ada goal pendidikan",
       "VIEW_GOALS",
-      educationGoal
-        ? educationGoal.status === "COMPLETED"
+      educationTyped
+        ? educationGoal!.status === "COMPLETED"
           ? 100
           : clampPct(
-              ((educationGoal.currentAmount ?? 0) /
-                Math.max(1, educationGoal.targetAmount)) *
+              ((educationGoal!.currentAmount ?? 0) /
+                Math.max(1, educationGoal!.targetAmount)) *
                 100
             )
-        : 0
+        : 0,
+      educationTyped
+        ? {
+            current: educationGoal!.currentAmount ?? 0,
+            target: educationGoal!.targetAmount,
+            unit: "IDR",
+          }
+        : undefined,
+      {
+        criteria: "Exists ACTIVE/COMPLETED SavingsGoal with goalType=EDUCATION",
+        formula: "goalType === EDUCATION (name match insufficient)",
+        sources: ["SavingsGoal.goalType", "User.roadmapPreferences.educationGoalApplicability"],
+        nameInferred: educationResolved.nameInferred,
+      }
     ),
     pack(
       6,
@@ -598,7 +779,7 @@ export async function evaluateWealthLadder(
           ? "KPR sudah lunas / tidak ada sisa"
           : "Tidak ada KPR aktif"
         : `${mortgages.length} KPR · sisa ${money(mortgageTotal)}${
-            classified.some((d) => d.inferred)
+            debtNameInferred
               ? " · jenis diinfer dari nama — konfirmasi di Debts"
               : ""
           }`,
@@ -609,33 +790,58 @@ export async function evaluateWealthLadder(
             ((mortgageOriginal - mortgageTotal) /
               Math.max(1, mortgageOriginal)) *
               100
-          )
+          ),
+      undefined,
+      {
+        criteria: "No ACTIVE mortgage debt with remainingAmount > 0",
+        formula: "count(kind=MORTGAGE && remaining>0) === 0",
+        sources: ["Debt.kind", "Debt.remainingAmount"],
+        gapRemaining: mortgageTotal,
+        gapUnit: "IDR",
+        nameInferred: debtNameInferred,
+      }
     ),
     pack(
       7,
       "Kekayaan abadi & berbagi",
-      "Target akhir: goal berbagi/kekayaan tercapai — satu donasi tidak cukup.",
+      "Target akhir: goal typed CHARITY/WEALTH tercapai — satu donasi tidak cukup.",
       step7Reason.code,
       step7Reason.text,
       step7Met
-        ? wealthOrGivingGoal
-          ? `Goal tercapai: ${wealthOrGivingGoal.name}`
+        ? wealthOrGivingTyped
+          ? `Goal tercapai: ${wealthOrGivingTyped.name}`
           : "Target tercapai"
-        : wealthOrGivingGoal
-          ? `${wealthOrGivingGoal.name}: ${money(wealthOrGivingGoal.currentAmount)} / ${money(wealthOrGivingGoal.targetAmount)}`
+        : wealthOrGivingFallback
+          ? `${wealthOrGivingFallback.name}: ${money(wealthOrGivingFallback.currentAmount)} / ${money(wealthOrGivingFallback.targetAmount)}${
+              wealthNameInferred ? " · name-inferred" : ""
+            }`
           : givingSpend > 0
-            ? `Aktivitas berbagi ${money(givingSpend)} bulan ini — buat goal target`
-            : "Buat goal berbagi/kekayaan dengan target terukur",
+            ? `Aktivitas berbagi ${money(givingSpend)} bulan ini — buat goal typed`
+            : "Buat goal berbagi/kekayaan dengan goalType CHARITY/WEALTH",
       "VIEW_GOALS",
       step7Met
         ? 100
-        : wealthOrGivingGoal
+        : wealthOrGivingTyped
           ? clampPct(
-              ((wealthOrGivingGoal.currentAmount ?? 0) /
-                Math.max(1, wealthOrGivingGoal.targetAmount)) *
+              ((wealthOrGivingTyped.currentAmount ?? 0) /
+                Math.max(1, wealthOrGivingTyped.targetAmount)) *
                 100
             )
-          : 0
+          : 0,
+      wealthOrGivingTyped
+        ? {
+            current: wealthOrGivingTyped.currentAmount ?? 0,
+            target: wealthOrGivingTyped.targetAmount,
+            unit: "IDR",
+          }
+        : undefined,
+      {
+        criteria:
+          "Typed CHARITY/WEALTH goal COMPLETED or currentAmount ≥ targetAmount",
+        formula: "goalType ∈ {CHARITY,WEALTH} && funded",
+        sources: ["SavingsGoal.goalType"],
+        nameInferred: wealthNameInferred,
+      }
     ),
   ];
 
@@ -649,5 +855,7 @@ export async function evaluateWealthLadder(
     ruleVersion: LADDER_RULE_VERSION,
     evaluatedAt: new Date().toISOString(),
     steps,
+    preferences: { educationGoalApplicability },
+    starterGoalMissing,
   };
 }

@@ -31,13 +31,70 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n-provider";
 
+type CommandCenterBlock = {
+  health: {
+    currency: Currency;
+    income: number;
+    expense: number;
+    netCashFlow: number;
+    savingsRate: number | null;
+    savingsRateAvailable: boolean;
+    liquidAssets: number;
+    netWorth: number;
+    totalLiabilities: number;
+    emergencyCoverageMonths: number | null;
+    quality: string[];
+    cycleLabel?: string;
+  };
+  forecast: {
+    horizonDays: number;
+    endingBalance: number;
+    lowestBalance: number;
+    shortfallCount: number;
+    nextShortfall: { date: string; causingLabel: string } | null;
+    incomeClass: string;
+  };
+  actions: {
+    counts: { total: number; critical: number };
+    top: Array<{
+      id: string;
+      priority: string;
+      title: string;
+      message: string;
+      href?: string;
+      source: string;
+    }>;
+  };
+  roadmap: {
+    currentStep: number | null;
+    progressPercent: number;
+    focusTitle: string | null;
+    starterGoalMissing: boolean;
+  };
+  payday: {
+    allocated: number | null;
+    remaining: number;
+    envelopeCount: number;
+    currency: Currency;
+  } | null;
+  periodChange: {
+    netDelta: number;
+    incomeDelta: number;
+    expenseDelta: number;
+    previousLabel: string;
+    currentLabel: string;
+    currency: Currency;
+  } | null;
+};
+
 type DashboardData = {
+  commandCenter?: CommandCenterBlock | null;
   summary: {
     income: number;
     expense: number;
     netCashFlow: number;
     savings: number;
-    savingsRate: number;
+    savingsRate: number | null;
     totalDebt: number;
     totalAssets: number;
     netWorth: number;
@@ -481,18 +538,237 @@ export default function DashboardPage() {
   const cycleDebtRemaining =
     cycleStats?.debtRemaining ?? debtRemaining;
 
+  const cc = data.commandCenter;
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="font-heading text-3xl font-semibold tracking-tight">
-          {t("dashboard.title")}
+          Financial Command Center
         </h1>
         <p className="text-sm text-muted-foreground sm:text-base">
-          {t("dashboard.subtitle", {
-            label: cycle?.cycle.label ?? t("dashboard.subtitleFallback"),
-          })}
+          {cc?.health.cycleLabel ??
+            cycle?.cycle.label ??
+            t("dashboard.subtitleFallback")}
+          {" · "}
+          Understand → Decide → Execute → Review
         </p>
       </div>
+
+      {cc ? (
+        <section className="space-y-4 rounded-2xl border bg-gradient-to-br from-emerald-50/80 via-card to-sky-50/50 p-4 sm:p-6 dark:from-emerald-950/40 dark:to-slate-950">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi
+              label="Liquid assets"
+              value={money(cc.health.liquidAssets, cc.health.currency)}
+              hint={
+                cc.health.savingsRateAvailable && cc.health.savingsRate != null
+                  ? `Savings rate ${cc.health.savingsRate}%`
+                  : "Savings rate n/a"
+              }
+            />
+            <Kpi
+              label="Net cash flow"
+              value={money(cc.health.netCashFlow, cc.health.currency)}
+              valueClassName={
+                cc.health.netCashFlow >= 0
+                  ? "text-emerald-800 dark:text-emerald-300"
+                  : "text-rose-700 dark:text-rose-400"
+              }
+              hint={`Net worth ${money(cc.health.netWorth, cc.health.currency)}`}
+            />
+            <Kpi
+              label={`Forecast ${cc.forecast.horizonDays}d`}
+              value={money(cc.forecast.endingBalance, cc.health.currency)}
+              hint={
+                cc.forecast.shortfallCount > 0
+                  ? `${cc.forecast.shortfallCount} shortfall risk(s)`
+                  : "No shortfall in horizon"
+              }
+              valueClassName={
+                cc.forecast.endingBalance < 0
+                  ? "text-rose-700 dark:text-rose-400"
+                  : undefined
+              }
+            />
+            <Kpi
+              label="Roadmap"
+              value={`${cc.roadmap.progressPercent}%`}
+              hint={
+                cc.roadmap.focusTitle
+                  ? `Focus: ${cc.roadmap.focusTitle}`
+                  : `Step ${cc.roadmap.currentStep ?? "—"}`
+              }
+            />
+          </div>
+
+          {cc.periodChange ? (
+            <p className="text-xs text-muted-foreground">
+              vs {cc.periodChange.previousLabel}: net{" "}
+              <span className="font-mono">
+                {money(cc.periodChange.netDelta, cc.periodChange.currency)}
+              </span>
+              {" · "}income{" "}
+              <span className="font-mono">
+                {money(cc.periodChange.incomeDelta, cc.periodChange.currency)}
+              </span>
+              {" · "}expense{" "}
+              <span className="font-mono">
+                {money(cc.periodChange.expenseDelta, cc.periodChange.currency)}
+              </span>
+            </p>
+          ) : null}
+
+          {cc.health.quality.length > 0 ? (
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Data notes: {cc.health.quality.join(", ")}
+            </p>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="border-emerald-900/10 bg-background/70 lg:col-span-1">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Prioritas tindakan</CardTitle>
+                <CardDescription>
+                  {cc.actions.counts.total} aktif
+                  {cc.actions.counts.critical > 0
+                    ? ` · ${cc.actions.counts.critical} critical`
+                    : ""}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {cc.actions.top.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Tidak ada tindakan mendesak.
+                  </p>
+                ) : (
+                  cc.actions.top.map((a) => (
+                    <Link
+                      key={`${a.source}-${a.id}`}
+                      href={a.href || "/alerts"}
+                      className="block rounded-lg border p-2.5 transition-colors hover:bg-muted/40"
+                    >
+                      <div className="mb-0.5 flex items-center gap-2">
+                        <Badge
+                          variant={
+                            a.priority === "CRITICAL" || a.priority === "HIGH"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {a.priority}
+                        </Badge>
+                        <span className="text-sm font-medium">{a.title}</span>
+                      </div>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {a.message}
+                      </p>
+                    </Link>
+                  ))
+                )}
+                <Link
+                  href="/alerts"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "w-full"
+                  )}
+                >
+                  Action Center
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-900/10 bg-background/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Roadmap & Decision</CardTitle>
+                <CardDescription>Lanjut dari kondisi saat ini</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p>
+                  Progress tangga{" "}
+                  <span className="font-mono font-medium">
+                    {cc.roadmap.progressPercent}%
+                  </span>
+                </p>
+                {cc.roadmap.focusTitle ? (
+                  <p className="text-muted-foreground">
+                    Fokus: {cc.roadmap.focusTitle}
+                  </p>
+                ) : null}
+                {cc.forecast.nextShortfall ? (
+                  <p className="text-rose-700 dark:text-rose-300">
+                    Risiko kas {cc.forecast.nextShortfall.date}:{" "}
+                    {cc.forecast.nextShortfall.causingLabel}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Proyeksi 30 hari tanpa shortfall terdeteksi.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href="/insights"
+                    className={cn(buttonVariants({ size: "sm" }))}
+                  >
+                    Financial Roadmap
+                  </Link>
+                  <Link
+                    href="/simulator"
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" })
+                    )}
+                  >
+                    Decision Lab
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-900/10 bg-background/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Execution plan</CardTitle>
+                <CardDescription>Payday allocation aktif</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {cc.payday ? (
+                  <>
+                    <p>
+                      Allocated{" "}
+                      <span className="font-mono">
+                        {money(
+                          cc.payday.allocated ?? 0,
+                          cc.payday.currency
+                        )}
+                      </span>
+                    </p>
+                    <p>
+                      Remaining{" "}
+                      <span className="font-mono">
+                        {money(cc.payday.remaining, cc.payday.currency)}
+                      </span>
+                      {" · "}
+                      {cc.payday.envelopeCount} envelope
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Belum ada alokasi ACTIVE — buat di Payday.
+                  </p>
+                )}
+                <Link
+                  href="/payday"
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "w-full"
+                  )}
+                >
+                  Buka Payday
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      ) : null}
 
       {/* Survival runway hidden for now — restore: data.survival ? <SurvivalCard survival={data.survival} /> : null */}
       {/* Pay-cycle buffer card hidden — data.payCycleBuffer still used for KPIs / debts */}

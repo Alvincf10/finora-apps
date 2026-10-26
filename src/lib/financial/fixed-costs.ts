@@ -32,24 +32,35 @@ export function occurrenceInRange(
   start: Date,
   end: Date
 ): Date | null {
-  const candidates = [
-    dateOnDueDay(start.getFullYear(), start.getMonth(), dueDay),
-    dateOnDueDay(end.getFullYear(), end.getMonth(), dueDay),
-  ];
+  const all = allOccurrencesInRange(dueDay, start, end);
+  return all[0] ?? null;
+}
 
-  const mid = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-  if (mid <= end) {
-    candidates.push(dateOnDueDay(mid.getFullYear(), mid.getMonth(), dueDay));
-  }
+/**
+ * All monthly due-day occurrences inside [start, end] (inclusive).
+ * Used by 30/60/90-day cash-flow forecast horizons.
+ */
+export function allOccurrencesInRange(
+  dueDay: number,
+  start: Date,
+  end: Date
+): Date[] {
+  const rangeStart = startOfDay(start);
+  const rangeEnd = endOfDay(end);
+  const results: Date[] = [];
 
-  const unique = [...new Map(candidates.map((d) => [d.getTime(), d])).values()];
+  let cursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+  const lastMonth = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), 1);
 
-  for (const d of unique) {
-    if (isWithinInterval(d, { start: startOfDay(start), end: endOfDay(end) })) {
-      return d;
+  while (cursor <= lastMonth) {
+    const d = dateOnDueDay(cursor.getFullYear(), cursor.getMonth(), dueDay);
+    if (isWithinInterval(d, { start: rangeStart, end: rangeEnd })) {
+      results.push(d);
     }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
-  return null;
+
+  return results;
 }
 
 export async function getFixedCostsInRange(

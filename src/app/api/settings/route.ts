@@ -16,6 +16,8 @@ export async function GET() {
       timezone: user.timezone ?? "Asia/Jakarta",
       name: user.name,
       email: user.email,
+      educationGoalApplicability:
+        user.roadmapPreferences?.educationGoalApplicability ?? "UNSET",
     });
   } catch (error) {
     return handleError(error);
@@ -27,10 +29,14 @@ export async function PATCH(request: Request) {
     const { userId } = await requireUser();
     const input = updateSettingsSchema.parse(await request.json());
 
-    const $set: Record<string, number> = {};
+    const $set: Record<string, string | number> = {};
     if (input.paydayDay !== undefined) $set.paydayDay = input.paydayDay;
     if (input.monthlySalary !== undefined) {
       $set.monthlySalary = input.monthlySalary;
+    }
+    if (input.educationGoalApplicability !== undefined) {
+      $set["roadmapPreferences.educationGoalApplicability"] =
+        input.educationGoalApplicability;
     }
 
     const user = await User.findByIdAndUpdate(
@@ -48,6 +54,8 @@ export async function PATCH(request: Request) {
       timezone: user.timezone ?? "Asia/Jakarta",
       name: user.name,
       email: user.email,
+      educationGoalApplicability:
+        user.roadmapPreferences?.educationGoalApplicability ?? "UNSET",
     });
   } catch (error) {
     return handleError(error);

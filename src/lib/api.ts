@@ -38,6 +38,9 @@ export function handleError(error: unknown) {
     if (error.message === "NOT_FOUND") {
       return fail("NOT_FOUND", "Resource not found", 404);
     }
+    if (error.message === "VALIDATION") {
+      return fail("VALIDATION_ERROR", "Invalid scenario assumptions", 400);
+    }
     if (error.message === "RATE_LIMITED") {
       return fail("RATE_LIMITED", "Too many requests. Try again later.", 429);
     }

@@ -3,7 +3,7 @@ import { Transaction } from "@/models/Transaction";
 import { Debt } from "@/models/Debt";
 import { Budget } from "@/models/Budget";
 import { Category } from "@/models/Category";
-import { isLiabilityAccount } from "@/lib/financial/balances";
+import { User } from "@/models/User";
 import { percent } from "@/lib/money";
 import {
   getPayCycleForPeriod,
@@ -12,7 +12,13 @@ import {
   shiftPeriodRef,
   type PeriodRef,
 } from "@/lib/financial/pay-cycle";
-import type { AccountType, Currency } from "@/types";
+import {
+  computeFinancialSummaryMetrics,
+  hasOtherCurrencies,
+  resolveReportingCurrency,
+} from "@/lib/financial/metrics/compute-summary";
+import type { Currency } from "@/types";
+import type { MetricQualityFlag } from "@/lib/financial/metrics/types";
 
 export interface Period {
   year: number;
@@ -33,10 +39,34 @@ export async function resolvePeriodBounds(userId: string, period: Period) {
   return getPeriodBounds(period, paydayDay);
 }
 
-export async function getFinancialSummary(userId: string, period: Period) {
+export type FinancialSummary = {
+  period: Period;
+  cycleLabel: string;
+  income: number;
+  expense: number;
+  netCashFlow: number;
+  savings: number;
+  /** null when income is 0 (FR-01.4) — was previously 0%. */
+  savingsRate: number | null;
+  totalDebt: number;
+  debtPayment: number;
+  debtRatio: number | null;
+  totalAssets: number;
+  liquidAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+  currency: Currency;
+  quality: MetricQualityFlag[];
+};
+
+export async function getFinancialSummary(
+  userId: string,
+  period: Period
+): Promise<FinancialSummary> {
   const { start, end, label } = await resolvePeriodBounds(userId, period);
 
-  const [accounts, transactions, debts] = await Promise.all([
+  const [user, accounts, transactions, debts] = await Promise.all([
+    User.findById(userId).select("baseCurrency").lean(),
     Account.find({ userId, isActive: true }).lean(),
     Transaction.find({
       userId,
@@ -45,78 +75,62 @@ export async function getFinancialSummary(userId: string, period: Period) {
     Debt.find({ userId, status: "ACTIVE" }).lean(),
   ]);
 
-  let income = 0;
-  let expense = 0;
-  let debtPayment = 0;
+  const { currency, fallback } = resolveReportingCurrency({
+    baseCurrency: user?.baseCurrency as Currency | undefined,
+    accounts,
+  });
 
-  for (const tx of transactions) {
-    if (tx.type === "INCOME") {
-      income += tx.amount;
-    } else if (tx.type === "EXPENSE") {
-      expense += tx.amount;
-      if (tx.debtId) {
-        debtPayment += tx.amount;
-      }
-    }
-  }
+  const mixed =
+    hasOtherCurrencies(currency, accounts) ||
+    hasOtherCurrencies(currency, transactions) ||
+    hasOtherCurrencies(currency, debts);
 
-  // Debt payments already counted in expense via linked transactions — do not subtract twice
-  const netCashFlow = income - expense;
-  const savings = netCashFlow;
-  const savingsRate = percent(savings, income);
-  const debtRatio = percent(debtPayment, income);
+  const computed = computeFinancialSummaryMetrics({
+    currency,
+    transactions,
+    accounts,
+    debts,
+    mixedCurrencyExcluded: mixed,
+  });
 
-  let totalAssets = 0;
-  let creditCardLiability = 0;
-
-  for (const account of accounts) {
-    if (isLiabilityAccount(account.type as AccountType)) {
-      // CREDIT_CARD currentBalance = outstanding owed (positive).
-      // Also accept legacy negative balances as liability magnitude.
-      const bal = account.currentBalance ?? 0;
-      creditCardLiability += Math.abs(bal);
-    } else {
-      totalAssets += account.currentBalance;
-    }
-  }
-
-  // CREDIT_STATEMENT debts linked to a CC account mirror that card's
-  // outstanding — count the card once, not debt + card.
-  const debtPrincipal = debts.reduce((sum, d) => {
-    const isLinkedCcStatement =
-      d.obligationType === "CREDIT_STATEMENT" && d.linkedAccountId;
-    if (isLinkedCcStatement) return sum;
-    return sum + d.remainingAmount;
-  }, 0);
-
-  const totalDebt = debtPrincipal + creditCardLiability;
-  const totalLiabilities = totalDebt;
-  const netWorth = totalAssets - totalLiabilities;
+  const quality = [...computed.quality];
+  if (fallback) quality.push("CURRENCY_FALLBACK");
 
   return {
     period,
     cycleLabel: label,
-    income,
-    expense,
-    netCashFlow,
-    savings,
-    savingsRate,
-    totalDebt,
-    debtPayment,
-    debtRatio,
-    totalAssets,
-    totalLiabilities,
-    netWorth,
-    currency: (accounts[0]?.currency as Currency) ?? "IDR",
+    income: computed.income,
+    expense: computed.expense,
+    netCashFlow: computed.netCashFlow,
+    savings: computed.savings,
+    savingsRate: computed.savingsRate,
+    totalDebt: computed.totalLiabilities,
+    debtPayment: computed.debtPayment,
+    debtRatio: computed.debtRatio,
+    totalAssets: computed.totalAssets,
+    liquidAssets: computed.liquidAssets,
+    totalLiabilities: computed.totalLiabilities,
+    netWorth: computed.netWorth,
+    currency: computed.currency,
+    quality,
   };
 }
 
 export async function getExpenseBreakdown(userId: string, period: Period) {
   const { start, end } = await resolvePeriodBounds(userId, period);
+  const [user, accounts] = await Promise.all([
+    User.findById(userId).select("baseCurrency").lean(),
+    Account.find({ userId, isActive: true }).select("currency isActive").lean(),
+  ]);
+  const { currency } = resolveReportingCurrency({
+    baseCurrency: user?.baseCurrency as Currency | undefined,
+    accounts,
+  });
 
   const expenses = await Transaction.find({
     userId,
     type: "EXPENSE",
+    currency,
     date: { $gte: start, $lte: end },
   }).lean();
 
@@ -141,15 +155,26 @@ export async function getExpenseBreakdown(userId: string, period: Period) {
 
 export async function getBudgetOverview(userId: string, period: Period) {
   const { start, end } = await resolvePeriodBounds(userId, period);
+  const [user, accounts] = await Promise.all([
+    User.findById(userId).select("baseCurrency").lean(),
+    Account.find({ userId, isActive: true }).select("currency isActive").lean(),
+  ]);
+  const { currency } = resolveReportingCurrency({
+    baseCurrency: user?.baseCurrency as Currency | undefined,
+    accounts,
+  });
+
   const budgets = await Budget.find({
     userId,
     year: period.year,
     month: period.month,
+    currency,
   }).lean();
 
   const expenses = await Transaction.find({
     userId,
     type: "EXPENSE",
+    currency,
     date: { $gte: start, $lte: end },
   }).lean();
 
@@ -184,9 +209,18 @@ export async function getBudgetOverview(userId: string, period: Period) {
   });
 }
 
-/** Last N pay cycles (not calendar months). */
+/** Last N pay cycles (not calendar months). Currency-scoped to user base. */
 export async function getCashFlowSeries(userId: string, cycles = 6) {
-  const paydayDay = await getUserPaydayDay(userId);
+  const [paydayDay, user, accounts] = await Promise.all([
+    getUserPaydayDay(userId),
+    User.findById(userId).select("baseCurrency").lean(),
+    Account.find({ userId, isActive: true }).select("currency isActive").lean(),
+  ]);
+  const { currency } = resolveReportingCurrency({
+    baseCurrency: user?.baseCurrency as Currency | undefined,
+    accounts,
+  });
+
   const current = periodFromDate(paydayDay, new Date());
   const series = [];
 
@@ -195,6 +229,7 @@ export async function getCashFlowSeries(userId: string, cycles = 6) {
     const { start, end, label } = getPeriodBounds(period, paydayDay);
     const txs = await Transaction.find({
       userId,
+      currency,
       date: { $gte: start, $lte: end },
       type: { $in: ["INCOME", "EXPENSE"] },
     }).lean();
@@ -213,6 +248,7 @@ export async function getCashFlowSeries(userId: string, cycles = 6) {
       income,
       expense,
       net: income - expense,
+      currency,
     });
   }
 

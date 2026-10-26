@@ -421,7 +421,11 @@ export async function generatePhase2Insights(
     }
   }
 
-  if (summary.savingsRate < 10 && summary.income > 0) {
+  if (
+    summary.income > 0 &&
+    summary.savingsRate != null &&
+    summary.savingsRate < 10
+  ) {
     insights.push({
       type: "SAVINGS_TARGET_RISK",
       priority: "MEDIUM",
@@ -733,35 +737,10 @@ export async function persistInsights(
   period: Period,
   insights: InsightRecommendation[]
 ) {
-  await FinancialRecommendation.deleteMany({
-    userId,
-    "period.year": period.year,
-    "period.month": period.month,
-    status: { $in: ["NEW", "VIEWED"] },
-  });
-
-  if (insights.length === 0) return [];
-
-  const docs = await FinancialRecommendation.insertMany(
-    insights.map((i) => ({
-      userId,
-      type: i.type,
-      priority: i.priority,
-      title: i.title,
-      message: i.message,
-      categoryId: i.categoryId,
-      debtId: i.debtId,
-      goalId: i.goalId,
-      currentValue: i.currentValue,
-      recommendedValue: i.recommendedValue,
-      difference: i.difference,
-      evidence: i.evidence,
-      actionType: i.actionType,
-      status: "NEW",
-      period,
-    }))
+  const { persistInsightsUpsert } = await import(
+    "@/lib/financial/recommendations/persist"
   );
-  return docs;
+  return persistInsightsUpsert(userId, period, insights);
 }
 
 export async function getCashFlowForecastForUser(
@@ -913,23 +892,48 @@ export async function getEmergencyFundAnalysis(userId: string, period: Period) {
 }
 
 export async function simulateWhatIf(userId: string, period: Period, input: WhatIfInput) {
-  const summary = await getFinancialSummary(userId, period);
-  const debts = await Debt.find({ userId, status: "ACTIVE" }).lean();
-  const totalDebt = debts.reduce((sum, d) => sum + d.remainingAmount, 0);
-  const interest =
-    debts.length === 1 ? (debts[0].interestRate ?? null) : null;
-
-  return runWhatIf(
-    {
-      income: summary.income,
-      expenses: summary.expense,
-      debtPayment: summary.debtPayment,
-      savings: summary.savings,
-      debtBalance: totalDebt,
-      debtInterestRate: interest,
-    },
-    input
+  const { captureScenarioBaseline } = await import(
+    "@/lib/financial/decision/scenario-service"
   );
+  const { evaluateDecisionScenario } = await import(
+    "@/lib/financial/decision/scenario-engine"
+  );
+
+  const baseline = await captureScenarioBaseline(userId, period);
+  const expensesOverride =
+    input.expenseOverrides != null
+      ? input.expenseOverrides.reduce((sum, e) => sum + e.amount, 0)
+      : null;
+
+  const evaluation = evaluateDecisionScenario(baseline, {
+    incomeOverride: input.incomeOverride,
+    expensesOverride,
+    debtPaymentOverride: input.debtPaymentOverride,
+    savingsOverride: input.savingsOverride,
+  });
+
+  // Backward-compatible shape for existing simulator UI, plus Decision Lab fields.
+  return {
+    cashFlow: evaluation.cashFlow,
+    savings: evaluation.savings,
+    debtPayoffMonths: evaluation.debtPayoffMonths,
+    endingBalance: evaluation.endingBalance,
+    assumptions: evaluation.assumptions,
+    baseline,
+    evaluation,
+    // Keep legacy runWhatIf parity note when no starting balance was used historically
+    legacyEndingDelta: runWhatIf(
+      {
+        income: baseline.income,
+        expenses: baseline.expenses,
+        debtPayment: baseline.debtPayment,
+        savings: baseline.savings,
+        debtBalance: baseline.debtBalance,
+        debtInterestRate: baseline.debtInterestRate,
+      },
+      input
+    ).endingBalance,
+  };
 }
 
 export async function buildPhase2FinancialContext(

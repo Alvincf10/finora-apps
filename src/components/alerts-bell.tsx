@@ -9,10 +9,13 @@ import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
-type AlertsResponse = {
-  count: number;
-  critical: number;
-  alerts: Array<{ id: string; severity: string }>;
+type ActionCenterResponse = {
+  counts: { total: number; critical: number };
+  actions: Array<{
+    id: string;
+    source: "ALERT" | "RECOMMENDATION";
+    priority: string;
+  }>;
 };
 
 export function AlertsBell({ className }: { className?: string }) {
@@ -22,14 +25,18 @@ export function AlertsBell({ className }: { className?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    api<AlertsResponse>("/api/alerts")
+    api<ActionCenterResponse>("/api/action-center")
       .then((data) => {
         if (cancelled) return;
         const dismissed = getDismissedAlertIds();
-        const remaining = data.alerts.filter((a) => !dismissed.has(a.id));
+        const remaining = data.actions.filter(
+          (a) => a.source !== "ALERT" || !dismissed.has(a.id)
+        );
         setVisibleCount(remaining.length);
         setHasCritical(
-          remaining.some((a) => a.severity === "CRITICAL")
+          remaining.some(
+            (a) => a.priority === "CRITICAL" || a.priority === "HIGH"
+          )
         );
       })
       .catch(() => {

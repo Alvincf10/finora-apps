@@ -154,6 +154,7 @@ export default function TransactionsPage() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
+  const [editAccountId, setEditAccountId] = useState("");
   const [editCategoryId, setEditCategoryId] = useState("");
   const [editCurrency, setEditCurrency] = useState<Currency>("IDR");
   const [editAmountMajor, setEditAmountMajor] = useState(0);
@@ -211,6 +212,26 @@ export default function TransactionsPage() {
     if (!editing) return [];
     return editing.type === "INCOME" ? incomeCategories : expenseCategories;
   }, [editing, incomeCategories, expenseCategories]);
+
+  const editAccountOptions = useMemo(() => {
+    const list = [...accounts];
+    const currentId = editing?.accountId?._id;
+    if (
+      currentId &&
+      !list.some((a) => a._id === currentId) &&
+      editing?.accountId?.name
+    ) {
+      list.unshift({
+        _id: currentId,
+        name: editing.accountId.name,
+        type: "UNKNOWN",
+        currency: editing.accountId.currency ?? editing.currency,
+        currentBalance: 0,
+        isActive: false,
+      });
+    }
+    return list;
+  }, [accounts, editing]);
 
   function resetFormDefaults(accountList: Account[] = accounts) {
     setFormType("EXPENSE");
@@ -314,6 +335,7 @@ export default function TransactionsPage() {
       return;
     }
     setEditing(tx);
+    setEditAccountId(tx.accountId?._id ?? "");
     setEditCurrency(tx.currency);
     setEditAmountMajor(fromMinorUnits(tx.amount, tx.currency));
     setEditDate(toDateTimeLocalValue(tx.date));
@@ -325,12 +347,17 @@ export default function TransactionsPage() {
   async function onEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!editing) return;
+    if (!editAccountId) {
+      toast.error(t("transactions.selectAccountFirst"));
+      return;
+    }
     setSavingEdit(true);
     try {
       await api(`/api/transactions/${editing._id}`, {
         method: "PATCH",
         body: JSON.stringify({
           amount: toMinorUnits(editAmountMajor, editCurrency),
+          accountId: editAccountId,
           categoryId: editCategoryId || undefined,
           description: editDescription.trim() || undefined,
           date: editDate,
@@ -862,9 +889,33 @@ export default function TransactionsPage() {
           {editing ? (
             <form className="space-y-3" onSubmit={onEdit}>
               <p className="text-sm text-muted-foreground">
-                {typeLabel(editing.type, t)} ·{" "}
-                {editing.accountId?.name ?? t("common.account")}
+                {typeLabel(editing.type, t)}
               </p>
+              <div className="space-y-2">
+                <Label>{t("common.account")}</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border px-3 text-sm"
+                  required
+                  value={editAccountId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setEditAccountId(id);
+                    const account = editAccountOptions.find(
+                      (a) => a._id === id
+                    );
+                    if (account) setEditCurrency(account.currency);
+                  }}
+                >
+                  <option value="" disabled>
+                    {t("transactions.selectAccount")}
+                  </option>
+                  {editAccountOptions.map((a) => (
+                    <option key={a._id} value={a._id}>
+                      {a.name} ({a.currency})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-2">
                 <Label>{t("common.amount")}</Label>
                 <CurrencyAmountInput

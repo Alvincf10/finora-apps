@@ -22,6 +22,14 @@ const UserSchema = new Schema(
     paydayDay: { type: Number, min: 1, max: 28, default: 25 },
     /** Planned net salary in minor units — used for cycle planning (budget / payday), not auto-posted to accounts. */
     monthlySalary: { type: Number, min: 0, default: 0 },
+    /** Financial Roadmap (Tangga Ternak Uang) preferences — FR-03. */
+    roadmapPreferences: {
+      educationGoalApplicability: {
+        type: String,
+        enum: ["APPLICABLE", "NOT_APPLICABLE", "UNSET"],
+        default: "UNSET",
+      },
+    },
   },
   { timestamps: true }
 );
@@ -31,8 +39,12 @@ export type UserDocument = InferSchemaType<typeof UserSchema> & {
 };
 
 // Next.js HMR can keep an older compiled model without new paths; strict mode
-// would then strip paydayDay/monthlySalary on save.
-if (models.User && !models.User.schema.path("monthlySalary")) {
+// would then strip new fields on save.
+if (
+  models.User &&
+  (!models.User.schema.path("monthlySalary") ||
+    !models.User.schema.path("roadmapPreferences"))
+) {
   delete models.User;
 }
 

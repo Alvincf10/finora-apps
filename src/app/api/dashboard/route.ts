@@ -15,6 +15,7 @@ import {
 import { getSurvivalPlan } from "@/lib/financial/survival";
 import { generateRecommendations } from "@/lib/financial/recommendations";
 import { parsePeriod } from "@/lib/financial/phase2-service";
+import { getCommandCenter } from "@/lib/financial/command-center";
 import { Transaction } from "@/models/Transaction";
 import { Debt } from "@/models/Debt";
 import { SavingsGoal } from "@/models/SavingsGoal";
@@ -102,6 +103,7 @@ export async function GET(request: Request) {
       accounts,
       debtsDueThisMonth,
       survival,
+      commandCenter,
     ] = await Promise.all([
       getFinancialSummary(userId, period),
       getCycleExpenseBreakdown(userId, cycle.start, cycle.end),
@@ -124,6 +126,7 @@ export async function GET(request: Request) {
       Account.find({ userId, isActive: true }),
       getDebtsDueThisMonth(userId, period, payCycleBuffer.currency),
       getSurvivalPlan(userId),
+      getCommandCenter(userId, period).catch(() => null),
     ]);
 
     const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
@@ -150,6 +153,7 @@ export async function GET(request: Request) {
       goalsTarget,
       accounts,
       cashPockets,
+      commandCenter,
       cycleStats: {
         label: cycle.label,
         start: cycle.start.toISOString(),

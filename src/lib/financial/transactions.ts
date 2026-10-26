@@ -168,6 +168,7 @@ export async function updateTransaction(
   transactionId: string,
   input: {
     amount?: number;
+    accountId?: string;
     categoryId?: string;
     description?: string;
     date?: string | Date;
@@ -182,6 +183,21 @@ export async function updateTransaction(
     throw new Error("Edit transfer by deleting and recreating");
   }
 
+  const previousAccountId = tx.accountId.toString();
+  let nextAccountId = previousAccountId;
+
+  if (input.accountId !== undefined && input.accountId !== previousAccountId) {
+    const account = await getAccountOrThrow(input.accountId, userId);
+    if (account.currency !== tx.currency && input.amount === undefined) {
+      throw new Error(
+        "amount is required when moving to an account with a different currency"
+      );
+    }
+    tx.accountId = account._id as never;
+    tx.currency = account.currency;
+    nextAccountId = account._id.toString();
+  }
+
   if (input.amount !== undefined) tx.amount = input.amount;
   if (input.categoryId !== undefined) tx.categoryId = input.categoryId as never;
   if (input.description !== undefined) tx.description = input.description;
@@ -191,6 +207,9 @@ export async function updateTransaction(
   if (input.tags !== undefined) tx.tags = input.tags;
 
   await tx.save();
-  await recalculateAccountBalance(tx.accountId.toString());
+  await recalculateAccountBalance(nextAccountId);
+  if (nextAccountId !== previousAccountId) {
+    await recalculateAccountBalance(previousAccountId);
+  }
   return tx;
 }
