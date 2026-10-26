@@ -15,6 +15,29 @@ import { resolveDefaultFundingAccountId } from "@/lib/financial/record-debt-paym
 import { sessionOption, withTransaction } from "@/lib/with-transaction";
 import type { AccountType } from "@/types";
 
+/**
+ * Prefer dedicated fixed-cost pocket (name contains "fixed"), then BCA/bank.
+ */
+export async function resolveFixedCostFundingAccountId(
+  userId: string
+): Promise<string | null> {
+  const accounts = await Account.find({
+    userId,
+    isActive: true,
+    type: { $in: ["BANK", "CASH", "E_WALLET"] },
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const preferred =
+    accounts.find((a) => /fixed/i.test(a.name)) ??
+    accounts.find((a) => /bca/i.test(a.name)) ??
+    accounts.find((a) => a.type === "BANK") ??
+    accounts[0];
+
+  return preferred?._id?.toString() ?? null;
+}
+
 export type RecordFixedCostPaymentInput = {
   userId: string;
   fixedCostId: string;
@@ -89,9 +112,11 @@ export async function recordFixedCostPayment(
   }
 
   const fundingAccountId =
-    input.accountId ?? (await resolveDefaultFundingAccountId(input.userId));
+    input.accountId?.trim() ||
+    (await resolveFixedCostFundingAccountId(input.userId)) ||
+    (await resolveDefaultFundingAccountId(input.userId));
   if (!fundingAccountId) {
-    throw new Error("No bank/cash account found to pay from");
+    throw new Error("Select a bank/cash account to pay from");
   }
 
   const account = await getAccountOrThrow(fundingAccountId, input.userId);
@@ -247,18 +272,118 @@ export async function getFixedCostPaidIdsInCycle(
   start: Date,
   end: Date
 ): Promise<Set<string>> {
+  const map = await getFixedCostPaymentsInCycle(userId, start, end);
+  return new Set(map.keys());
+}
+
+export type FixedCostPaymentInCycle = {
+  transactionId: string;
+  accountId: string;
+  amount: number;
+};
+
+export async function getFixedCostPaymentsInCycle(
+  userId: string,
+  start: Date,
+  end: Date
+): Promise<Map<string, FixedCostPaymentInCycle>> {
   const txs = await Transaction.find({
     userId,
     type: "EXPENSE",
     fixedCostId: { $ne: null },
     date: { $gte: start, $lte: end },
   })
-    .select({ fixedCostId: 1 })
+    .select({ fixedCostId: 1, accountId: 1, amount: 1 })
     .lean();
 
-  const ids = new Set<string>();
+  const map = new Map<string, FixedCostPaymentInCycle>();
   for (const tx of txs) {
-    if (tx.fixedCostId) ids.add(tx.fixedCostId.toString());
+    if (!tx.fixedCostId) continue;
+    map.set(tx.fixedCostId.toString(), {
+      transactionId: tx._id.toString(),
+      accountId: tx.accountId.toString(),
+      amount: tx.amount,
+    });
   }
-  return ids;
+  return map;
+}
+
+/**
+ * Move this cycle's fixed-cost expense to another funding account and
+ * recalculate both balances.
+ */
+export async function reassignFixedCostPaymentSource(input: {
+  userId: string;
+  fixedCostId: string;
+  accountId: string;
+}): Promise<{
+  transactionId: string;
+  previousAccountId: string;
+  fundingAccountId: string;
+  fundingBalance: number;
+  previousBalance: number;
+  amount: number;
+}> {
+  const cost = await FixedCost.findOne({
+    _id: input.fixedCostId,
+    userId: input.userId,
+  });
+  if (!cost) throw new Error("NOT_FOUND");
+
+  const user = await User.findById(input.userId).lean();
+  const cycle = getPayCycleBounds(user?.paydayDay ?? 25);
+
+  const existingTx = await Transaction.findOne({
+    userId: input.userId,
+    fixedCostId: cost._id,
+    type: "EXPENSE",
+    date: { $gte: cycle.start, $lte: cycle.end },
+  });
+  if (!existingTx) {
+    throw new Error("No payment recorded this cycle to reassign");
+  }
+
+  const previousAccountId = existingTx.accountId.toString();
+  if (previousAccountId === input.accountId) {
+    const same = await getAccountOrThrow(input.accountId, input.userId);
+    return {
+      transactionId: existingTx._id.toString(),
+      previousAccountId,
+      fundingAccountId: previousAccountId,
+      fundingBalance: same.currentBalance,
+      previousBalance: same.currentBalance,
+      amount: existingTx.amount,
+    };
+  }
+
+  const nextAccount = await getAccountOrThrow(input.accountId, input.userId);
+  if (nextAccount.currency !== cost.currency) {
+    throw new Error("Account currency must match fixed cost currency");
+  }
+  if (isLiabilityAccount(nextAccount.type as AccountType)) {
+    throw new Error("Pay fixed costs from a cash/bank account");
+  }
+
+  return withTransaction(async (session) => {
+    existingTx.accountId = nextAccount._id;
+    await existingTx.save(sessionOption(session));
+
+    const previous = await recalculateAccountBalance(
+      previousAccountId,
+      session ?? undefined
+    );
+    const funding = await recalculateAccountBalance(
+      nextAccount._id.toString(),
+      session ?? undefined
+    );
+
+    return {
+      transactionId: existingTx._id.toString(),
+      previousAccountId,
+      fundingAccountId: nextAccount._id.toString(),
+      fundingBalance: funding.currentBalance,
+      previousBalance: previous.currentBalance,
+      amount: existingTx.amount,
+    };
+  });
 }

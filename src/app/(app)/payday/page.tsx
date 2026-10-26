@@ -148,6 +148,17 @@ export default function PaydayAllocationPage() {
   const [saving, setSaving] = useState(false);
   const [settlingKey, setSettlingKey] = useState<string | null>(null);
   const [confirmEnv, setConfirmEnv] = useState<Envelope | null>(null);
+  const [settleAccountId, setSettleAccountId] = useState("");
+  const [fundingAccounts, setFundingAccounts] = useState<
+    Array<{
+      _id: string;
+      name: string;
+      type: string;
+      currency: Currency;
+      currentBalance: number;
+      isActive: boolean;
+    }>
+  >([]);
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({
     debts: true,
     fixed: true,
@@ -168,8 +179,10 @@ export default function PaydayAllocationPage() {
           ),
           api<
             Array<{
+              _id: string;
               name: string;
               type: string;
+              currency: Currency;
               currentBalance: number;
               isActive: boolean;
             }>
@@ -179,6 +192,11 @@ export default function PaydayAllocationPage() {
         setEnvelopes(rec.envelopes);
         setSalary(rec.salary);
         setStartingCash(rec.startingCash);
+        const funding = accounts.filter(
+          (a) =>
+            a.isActive && ["BANK", "CASH", "E_WALLET"].includes(a.type)
+        );
+        setFundingAccounts(funding);
         setFixedReserveBalance(
           accounts
             .filter(
@@ -305,13 +323,32 @@ export default function PaydayAllocationPage() {
       toast.error(t("paydayAllocation.settleOnlyDebt"));
       return;
     }
+    // FIXED → ATM Fixed cost; others → BCA / first bank-cash
+    setSettleAccountId(
+      env.kind === "FIXED"
+        ? fundingAccounts.find((a) => /fixed/i.test(a.name))?._id ??
+            fundingAccounts.find((a) => /bca/i.test(a.name))?._id ??
+            fundingAccounts[0]?._id ??
+            ""
+        : fundingAccounts.find((a) => /bca/i.test(a.name))?._id ??
+            fundingAccounts[0]?._id ??
+            ""
+    );
     setConfirmEnv(env);
   }
 
   async function settleEnvelope(env: Envelope) {
+    if (!settleAccountId) {
+      toast.error(t("paydayAllocation.settleNeedAccount"));
+      return;
+    }
+    const account = fundingAccounts.find((a) => a._id === settleAccountId);
     setSettlingKey(env.key);
     try {
-      await api("/api/payday-allocation/settle", {
+      const result = await api<{
+        fundingBalance?: number;
+        fundingAccountId?: string;
+      }>("/api/payday-allocation/settle", {
         method: "POST",
         body: JSON.stringify({
           envelopeKey: env.key,
@@ -321,13 +358,24 @@ export default function PaydayAllocationPage() {
           linkedDebtId: env.linkedDebtId,
           linkedAccountId: env.linkedAccountId,
           linkedFixedCostId: env.linkedFixedCostId,
+          accountId: settleAccountId,
           salary,
           startingCash,
           envelopes,
         }),
       });
       setConfirmEnv(null);
-      toast.success(t("paydayAllocation.settleDone"));
+      setSettleAccountId("");
+      toast.success(
+        t("paydayAllocation.settleDone", {
+          account: account?.name ?? "account",
+          balance: formatMoney(
+            result.fundingBalance ?? account?.currentBalance ?? 0,
+            currency,
+            intlLocale
+          ),
+        })
+      );
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -891,7 +939,10 @@ export default function PaydayAllocationPage() {
       <Dialog
         open={confirmEnv != null}
         onOpenChange={(open) => {
-          if (!open && settlingKey == null) setConfirmEnv(null);
+          if (!open && settlingKey == null) {
+            setConfirmEnv(null);
+            setSettleAccountId("");
+          }
         }}
       >
         <DialogContent showCloseButton={settlingKey == null}>
@@ -921,20 +972,51 @@ export default function PaydayAllocationPage() {
               )}
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {t("paydayAllocation.settleSelectAccount")}
+            </label>
+            <select
+              value={settleAccountId}
+              onChange={(e) => setSettleAccountId(e.target.value)}
+              disabled={settlingKey != null}
+              className="flex h-9 w-full rounded-md border px-3 text-sm"
+              required
+            >
+              <option value="" disabled>
+                {t("paydayAllocation.settleSelectAccountPlaceholder")}
+              </option>
+              {fundingAccounts
+                .filter((a) => a.currency === currency)
+                .map((a) => (
+                  <option key={a._id} value={a._id}>
+                    {a.name} ·{" "}
+                    {formatMoney(a.currentBalance, a.currency, intlLocale)}
+                  </option>
+                ))}
+            </select>
+          </div>
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               className="touch-manipulation"
               disabled={settlingKey != null}
-              onClick={() => setConfirmEnv(null)}
+              onClick={() => {
+                setConfirmEnv(null);
+                setSettleAccountId("");
+              }}
             >
               {t("common.cancel")}
             </Button>
             <Button
               type="button"
               className="touch-manipulation"
-              disabled={confirmEnv == null || settlingKey != null}
+              disabled={
+                confirmEnv == null ||
+                settlingKey != null ||
+                !settleAccountId
+              }
               onClick={() => {
                 if (confirmEnv) {
                   settleEnvelope(confirmEnv).catch(() => undefined);

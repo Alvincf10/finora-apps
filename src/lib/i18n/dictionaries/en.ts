@@ -438,12 +438,15 @@ export const en = {
     settleGoalPay: "Save & record",
     settleConfirmTitle: "Record this payment?",
     settleConfirm:
-      "Creates a transaction from your bank/cash account and syncs it to Payday.",
+      "Pick the source account — we create a transaction and deduct the balance.",
     settleGoalConfirmTitle: "Record goal contribution?",
     settleGoalConfirm:
-      "Deducts from BCA and adds to the goal’s progress — not an empty checkmark.",
+      "Pick the source account — we deduct from it and add to the goal’s progress.",
+    settleSelectAccount: "Pay from account",
+    settleSelectAccountPlaceholder: "— select account —",
     settleConfirmAction: "Yes, record it",
-    settleDone: "Payment recorded in transactions",
+    settleDone: "Payment recorded · {account} left {balance}",
+    settleNeedAccount: "Select which account to pay from",
     settleAlready: "Already paid this cycle",
     settleOnlyDebt:
       "Only debts / CC / fixed costs / goals can be recorded here",
@@ -604,12 +607,22 @@ export const en = {
     statusOff: "OFF",
     pay: "Pay & record",
     payTitle: "Pay {name}",
-    payHint: "Creates a Bills expense and marks this item paid on Payday.",
+    payHint:
+      "Choose the source account. We create a Bills expense, deduct that balance, and mark this item paid on Payday.",
     paidThisCycle: "Paid this cycle",
-    paymentRecorded: "Fixed cost recorded in transactions + Payday",
+    paymentRecorded: "Paid from {account} · balance now {balance}",
     alreadyPaid: "Already paid this cycle",
     selectAccount: "Pay from account",
+    selectAccountPlaceholder: "— select account —",
+    selectAccountFirst: "Select which account to pay from",
+    noFundingAccounts: "Add a bank, cash, or e-wallet account first",
     payDate: "Payment date",
+    changeSource: "Change source",
+    changeSourceTitle: "Change source · {name}",
+    changeSourceHint:
+      "Move this cycle’s payment to another account. Balances update on both sides.",
+    changeSourceDone: "Moved to {account} · balance now {balance}",
+    paidFrom: "Paid from {account}",
   },
   insights: {
     title: "Financial Insights",

@@ -187,10 +187,15 @@ export const savePaydayAllocationSchema = z
   });
 
 export const payFixedCostSchema = z.object({
-  accountId: z.string().min(1).optional(),
+  accountId: z.string().min(1),
   amount: z.number().int().positive().optional(),
   date: z.string().or(z.date()).optional(),
   notes: z.string().max(2000).optional(),
+});
+
+/** Move an already-recorded fixed-cost payment to another funding account. */
+export const reassignFixedCostPaymentSchema = z.object({
+  accountId: z.string().min(1),
 });
 
 export const settlePaydayEnvelopeSchema = z.object({
@@ -210,8 +215,8 @@ export const settlePaydayEnvelopeSchema = z.object({
   linkedDebtId: z.string().min(1).optional(),
   linkedAccountId: z.string().min(1).optional(),
   linkedFixedCostId: z.string().min(1).optional(),
-  /** Funding account (BCA etc). Defaults to preferred bank/cash. */
-  accountId: z.string().min(1).optional(),
+  /** Funding account (bank / cash / e-wallet) to deduct from. Required. */
+  accountId: z.string().min(1),
   salary: z.number().int().min(0).optional(),
   startingCash: z.number().int().min(0).optional(),
   /** Full envelopes snapshot so we can upsert allocation if needed. */

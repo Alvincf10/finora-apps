@@ -36,6 +36,8 @@ type FixedCost = {
   isActive: boolean;
   notes?: string;
   paidThisCycle?: boolean;
+  paidFromAccountId?: string;
+  paidFromAccountName?: string;
   cycleLabel?: string;
 };
 
@@ -44,6 +46,7 @@ type Account = {
   name: string;
   type: string;
   currency: Currency;
+  currentBalance: number;
   isActive: boolean;
 };
 
@@ -54,6 +57,7 @@ export default function FixedCostsPage() {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState<string | null>(null);
+  const [sourceOpen, setSourceOpen] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
 
@@ -132,26 +136,82 @@ export default function FixedCostsPage() {
   async function onPay(e: React.FormEvent<HTMLFormElement>, item: FixedCost) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const accountId = String(form.get("accountId") || "");
+    if (!accountId) {
+      toast.error(t("fixedCosts.selectAccountFirst"));
+      return;
+    }
+    const account = accounts.find((a) => a._id === accountId);
     setPaying(true);
     try {
-      const result = await api<{ alreadyPaidThisCycle?: boolean }>(
+      const result = await api<{
+        alreadyPaidThisCycle?: boolean;
+        fundingAccountId?: string;
+        fundingBalance?: number;
+      }>(`/api/fixed-costs/${item._id}/pay`, {
+        method: "POST",
+        body: JSON.stringify({
+          accountId,
+          amount: toMinorUnits(Number(form.get("amount")), item.currency),
+          date: form.get("date") || undefined,
+          notes: form.get("notes") || undefined,
+        }),
+      });
+      if (result.alreadyPaidThisCycle) {
+        toast.success(t("fixedCosts.alreadyPaid"));
+      } else {
+        toast.success(
+          t("fixedCosts.paymentRecorded", {
+            account: account?.name ?? "account",
+            balance: formatMoney(
+              result.fundingBalance ?? 0,
+              item.currency,
+              intlLocale
+            ),
+          })
+        );
+      }
+      setPayOpen(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function onChangeSource(
+    e: React.FormEvent<HTMLFormElement>,
+    item: FixedCost
+  ) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const accountId = String(form.get("accountId") || "");
+    if (!accountId) {
+      toast.error(t("fixedCosts.selectAccountFirst"));
+      return;
+    }
+    const account = accounts.find((a) => a._id === accountId);
+    setPaying(true);
+    try {
+      const result = await api<{ fundingBalance?: number }>(
         `/api/fixed-costs/${item._id}/pay`,
         {
-          method: "POST",
-          body: JSON.stringify({
-            accountId: form.get("accountId") || undefined,
-            amount: toMinorUnits(Number(form.get("amount")), item.currency),
-            date: form.get("date") || undefined,
-            notes: form.get("notes") || undefined,
-          }),
+          method: "PATCH",
+          body: JSON.stringify({ accountId }),
         }
       );
       toast.success(
-        result.alreadyPaidThisCycle
-          ? t("fixedCosts.alreadyPaid")
-          : t("fixedCosts.paymentRecorded")
+        t("fixedCosts.changeSourceDone", {
+          account: account?.name ?? "account",
+          balance: formatMoney(
+            result.fundingBalance ?? 0,
+            item.currency,
+            intlLocale
+          ),
+        })
       );
-      setPayOpen(null);
+      setSourceOpen(null);
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -164,10 +224,22 @@ export default function FixedCostsPage() {
     .filter((i) => i.isActive && i.currency === "IDR")
     .reduce((sum, i) => sum + i.amount, 0);
 
-  const defaultAccountId =
-    accounts.find((a) => /bca/i.test(a.name))?._id ?? accounts[0]?._id ?? "";
-
   const today = new Date().toISOString().slice(0, 10);
+
+  function fundingAccountsFor(currency: Currency) {
+    return accounts.filter((a) => a.currency === currency);
+  }
+
+  /** Prefer dedicated fixed-cost pocket (e.g. ATM Fixed cost). */
+  function preferredFundingAccountId(currency: Currency) {
+    const list = fundingAccountsFor(currency);
+    return (
+      list.find((a) => /fixed/i.test(a.name))?._id ??
+      list.find((a) => /bca/i.test(a.name))?._id ??
+      list[0]?._id ??
+      ""
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -302,8 +374,83 @@ export default function FixedCostsPage() {
               <p className="font-mono text-xl">
                 {formatMoney(item.amount, item.currency, intlLocale)}
               </p>
+              {item.paidThisCycle && item.paidFromAccountName ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("fixedCosts.paidFrom", {
+                    account: item.paidFromAccountName,
+                  })}
+                </p>
+              ) : null}
               <div className="flex flex-wrap gap-2">
-                {item.isActive ? (
+                {item.isActive && item.paidThisCycle ? (
+                  <Dialog
+                    open={sourceOpen === item._id}
+                    onOpenChange={(v) => setSourceOpen(v ? item._id : null)}
+                  >
+                    <DialogTrigger
+                      render={
+                        <Button
+                          variant="secondary"
+                          className="min-w-[7.5rem] flex-1 touch-manipulation"
+                          disabled={
+                            fundingAccountsFor(item.currency).length === 0
+                          }
+                        />
+                      }
+                    >
+                      {t("fixedCosts.changeSource")}
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>
+                          {t("fixedCosts.changeSourceTitle", {
+                            name: item.name,
+                          })}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <p className="text-sm text-muted-foreground">
+                        {t("fixedCosts.changeSourceHint")}
+                      </p>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(e) => onChangeSource(e, item)}
+                      >
+                        <div className="space-y-2">
+                          <Label>{t("fixedCosts.selectAccount")}</Label>
+                          <select
+                            name="accountId"
+                            required
+                            defaultValue={
+                              item.paidFromAccountId ||
+                              preferredFundingAccountId(item.currency)
+                            }
+                            className="flex h-9 w-full rounded-md border px-3 text-sm"
+                          >
+                            {fundingAccountsFor(item.currency).map((a) => (
+                              <option key={a._id} value={a._id}>
+                                {a.name} ·{" "}
+                                {formatMoney(
+                                  a.currentBalance,
+                                  a.currency,
+                                  intlLocale
+                                )}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <Button
+                          type="submit"
+                          className="w-full"
+                          disabled={paying}
+                        >
+                          {t("fixedCosts.changeSource")}
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                ) : null}
+
+                {item.isActive && !item.paidThisCycle ? (
                   <Dialog
                     open={payOpen === item._id}
                     onOpenChange={(v) => setPayOpen(v ? item._id : null)}
@@ -312,14 +459,19 @@ export default function FixedCostsPage() {
                       render={
                         <Button
                           className="min-w-[7.5rem] flex-1 touch-manipulation"
-                          disabled={item.paidThisCycle || accounts.length === 0}
+                          disabled={
+                            fundingAccountsFor(item.currency).length === 0
+                          }
+                          title={
+                            fundingAccountsFor(item.currency).length === 0
+                              ? t("fixedCosts.noFundingAccounts")
+                              : undefined
+                          }
                         />
                       }
                     >
                       <Check className="size-3.5" />
-                      {item.paidThisCycle
-                        ? t("fixedCosts.paidThisCycle")
-                        : t("fixedCosts.pay")}
+                      {t("fixedCosts.pay")}
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
@@ -339,12 +491,19 @@ export default function FixedCostsPage() {
                           <select
                             name="accountId"
                             required
-                            defaultValue={defaultAccountId}
+                            defaultValue={preferredFundingAccountId(
+                              item.currency
+                            )}
                             className="flex h-9 w-full rounded-md border px-3 text-sm"
                           >
-                            {accounts.map((a) => (
+                            {fundingAccountsFor(item.currency).map((a) => (
                               <option key={a._id} value={a._id}>
-                                {a.name}
+                                {a.name} ·{" "}
+                                {formatMoney(
+                                  a.currentBalance,
+                                  a.currency,
+                                  intlLocale
+                                )}
                               </option>
                             ))}
                           </select>

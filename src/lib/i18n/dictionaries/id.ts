@@ -444,12 +444,15 @@ export const id: Dictionary = {
     settleGoalPay: "Nabung & catat",
     settleConfirmTitle: "Catat pembayaran ini?",
     settleConfirm:
-      "Akan buat transaksi dari rekening bank/cash dan sync ke Payday.",
+      "Pilih rekening sumber — kami buat transaksi dan potong saldonya.",
     settleGoalConfirmTitle: "Catat kontribusi goals?",
     settleGoalConfirm:
-      "Potong dari BCA dan tambah ke progress goal. Bukan ‘tandai lunas’ kosong.",
+      "Pilih rekening sumber — kami potong saldonya dan tambah ke progress goal.",
+    settleSelectAccount: "Bayar dari rekening",
+    settleSelectAccountPlaceholder: "— pilih rekening —",
     settleConfirmAction: "Ya, catat",
-    settleDone: "Pembayaran tercatat di transaksi",
+    settleDone: "Tercatat · sisa {account}: {balance}",
+    settleNeedAccount: "Pilih rekening sumber dulu",
     settleAlready: "Sudah dibayar di cycle ini",
     settleOnlyDebt:
       "Hanya utang / CC / fixed cost / goals yang bisa dicatat dari sini",
@@ -609,12 +612,22 @@ export const id: Dictionary = {
     statusOff: "MATI",
     pay: "Bayar & catat",
     payTitle: "Bayar {name}",
-    payHint: "Buat transaksi Bills dan tandai lunas di Payday.",
+    payHint:
+      "Pilih rekening sumber. Kami buat transaksi Bills, potong saldo rekening itu, dan tandai lunas di Payday.",
     paidThisCycle: "Sudah dibayar cycle ini",
-    paymentRecorded: "Fixed cost tercatat di transaksi + Payday",
+    paymentRecorded: "Dibayar dari {account} · sisa {balance}",
     alreadyPaid: "Sudah dibayar di cycle ini",
     selectAccount: "Bayar dari rekening",
+    selectAccountPlaceholder: "— pilih rekening —",
+    selectAccountFirst: "Pilih rekening sumber dulu",
+    noFundingAccounts: "Tambah rekening bank, cash, atau e-wallet dulu",
     payDate: "Tanggal bayar",
+    changeSource: "Ganti sumber",
+    changeSourceTitle: "Ganti sumber · {name}",
+    changeSourceHint:
+      "Pindahkan pembayaran cycle ini ke rekening lain. Saldo kedua rekening dihitung ulang.",
+    changeSourceDone: "Dipindah ke {account} · sisa {balance}",
+    paidFrom: "Dibayar dari {account}",
   },
   insights: {
     title: "Wawasan Keuangan",

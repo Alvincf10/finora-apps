@@ -1,8 +1,9 @@
 import { ok, handleError } from "@/lib/api";
 import { getPayCycleBounds } from "@/lib/financial/pay-cycle";
-import { getFixedCostPaidIdsInCycle } from "@/lib/financial/record-fixed-cost-payment";
+import { getFixedCostPaymentsInCycle } from "@/lib/financial/record-fixed-cost-payment";
 import { requireUser } from "@/lib/session";
 import { createFixedCostSchema } from "@/lib/validations";
+import { Account } from "@/models/Account";
 import { FixedCost } from "@/models/FixedCost";
 import { User } from "@/models/User";
 
@@ -11,17 +12,36 @@ export async function GET() {
     const { userId } = await requireUser();
     const user = await User.findById(userId).lean();
     const cycle = getPayCycleBounds(user?.paydayDay ?? 25);
-    const [items, paidIds] = await Promise.all([
+    const [items, payments] = await Promise.all([
       FixedCost.find({ userId }).sort({ dueDay: 1, name: 1 }).lean(),
-      getFixedCostPaidIdsInCycle(userId, cycle.start, cycle.end),
+      getFixedCostPaymentsInCycle(userId, cycle.start, cycle.end),
     ]);
 
+    const accountIds = [...new Set([...payments.values()].map((p) => p.accountId))];
+    const accounts =
+      accountIds.length > 0
+        ? await Account.find({ _id: { $in: accountIds }, userId })
+            .select({ name: 1 })
+            .lean()
+        : [];
+    const accountNameById = new Map(
+      accounts.map((a) => [a._id.toString(), a.name as string])
+    );
+
     return ok(
-      items.map((item) => ({
-        ...item,
-        paidThisCycle: paidIds.has(item._id.toString()),
-        cycleLabel: cycle.label,
-      }))
+      items.map((item) => {
+        const id = item._id.toString();
+        const payment = payments.get(id);
+        return {
+          ...item,
+          paidThisCycle: Boolean(payment),
+          paidFromAccountId: payment?.accountId,
+          paidFromAccountName: payment
+            ? accountNameById.get(payment.accountId)
+            : undefined,
+          cycleLabel: cycle.label,
+        };
+      })
     );
   } catch (error) {
     return handleError(error);

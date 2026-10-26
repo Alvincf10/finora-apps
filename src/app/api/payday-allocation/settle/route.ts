@@ -196,7 +196,7 @@ export async function POST(request: Request) {
           freshGoal.status = "COMPLETED";
         }
         await freshGoal.save(sessionOption(session));
-        await recalculateAccountBalance(
+        const funding = await recalculateAccountBalance(
           account._id.toString(),
           session ?? undefined
         );
@@ -206,6 +206,7 @@ export async function POST(request: Request) {
           goalId: freshGoal._id.toString(),
           goalCurrent: freshGoal.currentAmount,
           goalStatus: freshGoal.status,
+          fundingBalance: funding.currentBalance,
         };
       });
 
