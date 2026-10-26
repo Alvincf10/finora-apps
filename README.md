@@ -2,12 +2,13 @@
 
 **Finora** = **Fin**ance + **ora** (horizon) — finance yang jelas ke depannya (*finance with a clear horizon*).
 
-Aplikasi personal finance management (Phase 1 + Phase 2).
+Aplikasi personal finance management (Phase 1 + Phase 2 + Finora 2.0).
 
 - **Phase 1** — ledger: accounts, transactions, budget, debts, goals, dashboard
 - **Phase 2** — financial intelligence: smart budget, insights, forecast, simulator, monthly review
+- **Finora 2.0** — deterministic decision system: financial health, horizon cash-flow, Decision Lab, Action Center, Command Center (tanpa AI/LLM di engine)
 
-PRD: `prd/phase1.md`, `prd/phase2.md`
+PRD: `prd/phase1.md`, `prd/phase2.md`, `prd/phase4.md` · Audit: `docs/phase0-audit.md`
 
 ---
 
@@ -169,6 +170,8 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 | `npm run build` | Production build |
 | `npm run start` | Jalankan hasil build |
 | `npm run lint` | ESLint |
+| `npm run test` | Vitest — regresi engine Finora 2.0 (metrics, forecast, scenarios, …) |
+| `npm run test:watch` | Vitest watch mode |
 | `npm run smoke:money` | Smoke test util uang (minor units) |
 | `npm run smoke:phase2` | Smoke test math Phase 2 |
 | `npm run smoke:wa-parse` | Smoke test parser nominal WA |
@@ -182,12 +185,12 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 
 | Route | Isi |
 | --- | --- |
-| `/dashboard` | KPI, cash flow, budget, recent txs |
+| `/dashboard` | Financial Command Center (health, forecast, actions, roadmap) |
 | `/transactions` | Income / expense / transfer |
 | `/accounts` | Rekening & saldo |
 | `/budget` | Budget bulanan per kategori |
-| `/debts` | Hutang + pembayaran |
-| `/goals` | Target tabungan |
+| `/debts` | Hutang + pembayaran + preview tenor |
+| `/goals` | Target tabungan / Tangga Ternak Uang |
 | `/reports` | Ringkasan chart |
 | `/settings` | Profil & theme |
 | `/whatsapp` | Vira: status WA, QR scan, rekening default |
@@ -197,9 +200,20 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 | Route | Isi |
 | --- | --- |
 | `/budget/recommendation` | Smart Budget (generate → adjust → accept) |
-| `/insights` | Recommendation center + evidence |
+| `/insights` | Action Center + evidence (dedup prioritas) |
 | `/reports/monthly` | Monthly review & vs bulan lalu |
-| `/simulator` | What-if + debt scenarios + emergency fund |
+| `/simulator` | Decision Lab — what-if, debt, emergency, skenario tersimpan |
+
+### Finora 2.0 — Deterministic decision system
+
+| Kapabilitas | Isi |
+| --- | --- |
+| Financial Health | Status (Stable / Tight / At Risk / Critical), runway, free cash, debt burden |
+| Cash-flow forecast | Horizon 30/60/90 hari — events, projected balance, risk windows |
+| Decision Lab | Bandingkan skenario (extra payment, delay, allocate) tanpa write ledger |
+| Action Center | Rekomendasi terprioritas + issue key (hindari duplikat) |
+| Command Center | Satu payload untuk dashboard: health + forecast + actions + payday + roadmap |
+| Roadmap | Provenance Tangga Ternak Uang (progress, gap, next step) |
 
 ### API utama
 
@@ -208,6 +222,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 /api/transactions
 /api/budgets
 /api/debts
+/api/debts/preview-tenor
 /api/goals
 /api/dashboard
 
@@ -220,6 +235,15 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 /api/financial-context
 /api/ai/chat
 /api/whatsapp
+
+# Finora 2.0
+/api/financial-health
+/api/cash-flow-forecast
+/api/scenarios
+/api/scenarios/[id]
+/api/action-center
+/api/command-center
+/api/roadmap/ensure-starter
 ```
 
 ---
@@ -228,8 +252,10 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 
 - Jumlah disimpan sebagai **integer minor units** (IDR = rupiah utuh, EUR = cents).
 - Transfer **bukan** expense.
-- Semua angka finansial dihitung **backend (deterministic)**.
-- AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang.
+- Semua angka finansial dihitung **backend (deterministic)** — metrik pay-cycle-aware.
+- Finora 2.0 **tidak memakai AI/LLM** untuk health, forecast, skenario, atau Action Center.
+- AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang (opsional: penjelasan teks saja).
+- Tidak ada silent write ke ledger: skenario Decision Lab & rekomendasi butuh aksi user.
 - WhatsApp Vira menulis transaksi lewat **parser deterministik** → `createTransaction` (bukan OpenRouter).
 - Smart Budget **tidak** menimpa budget sebelum user klik Accept.
 
@@ -267,13 +293,21 @@ npm run dev
 src/
   app/                 # pages + API routes
   components/          # UI + app shell
-  lib/financial/       # engine Phase 1 & Phase 2
-  lib/ai/              # OpenRouter provider
-  models/              # Mongoose schemas
+  lib/financial/       # engine Phase 1, Phase 2, Finora 2.0
+    metrics/           # summary + financial health
+    forecast/          # horizon cash-flow
+    decision/          # Decision Lab scenarios
+    recommendations/   # Action Center
+  lib/ai/              # OpenRouter provider (opsional)
+  models/              # Mongoose schemas (incl. Scenario)
 prd/
   phase1.md
   phase2.md
+  phase4.md            # Finora 2.0 PRD
+docs/
+  phase0-audit.md
 scripts/
   smoke-money.mjs
   smoke-phase2.mjs
+vitest.config.ts
 ```

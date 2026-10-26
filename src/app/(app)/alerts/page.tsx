@@ -128,15 +128,18 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-heading text-3xl font-semibold">Action Center</h1>
-          <p className="text-muted-foreground">
-            Prioritas tindakan dari alert live + rekomendasi — deduplikasi
-            otomatis.
-          </p>
+          <h1 className="font-heading text-3xl font-semibold">
+            {t("alerts.title")}
+          </h1>
+          <p className="text-muted-foreground">{t("alerts.subtitle")}</p>
           {counts ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              {counts.total} aktif · {counts.critical} critical ·{" "}
-              {counts.alerts} alert · {counts.recommendations} rekomendasi
+              {t("alerts.countsLine", {
+                total: String(counts.total),
+                critical: String(counts.critical),
+                alerts: String(counts.alerts),
+                recommendations: String(counts.recommendations),
+              })}
             </p>
           ) : null}
         </div>
@@ -162,10 +165,7 @@ export default function AlertsPage() {
 
       <Card>
         <CardContent className="space-y-1 pt-6 text-sm text-muted-foreground">
-          <p>
-            Alert bersifat live; rekomendasi tersimpan dengan issue key stabil.
-            Masalah yang sama tidak ditampilkan dua kali.
-          </p>
+          <p>{t("alerts.helpLive")}</p>
           <p>{t("alerts.dismissHint")}</p>
         </CardContent>
       </Card>
@@ -183,10 +183,22 @@ export default function AlertsPage() {
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={priorityVariant(item.priority)}>
-                    {item.priority}
+                    {item.priority === "CRITICAL"
+                      ? t("dashboard.priorityCritical")
+                      : item.priority === "HIGH"
+                        ? t("dashboard.priorityHigh")
+                        : item.priority === "MEDIUM"
+                          ? t("dashboard.priorityMedium")
+                            : item.priority === "LOW"
+                            ? t("dashboard.priorityLow")
+                            : t("alerts.priorityInfo")}
                   </Badge>
                   <Badge variant="outline">{typeLabel(item.type)}</Badge>
-                  <Badge variant="outline">{item.source}</Badge>
+                  <Badge variant="outline">
+                    {item.source === "ALERT"
+                      ? t("alerts.sourceAlert")
+                      : t("alerts.sourceRecommendation")}
+                  </Badge>
                   <CardTitle className="text-lg">{item.title}</CardTitle>
                 </div>
                 <CardDescription>{item.message}</CardDescription>
@@ -199,9 +211,6 @@ export default function AlertsPage() {
                     })}
                   </p>
                 ) : null}
-                <p className="font-mono text-[10px] text-muted-foreground">
-                  {item.issueKey}
-                </p>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 {item.href ? (
@@ -227,7 +236,7 @@ export default function AlertsPage() {
                       variant="secondary"
                       onClick={() => void onRecStatus(item.id, "ACCEPTED")}
                     >
-                      Accept
+                      {t("alerts.accept")}
                     </Button>
                     <Button
                       size="sm"

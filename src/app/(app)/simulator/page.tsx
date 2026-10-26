@@ -270,45 +270,46 @@ export default function SimulatorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-3xl font-semibold">Decision Lab</h1>
-        <p className="text-muted-foreground">
-          Bandingkan pilihan finansial terhadap snapshot baseline — tanpa mengubah
-          ledger.
-        </p>
+        <h1 className="font-heading text-3xl font-semibold">
+          {t("simulator.title")}
+        </h1>
+        <p className="text-muted-foreground">{t("simulator.subtitle")}</p>
       </div>
 
       {baseline ? (
         <Card>
           <CardHeader>
-            <CardTitle>Baseline snapshot</CardTitle>
+            <CardTitle>{t("simulator.baselineTitle")}</CardTitle>
             <CardDescription>
-              {baseline.cycleLabel ?? "Pay cycle"} · captured{" "}
-              {new Date(baseline.capturedAt).toLocaleString(intlLocale)}
+              {t("simulator.baselineCaptured", {
+                label: baseline.cycleLabel ?? t("dashboard.subtitleFallback"),
+                when: new Date(baseline.capturedAt).toLocaleString(intlLocale),
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2 text-sm md:grid-cols-3">
             <p>
-              Income{" "}
+              {t("simulator.baselineIncome")}{" "}
               <span className="font-mono">{money(baseline.income)}</span>
             </p>
             <p>
-              Expenses{" "}
+              {t("simulator.baselineExpenses")}{" "}
               <span className="font-mono">{money(baseline.expenses)}</span>
             </p>
             <p>
-              Debt pay{" "}
+              {t("simulator.baselineDebtPay")}{" "}
               <span className="font-mono">{money(baseline.debtPayment)}</span>
             </p>
             <p>
-              Liquid{" "}
+              {t("simulator.baselineLiquid")}{" "}
               <span className="font-mono">{money(baseline.liquidAssets)}</span>
             </p>
             <p>
-              Net worth{" "}
+              {t("simulator.baselineNetWorth")}{" "}
               <span className="font-mono">{money(baseline.netWorth)}</span>
             </p>
             <p>
-              Debt bal.{" "}
+              {t("simulator.baselineDebtBal")}{" "}
               <span className="font-mono">{money(baseline.debtBalance)}</span>
             </p>
           </CardContent>
@@ -339,7 +340,7 @@ export default function SimulatorPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Nama skenario (saat simpan)</Label>
+            <Label>{t("simulator.scenarioName")}</Label>
             <Input
               value={scenarioName}
               onChange={(e) => setScenarioName(e.target.value)}

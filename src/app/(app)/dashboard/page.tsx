@@ -544,14 +544,14 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h1 className="font-heading text-3xl font-semibold tracking-tight">
-          Financial Command Center
+          {t("dashboard.ccTitle")}
         </h1>
         <p className="text-sm text-muted-foreground sm:text-base">
           {cc?.health.cycleLabel ??
             cycle?.cycle.label ??
             t("dashboard.subtitleFallback")}
           {" · "}
-          Understand → Decide → Execute → Review
+          {t("dashboard.ccLoop")}
         </p>
       </div>
 
@@ -559,31 +559,39 @@ export default function DashboardPage() {
         <section className="space-y-4 rounded-2xl border bg-gradient-to-br from-emerald-50/80 via-card to-sky-50/50 p-4 sm:p-6 dark:from-emerald-950/40 dark:to-slate-950">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi
-              label="Liquid assets"
+              label={t("dashboard.ccLiquidAssets")}
               value={money(cc.health.liquidAssets, cc.health.currency)}
               hint={
                 cc.health.savingsRateAvailable && cc.health.savingsRate != null
-                  ? `Savings rate ${cc.health.savingsRate}%`
-                  : "Savings rate n/a"
+                  ? t("dashboard.ccSavingsRate", {
+                      pct: String(cc.health.savingsRate),
+                    })
+                  : t("dashboard.ccSavingsRateNa")
               }
             />
             <Kpi
-              label="Net cash flow"
+              label={t("dashboard.ccNetCashFlow")}
               value={money(cc.health.netCashFlow, cc.health.currency)}
               valueClassName={
                 cc.health.netCashFlow >= 0
                   ? "text-emerald-800 dark:text-emerald-300"
                   : "text-rose-700 dark:text-rose-400"
               }
-              hint={`Net worth ${money(cc.health.netWorth, cc.health.currency)}`}
+              hint={t("dashboard.ccNetWorthHint", {
+                amount: money(cc.health.netWorth, cc.health.currency),
+              })}
             />
             <Kpi
-              label={`Forecast ${cc.forecast.horizonDays}d`}
+              label={t("dashboard.ccForecast", {
+                days: String(cc.forecast.horizonDays),
+              })}
               value={money(cc.forecast.endingBalance, cc.health.currency)}
               hint={
                 cc.forecast.shortfallCount > 0
-                  ? `${cc.forecast.shortfallCount} shortfall risk(s)`
-                  : "No shortfall in horizon"
+                  ? t("dashboard.ccShortfallRisks", {
+                      count: String(cc.forecast.shortfallCount),
+                    })
+                  : t("dashboard.ccNoShortfall")
               }
               valueClassName={
                 cc.forecast.endingBalance < 0
@@ -592,54 +600,66 @@ export default function DashboardPage() {
               }
             />
             <Kpi
-              label="Roadmap"
+              label={t("dashboard.ccRoadmap")}
               value={`${cc.roadmap.progressPercent}%`}
               hint={
                 cc.roadmap.focusTitle
-                  ? `Focus: ${cc.roadmap.focusTitle}`
-                  : `Step ${cc.roadmap.currentStep ?? "—"}`
+                  ? t("dashboard.ccFocusHint", {
+                      title: cc.roadmap.focusTitle,
+                    })
+                  : t("dashboard.ccStepHint", {
+                      step: String(cc.roadmap.currentStep ?? "—"),
+                    })
               }
             />
           </div>
 
           {cc.periodChange ? (
             <p className="text-xs text-muted-foreground">
-              vs {cc.periodChange.previousLabel}: net{" "}
-              <span className="font-mono">
-                {money(cc.periodChange.netDelta, cc.periodChange.currency)}
-              </span>
-              {" · "}income{" "}
-              <span className="font-mono">
-                {money(cc.periodChange.incomeDelta, cc.periodChange.currency)}
-              </span>
-              {" · "}expense{" "}
-              <span className="font-mono">
-                {money(cc.periodChange.expenseDelta, cc.periodChange.currency)}
-              </span>
+              {t("dashboard.ccPeriodChange", {
+                label: cc.periodChange.previousLabel,
+                net: money(cc.periodChange.netDelta, cc.periodChange.currency),
+                income: money(
+                  cc.periodChange.incomeDelta,
+                  cc.periodChange.currency
+                ),
+                expense: money(
+                  cc.periodChange.expenseDelta,
+                  cc.periodChange.currency
+                ),
+              })}
             </p>
           ) : null}
 
           {cc.health.quality.length > 0 ? (
             <p className="text-xs text-amber-800 dark:text-amber-200">
-              Data notes: {cc.health.quality.join(", ")}
+              {t("dashboard.ccDataNotes", {
+                notes: cc.health.quality.join(", "),
+              })}
             </p>
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="border-emerald-900/10 bg-background/70 lg:col-span-1">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Prioritas tindakan</CardTitle>
+                <CardTitle className="text-base">
+                  {t("dashboard.ccActionsTitle")}
+                </CardTitle>
                 <CardDescription>
-                  {cc.actions.counts.total} aktif
+                  {t("dashboard.ccActionsCount", {
+                    total: String(cc.actions.counts.total),
+                  })}
                   {cc.actions.counts.critical > 0
-                    ? ` · ${cc.actions.counts.critical} critical`
+                    ? t("dashboard.ccActionsCritical", {
+                        count: String(cc.actions.counts.critical),
+                      })
                     : ""}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {cc.actions.top.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Tidak ada tindakan mendesak.
+                    {t("dashboard.ccActionsEmpty")}
                   </p>
                 ) : (
                   cc.actions.top.map((a) => (
@@ -656,7 +676,13 @@ export default function DashboardPage() {
                               : "secondary"
                           }
                         >
-                          {a.priority}
+                          {a.priority === "CRITICAL"
+                            ? t("dashboard.priorityCritical")
+                            : a.priority === "HIGH"
+                              ? t("dashboard.priorityHigh")
+                              : a.priority === "MEDIUM"
+                                ? t("dashboard.priorityMedium")
+                                : t("dashboard.priorityLow")}
                         </Badge>
                         <span className="text-sm font-medium">{a.title}</span>
                       </div>
@@ -673,36 +699,43 @@ export default function DashboardPage() {
                     "w-full"
                   )}
                 >
-                  Action Center
+                  {t("dashboard.ccOpenActionCenter")}
                 </Link>
               </CardContent>
             </Card>
 
             <Card className="border-emerald-900/10 bg-background/70">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Roadmap & Decision</CardTitle>
-                <CardDescription>Lanjut dari kondisi saat ini</CardDescription>
+                <CardTitle className="text-base">
+                  {t("dashboard.ccRoadmapTitle")}
+                </CardTitle>
+                <CardDescription>
+                  {t("dashboard.ccRoadmapDesc")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p>
-                  Progress tangga{" "}
-                  <span className="font-mono font-medium">
-                    {cc.roadmap.progressPercent}%
-                  </span>
+                  {t("dashboard.ccLadderProgress", {
+                    pct: String(cc.roadmap.progressPercent),
+                  })}
                 </p>
                 {cc.roadmap.focusTitle ? (
                   <p className="text-muted-foreground">
-                    Fokus: {cc.roadmap.focusTitle}
+                    {t("dashboard.ccFocusLabel", {
+                      title: cc.roadmap.focusTitle,
+                    })}
                   </p>
                 ) : null}
                 {cc.forecast.nextShortfall ? (
                   <p className="text-rose-700 dark:text-rose-300">
-                    Risiko kas {cc.forecast.nextShortfall.date}:{" "}
-                    {cc.forecast.nextShortfall.causingLabel}
+                    {t("dashboard.ccCashRisk", {
+                      date: cc.forecast.nextShortfall.date,
+                      label: cc.forecast.nextShortfall.causingLabel,
+                    })}
                   </p>
                 ) : (
                   <p className="text-muted-foreground">
-                    Proyeksi 30 hari tanpa shortfall terdeteksi.
+                    {t("dashboard.ccForecastClear")}
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -710,7 +743,7 @@ export default function DashboardPage() {
                     href="/insights"
                     className={cn(buttonVariants({ size: "sm" }))}
                   >
-                    Financial Roadmap
+                    {t("dashboard.ccOpenRoadmap")}
                   </Link>
                   <Link
                     href="/simulator"
@@ -718,7 +751,7 @@ export default function DashboardPage() {
                       buttonVariants({ variant: "secondary", size: "sm" })
                     )}
                   >
-                    Decision Lab
+                    {t("dashboard.ccOpenDecisionLab")}
                   </Link>
                 </div>
               </CardContent>
@@ -726,33 +759,34 @@ export default function DashboardPage() {
 
             <Card className="border-emerald-900/10 bg-background/70">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Execution plan</CardTitle>
-                <CardDescription>Payday allocation aktif</CardDescription>
+                <CardTitle className="text-base">
+                  {t("dashboard.ccExecutionTitle")}
+                </CardTitle>
+                <CardDescription>
+                  {t("dashboard.ccExecutionDesc")}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {cc.payday ? (
                   <>
                     <p>
-                      Allocated{" "}
-                      <span className="font-mono">
-                        {money(
+                      {t("dashboard.ccAllocated", {
+                        amount: money(
                           cc.payday.allocated ?? 0,
                           cc.payday.currency
-                        )}
-                      </span>
+                        ),
+                      })}
                     </p>
                     <p>
-                      Remaining{" "}
-                      <span className="font-mono">
-                        {money(cc.payday.remaining, cc.payday.currency)}
-                      </span>
-                      {" · "}
-                      {cc.payday.envelopeCount} envelope
+                      {t("dashboard.ccRemainingEnvelopes", {
+                        amount: money(cc.payday.remaining, cc.payday.currency),
+                        count: String(cc.payday.envelopeCount),
+                      })}
                     </p>
                   </>
                 ) : (
                   <p className="text-muted-foreground">
-                    Belum ada alokasi ACTIVE — buat di Payday.
+                    {t("dashboard.ccNoPayday")}
                   </p>
                 )}
                 <Link
@@ -762,7 +796,7 @@ export default function DashboardPage() {
                     "w-full"
                   )}
                 >
-                  Buka Payday
+                  {t("dashboard.ccOpenPayday")}
                 </Link>
               </CardContent>
             </Card>
