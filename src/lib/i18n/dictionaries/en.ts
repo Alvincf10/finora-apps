@@ -841,6 +841,22 @@ export const en = {
     finoraDownFallback:
       "Not active. finora commands on WhatsApp will not get a reply.",
   },
+  aiExplainer: {
+    title: "Explain with AI",
+    subtitle:
+      "AI explains Finora’s numbers — it never changes balances or transactions.",
+    cta: "Explain with AI",
+    loading: "Analyzing…",
+    loadingHint:
+      "Finora is analyzing your financial data and drafting an explanation.",
+    retry: "Try again",
+    placeholder: "Ask about your finances…",
+    defaultQuestion: "Why is my financial condition the way it is right now?",
+    questionRequired: "Enter a question first",
+    unavailable:
+      "AI explanation isn’t available. Finora’s data and calculations still work normally.",
+    modelLabel: "Model: {model}",
+  },
 } as const;
 
 type DeepStringRecord<T> = {

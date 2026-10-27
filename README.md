@@ -66,9 +66,13 @@ AUTH_URL=http://localhost:3010
 AUTH_TRUST_HOST=true
 NEXT_PUBLIC_APP_NAME=Finora
 
-# Opsional — tombol "AI explain" di dashboard
+# Opsional — Phase 5 Financial Explainer (OpenRouter Free only)
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MAX_OUTPUT_TOKENS=800
+AI_REQUEST_TIMEOUT_MS=20000
+AI_DAILY_REQUEST_LIMIT=20
+AI_PER_MINUTE_LIMIT=3
 ```
 
 Generate `AUTH_SECRET` cepat:
@@ -233,7 +237,6 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 /api/simulator
 /api/reports/monthly
 /api/financial-context
-/api/ai/chat
 /api/whatsapp
 
 # Finora 2.0
@@ -244,6 +247,10 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 /api/action-center
 /api/command-center
 /api/roadmap/ensure-starter
+
+# Phase 5 — AI Explainer (opsional, read-only)
+/api/ai/explain
+/api/ai/chat
 ```
 
 ---
@@ -255,6 +262,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 - Semua angka finansial dihitung **backend (deterministic)** — metrik pay-cycle-aware.
 - Finora 2.0 **tidak memakai AI/LLM** untuk health, forecast, skenario, atau Action Center.
 - AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang (opsional: penjelasan teks saja).
+- Phase 5 AI memakai **OpenRouter Free** (`openrouter/free`) — tanpa fallback model berbayar; request hanya on-demand.
 - Tidak ada silent write ke ledger: skenario Decision Lab & rekomendasi butuh aksi user.
 - WhatsApp Vira menulis transaksi lewat **parser deterministik** → `createTransaction` (bukan OpenRouter).
 - Smart Budget **tidak** menimpa budget sebelum user klik Accept.

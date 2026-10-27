@@ -30,6 +30,7 @@ import { CurrencyAmountInput } from "@/components/currency-amount-input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n-provider";
+import { AiExplainer } from "@/components/ai-explainer";
 
 type CommandCenterBlock = {
   health: {
@@ -457,8 +458,6 @@ function SurvivalCard({
 export default function DashboardPage() {
   const { t, intlLocale } = useI18n();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
   const [phase2, setPhase2] = useState<{
     insightsCount: number;
     trends: Array<{ categoryName: string; percentageChange: number; trend: string }>;
@@ -492,28 +491,6 @@ export default function DashboardPage() {
         /* phase 2 widgets are optional on dashboard */
       });
   }, []);
-
-  async function explainWithAI() {
-    setLoadingAi(true);
-    try {
-      const result = await api<{ explanation: string; disclaimer: string }>(
-        "/api/ai/chat",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            question: "Explain my current month financial health briefly.",
-          }),
-        }
-      );
-      setAiText(`${result.explanation}\n\n${result.disclaimer}`);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : t("dashboard.aiUnavailable")
-      );
-    } finally {
-      setLoadingAi(false);
-    }
-  }
 
   if (!data) {
     return <p className="text-muted-foreground">{t("dashboard.loading")}</p>;
@@ -1142,19 +1119,9 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle>{t("dashboard.insights")}</CardTitle>
-              <CardDescription>{t("dashboard.insightsDesc")}</CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={explainWithAI}
-              disabled={loadingAi}
-            >
-              {loadingAi ? t("dashboard.askingAi") : t("dashboard.askAi")}
-            </Button>
+          <CardHeader>
+            <CardTitle>{t("dashboard.insights")}</CardTitle>
+            <CardDescription>{t("dashboard.insightsDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.recommendations.length === 0 ? (
@@ -1178,14 +1145,14 @@ export default function DashboardPage() {
                 </div>
               ))
             )}
-            {aiText ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
-                {aiText}
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       </div>
+
+      <AiExplainer
+        contextType="general_summary"
+        defaultQuestion={t("aiExplainer.defaultQuestion")}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

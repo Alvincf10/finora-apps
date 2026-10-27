@@ -1,42 +1,62 @@
 import { ok, fail, handleError } from "@/lib/api";
+import { buildAIExplainContext } from "@/lib/ai/context-builder";
+import { isAIError } from "@/lib/ai/errors";
+import {
+  assertAIRateLimit,
+  getAIProvider,
+  isAIConfigured,
+} from "@/lib/ai/provider";
+import { FINANCIAL_EXPLAINER_SYSTEM } from "@/lib/ai/system-prompt";
 import { requireUser } from "@/lib/session";
 import { aiChatSchema } from "@/lib/validations";
-import { buildFinancialContext } from "@/lib/financial/recommendations";
-import {
-  checkAIRateLimit,
-  FINANCIAL_AI_SYSTEM,
-  getAIProvider,
-} from "@/lib/ai/provider";
 
+/**
+ * Legacy alias — prefer POST /api/ai/explain with contextType.
+ * Kept for older dashboard callers; uses general_summary context.
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await requireUser();
 
-    if (!checkAIRateLimit(userId, 10, 60_000)) {
-      return fail("RATE_LIMITED", "Too many AI requests. Try again later.", 429);
+    if (!isAIConfigured()) {
+      return fail(
+        "AI_NOT_CONFIGURED",
+        "Penjelasan AI belum tersedia. Data dan perhitungan keuangan Finora tetap berfungsi normal.",
+        503
+      );
     }
 
-    const body = aiChatSchema.parse(await request.json().catch(() => ({})));
-    const now = new Date();
-    const period = { year: now.getFullYear(), month: now.getMonth() + 1 };
-    const context = await buildFinancialContext(userId, period);
+    assertAIRateLimit(userId);
 
+    const body = aiChatSchema.parse(await request.json().catch(() => ({})));
+    const question =
+      body.question?.trim() ||
+      "Jelaskan kondisi keuangan saya secara singkat berdasarkan data Finora.";
+
+    const context = await buildAIExplainContext(userId, "general_summary");
     const provider = getAIProvider();
     const response = await provider.generateText({
-      system: FINANCIAL_AI_SYSTEM,
-      prompt: `Financial context (source of truth):\n${JSON.stringify(context, null, 2)}\n\nUser question: ${body.question ?? "Explain my current financial situation briefly."}`,
-      maxTokens: 400,
+      system: FINANCIAL_EXPLAINER_SYSTEM,
+      prompt: [
+        "Ringkasan finansial (sumber kebenaran Finora):",
+        JSON.stringify(context.payload, null, 2),
+        "",
+        `Pertanyaan pengguna: ${question}`,
+      ].join("\n"),
     });
 
     return ok({
       explanation: response.text,
       model: response.model,
       provider: response.provider,
-      context,
+      contextType: "general_summary",
       disclaimer:
-        "AI explanations are based on recorded data and are not the source of truth for balances or transactions.",
+        "Jawaban dibuat AI berdasarkan data Finora. Angka di aplikasi adalah sumber kebenaran.",
     });
   } catch (error) {
+    if (isAIError(error)) {
+      return fail(error.code, error.message, error.status);
+    }
     return handleError(error);
   }
 }

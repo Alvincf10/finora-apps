@@ -1,6 +1,18 @@
-import { appendFileSync, existsSync, mkdirSync } from "fs";
-import { dirname } from "path";
-import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  getAIMaxOutputTokens,
+  getAIRequestTimeoutMs,
+  getOpenRouterApiKey,
+  getOpenRouterModel,
+  isAIConfigured,
+} from "@/lib/ai/config";
+import { AIError } from "@/lib/ai/errors";
+import {
+  checkRateLimit,
+} from "@/lib/rate-limit";
+import {
+  getAIDailyRequestLimit,
+  getAIPerMinuteLimit,
+} from "@/lib/ai/config";
 
 export interface AIRequest {
   system: string;
@@ -14,48 +26,51 @@ export interface AIResponse {
   provider: string;
   inputTokens?: number;
   outputTokens?: number;
-  estimatedCostUsd?: number;
-}
-
-const FINORA_LEDGER =
-  process.env.FINORA_COST_LEDGER_PATH ?? "/var/lib/openclaw-cost/ledger.jsonl";
-
-/** GPT-4o-mini-ish defaults; override via env later if needed. */
-const DEFAULT_PRICE = { input: 0.15, output: 0.6 };
-
-function appendFinoraCost(entry: Record<string, unknown>) {
-  try {
-    const dir = dirname(FINORA_LEDGER);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    appendFileSync(FINORA_LEDGER, `${JSON.stringify(entry)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  } catch {
-    // Never fail the user-facing AI call because of ledger I/O
-  }
 }
 
 export interface AIProvider {
   generateText(input: AIRequest): Promise<AIResponse>;
 }
 
+type OpenRouterChatResponse = {
+  choices?: Array<{ message?: { content?: string | null } }>;
+  model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+  };
+  error?: { message?: string; code?: string | number };
+};
+
 export class OpenRouterProvider implements AIProvider {
   private apiKey: string;
   private model: string;
   private siteUrl?: string;
   private appName?: string;
+  private timeoutMs: number;
+  private maxTokensDefault: number;
 
-  constructor() {
-    this.apiKey = process.env.OPENROUTER_API_KEY ?? "";
-    this.model = process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
+  constructor(opts?: {
+    apiKey?: string;
+    model?: string;
+    timeoutMs?: number;
+    maxTokensDefault?: number;
+  }) {
+    this.apiKey = opts?.apiKey ?? getOpenRouterApiKey();
+    this.model = opts?.model ?? getOpenRouterModel();
     this.siteUrl = process.env.OPENROUTER_SITE_URL;
-    this.appName = process.env.OPENROUTER_APP_NAME;
+    this.appName = process.env.OPENROUTER_APP_NAME ?? "Finora";
+    this.timeoutMs = opts?.timeoutMs ?? getAIRequestTimeoutMs();
+    this.maxTokensDefault = opts?.maxTokensDefault ?? getAIMaxOutputTokens();
   }
 
   async generateText(input: AIRequest): Promise<AIResponse> {
     if (!this.apiKey) {
-      throw new Error("OPENROUTER_API_KEY is not configured");
+      throw new AIError(
+        "AI_NOT_CONFIGURED",
+        "Layanan penjelasan AI belum dikonfigurasi.",
+        503
+      );
     }
 
     const headers: Record<string, string> = {
@@ -65,75 +80,93 @@ export class OpenRouterProvider implements AIProvider {
     if (this.siteUrl) headers["HTTP-Referer"] = this.siteUrl;
     if (this.appName) headers["X-Title"] = this.appName;
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           model: this.model,
           messages: [
             { role: "system", content: input.system },
             { role: "user", content: input.prompt },
           ],
-          max_tokens: input.maxTokens ?? 400,
+          max_tokens: input.maxTokens ?? this.maxTokensDefault,
         }),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "AbortError" || /aborted/i.test(error.message))
+      ) {
+        throw new AIError(
+          "AI_TIMEOUT",
+          "Penjelasan AI melebihi batas waktu. Coba lagi nanti.",
+          504
+        );
       }
-    );
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`OpenRouter error: ${response.status} ${body}`);
+      throw new AIError(
+        "AI_PROVIDER_UNAVAILABLE",
+        "Layanan penjelasan AI sedang tidak tersedia.",
+        503
+      );
+    } finally {
+      clearTimeout(timer);
     }
 
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      model?: string;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      };
-    };
+    if (!response.ok) {
+      // Never surface provider body (may contain keys / internals)
+      if (response.status === 429) {
+        throw new AIError(
+          "AI_PROVIDER_UNAVAILABLE",
+          "Layanan penjelasan AI sedang tidak tersedia (batas kuota).",
+          503
+        );
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new AIError(
+          "AI_NOT_CONFIGURED",
+          "Layanan penjelasan AI belum dikonfigurasi dengan benar.",
+          503
+        );
+      }
+      throw new AIError(
+        "AI_PROVIDER_UNAVAILABLE",
+        "Layanan penjelasan AI sedang tidak tersedia.",
+        503
+      );
+    }
 
-    const inputTokens = json.usage?.prompt_tokens ?? 0;
-    const outputTokens = json.usage?.completion_tokens ?? 0;
-    const estimatedCostUsd =
-      Math.round(
-        ((inputTokens * DEFAULT_PRICE.input +
-          outputTokens * DEFAULT_PRICE.output) /
-          1_000_000) *
-          1e8
-      ) / 1e8;
+    let json: OpenRouterChatResponse;
+    try {
+      json = (await response.json()) as OpenRouterChatResponse;
+    } catch {
+      throw new AIError(
+        "AI_RESPONSE_INVALID",
+        "Respons AI tidak valid.",
+        502
+      );
+    }
 
-    const model = json.model ?? this.model;
-    appendFinoraCost({
-      request_id: null,
-      agent_name: "finora",
-      task_type: "ai_explain",
-      provider: "openrouter",
-      model,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      estimated_cost_usd: estimatedCostUsd,
-      status: "ok",
-      ts: new Date().toISOString(),
-      month_key: new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Jakarta",
-        year: "numeric",
-        month: "2-digit",
-      })
-        .format(new Date())
-        .slice(0, 7),
-    });
+    const text = json.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!text) {
+      throw new AIError(
+        "AI_RESPONSE_INVALID",
+        "Respons AI kosong atau tidak valid.",
+        502
+      );
+    }
 
     return {
-      text: json.choices?.[0]?.message?.content ?? "",
-      model,
+      text,
+      model: json.model ?? this.model,
       provider: "openrouter",
-      inputTokens,
-      outputTokens,
-      estimatedCostUsd,
+      inputTokens: json.usage?.prompt_tokens,
+      outputTokens: json.usage?.completion_tokens,
     };
   }
 }
@@ -142,6 +175,40 @@ export function getAIProvider(): AIProvider {
   return new OpenRouterProvider();
 }
 
+export { isAIConfigured };
+
+/**
+ * Enforce Finora-side limits: per-minute + daily (in-memory; single-instance OK).
+ */
+export function assertAIRateLimit(userId: string): void {
+  const perMin = getAIPerMinuteLimit();
+  const daily = getAIDailyRequestLimit();
+
+  if (!checkRateLimit(`ai:min:${userId}`, perMin, 60_000)) {
+    throw new AIError(
+      "RATE_LIMITED",
+      "Terlalu banyak permintaan AI. Tunggu sebentar lalu coba lagi.",
+      429
+    );
+  }
+
+  const dayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  if (!checkRateLimit(`ai:day:${userId}:${dayKey}`, daily, 86_400_000)) {
+    throw new AIError(
+      "RATE_LIMITED",
+      "Batas permintaan AI harian tercapai. Coba lagi besok.",
+      429
+    );
+  }
+}
+
+/** @deprecated use assertAIRateLimit */
 export function checkAIRateLimit(
   userId: string,
   limit = 10,
@@ -150,10 +217,4 @@ export function checkAIRateLimit(
   return checkRateLimit(`ai:${userId}`, limit, windowMs);
 }
 
-export const FINANCIAL_AI_SYSTEM = `You explain personal finance metrics based ONLY on the structured JSON context provided.
-Rules:
-- Never invent transactions, balances, interest rates, or exchange rates.
-- Never suggest executing financial actions automatically.
-- You are not the source of truth; the backend numbers are.
-- Keep explanations concise and practical.
-- If data is missing, say so clearly.`;
+export { FINANCIAL_EXPLAINER_SYSTEM as FINANCIAL_AI_SYSTEM } from "@/lib/ai/system-prompt";

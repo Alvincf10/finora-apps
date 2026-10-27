@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { AiExplainer } from "@/components/ai-explainer";
 
 type Insight = {
   _id: string;
@@ -840,6 +841,14 @@ export default function InsightsPage() {
       {ladder ? (
         <LadderPanel ladder={ladder} onRefresh={() => load(false)} />
       ) : null}
+
+      <AiExplainer
+        contextType="action_center"
+        contextRef={
+          year && month ? { year, month } : undefined
+        }
+        defaultQuestion={t("aiExplainer.defaultQuestion")}
+      />
 
       <Card>
         <CardContent className="flex flex-wrap gap-x-4 gap-y-1 pt-6 text-sm">

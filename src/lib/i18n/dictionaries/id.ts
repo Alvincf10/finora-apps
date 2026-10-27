@@ -850,4 +850,20 @@ export const id: Dictionary = {
     finoraDownFallback:
       "Tidak aktif. Perintah finora di WhatsApp tidak akan dibalas.",
   },
+  aiExplainer: {
+    title: "Jelaskan dengan AI",
+    subtitle:
+      "AI menjelaskan angka Finora — tidak mengubah saldo atau transaksi.",
+    cta: "Jelaskan dengan AI",
+    loading: "Menganalisis…",
+    loadingHint:
+      "Finora sedang menganalisis data keuangan dan menyusun penjelasan.",
+    retry: "Coba lagi",
+    placeholder: "Tanya tentang kondisi keuanganmu…",
+    defaultQuestion: "Mengapa kondisi keuangan saya seperti ini sekarang?",
+    questionRequired: "Isi pertanyaan dulu",
+    unavailable:
+      "Penjelasan AI belum tersedia. Data dan perhitungan keuangan Finora tetap berfungsi normal.",
+    modelLabel: "Model: {model}",
+  },
 };

@@ -22,7 +22,7 @@ export function fail(
 export function handleError(error: unknown) {
   if (error instanceof ZodError) {
     return fail(
-      "VALIDATION_ERROR",
+      "INVALID_REQUEST",
       error.issues[0]?.message ?? "Validation failed",
       400
     );

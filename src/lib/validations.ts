@@ -251,6 +251,26 @@ export const aiChatSchema = z.object({
   question: z.string().min(1).max(1000).optional(),
 });
 
+export const aiExplainSchema = z.object({
+  question: z.string().min(1).max(1000),
+  contextType: z.enum([
+    "financial_health",
+    "cash_flow_forecast",
+    "scenario",
+    "action_center",
+    "roadmap",
+    "general_summary",
+  ]),
+  contextRef: z
+    .object({
+      periodDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
+      scenarioId: z.string().min(1).optional(),
+      year: z.number().int().min(2000).max(2100).optional(),
+      month: z.number().int().min(1).max(12).optional(),
+    })
+    .optional(),
+});
+
 export const updateSettingsSchema = z.object({
   paydayDay: z.number().int().min(1).max(28).optional(),
   monthlySalary: z.number().int().min(0).optional(),
