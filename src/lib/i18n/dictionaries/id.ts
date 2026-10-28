@@ -729,6 +729,31 @@ export const id: Dictionary = {
     baselineNetWorth: "Kekayaan bersih",
     baselineDebtBal: "Sisa utang",
     scenarioName: "Nama skenario (saat disimpan)",
+    saveScenario: "Simpan skenario",
+    savedToast: "Skenario disimpan",
+    saveBeforeExplainHint:
+      "Simpan skenario dulu agar AI menjelaskan hasil engine yang terkunci (bukan draft sementara).",
+    resultDesc: "Hasil hitungan engine — AI hanya menjelaskan angka ini.",
+    savedTitle: "Skenario tersimpan",
+    savedDesc:
+      "Setiap skenario mengunci snapshot baseline — hasil lama tidak berubah diam-diam.",
+    savedEmpty: "Belum ada skenario.",
+    explainFocusBadge: "Fokus AI",
+    useForExplain: "Jelaskan",
+    compareSelected: "Bandingkan terpilih ({count})",
+    compareExplainHint:
+      "Dengan {count} terpilih, Scenario Explainer akan membandingkan hasil engine tersebut.",
+    scenarioExplainerTitle: "Scenario Explainer",
+    scenarioExplainerDesc:
+      "AI menjelaskan hasil Decision Lab dari engine Finora — tidak mengubah ledger.",
+    scenarioExplainQuestion:
+      "Apa bedanya dengan baseline, dan trade-off apa yang perlu saya perhatikan?",
+    scenarioCompareQuestion:
+      "Bandingkan skenario ini: mana yang lebih sesuai, dan apa trade-off-nya?",
+    scenarioExplainerLocked:
+      "Simpan skenario atau pilih “Jelaskan” pada baris tersimpan untuk membuka Scenario Explainer.",
+    scenarioExplainerDisabled:
+      "Scenario Explainer sedang dinonaktifkan (controlled rollout). Simulasi engine tetap tersedia.",
   },
   reports: {
     title: "Analytics",
@@ -793,6 +818,88 @@ export const id: Dictionary = {
     weeklyAdviceTitle: "Saran minggu depan",
     weeklyAdviceDesc:
       "Potong hepi dulu. Utang & fixed cost tidak disarankan dipotong.",
+    goldTitle: "Gold",
+    goldHiddenBadge: "Hidden",
+    goldSubtitle:
+      "Simulasi cicilan ideal (pokok + bunga annuity) dan total yang sudah dibayar.",
+    goldSubtitleStandalone:
+      "Tracker cicilan Gold mandiri — tidak masuk Debts / ledger.",
+    goldSubtitleFlat:
+      "Bunga = sisa pokok × rate bulanan. Pokok fleksibel; sistem rekomendasikan.",
+    goldSubtitleRate:
+      "Bunga ≈ 3% dari sisa pokok tiap bulan. Kamu pilih pokok; sistem usul bunga & skenario.",
+    goldSubtitleSimple:
+      "Bunga 3% × sisa pokok. Atur pokok → lihat proyeksi 2 bulan ke depan.",
+    goldPaidTotal: "Sudah dibayar",
+    goldPaidSplitShort: "pokok {principal} · bunga {interest}",
+    goldOfOriginal: "dari {original}",
+    goldPlanPokok: "Pokok yang mau dibayar",
+    goldProjIntro: "Kalau tiap bulan bayar seperti ini (total {total} bulan ini):",
+    goldProjColWhen: "Bulan",
+    goldProjColBayar: "Total bayar",
+    goldProjThisMonth: "Bulan ini",
+    goldProjNextMonth: "Bulan depan",
+    goldProjMonthN: "+{n} bulan",
+    goldUsePlanPay: "Catat bayaran ini",
+    goldRemainingPokok: "Sisa pokok",
+    goldLoading: "Memuat simulasi Gold…",
+    goldEmpty: "Belum ada rencana Gold. Isi form di bawah.",
+    goldUnlocked: "Menu Gold terbuka",
+    goldSetupTitle: "Setup cicilan Gold",
+    goldSetupHint:
+      "Isi pokok pinjaman. Rate default 3%/bln (dari pola bayar kamu).",
+    goldSetupHintRate:
+      "Cukup pokok pinjaman + rate bulanan. Tenor tidak perlu dipilih — sistem rekomendasi.",
+    goldName: "Nama",
+    goldStartDate: "Tanggal mulai",
+    goldPokokPinjaman: "Pokok pinjaman",
+    goldMonthlyRate: "Bunga % / bulan",
+    goldMonthlyRateHint: "Dari data kamu: 1.332.000 ÷ 44.400.000 = 3%.",
+    goldSavePlan: "Simpan rencana",
+    goldSaved: "Rencana Gold tersimpan",
+    goldEdit: "Ubah rencana",
+    goldNeedPrincipal: "Isi pokok dulu",
+    goldNeedPayment: "Isi nominal bayaran",
+    goldNeedPaymentSplit: "Isi bayar pokok dan/atau bunga",
+    goldPayPokok: "Bayar pokok",
+    goldPayBunga: "Bayar bunga",
+    goldPaymentSplitHint:
+      "Isi sesuai kwitansi — pokok dan bunga terpisah.",
+    goldPaymentSplitHintRate:
+      "Bunga jatuh tempo sekarang ≈ {interest}. Pokok bebas.",
+    goldPaymentTotalPreview: "Total bayar: {total}",
+    goldPokok: "Pokok",
+    goldBunga: "Bunga",
+    goldOnTrack: "Aktif",
+    goldMetaRate: "Bunga {rate}%/bln · {status}",
+    goldSummaryTitle: "Ringkasan vs pinjaman awal",
+    goldSummaryLine:
+      "Pokok awal {original} · sudah bayar {paid} (pokok {principalPaid} + bunga {interestPaid}) · sisa pokok {remaining}",
+    goldNextDueTitle: "Bunga jatuh tempo sekarang",
+    goldNextDueHint: "{rate}% × sisa pokok {remaining}",
+    goldRecommendedHorizon: "Perkiraan lunas ~{months} bln (skenario standar)",
+    goldScenariosTitle: "Rekomendasi bayar bulan ini",
+    goldScenariosHint:
+      "Klik skenario untuk mengisi form. Hemat = pokok lebih besar → bunga bulan depan lebih kecil.",
+    goldScenarioHemat: "Hemat bunga",
+    goldScenarioStandar: "Standar",
+    goldScenarioLonggar: "Longgar",
+    goldScenarioDetail:
+      "Pokok {principal} + bunga {interest} · bunga bln depan ~{nextInterest} · ~{months} bln",
+    goldPaymentsTitle: "Riwayat bayar",
+    goldPaymentsEmpty: "Belum ada pembayaran tercatat.",
+    goldAddPayment: "Catat bayar",
+    goldPaymentAmount: "Nominal",
+    goldPaymentDate: "Tanggal",
+    goldPaymentNotes: "Catatan",
+    goldSavePayment: "Simpan bayaran",
+    goldPaymentSaved: "Bayaran Gold tercatat",
+    goldPaymentUpdated: "Bayaran diperbarui",
+    goldPaymentDeleted: "Bayaran dihapus",
+    goldPaymentSplit: "pokok {principal} · bunga {interest}",
+    goldEditPayment: "Edit bayaran",
+    goldEditPaymentTitle: "Edit log pembayaran",
+    goldUpdatePayment: "Simpan perubahan",
   },
   whatsapp: {
     title: "WhatsApp (Vira)",
@@ -865,5 +972,27 @@ export const id: Dictionary = {
     unavailable:
       "Penjelasan AI belum tersedia. Data dan perhitungan keuangan Finora tetap berfungsi normal.",
     modelLabel: "Model: {model}",
+  },
+  decisionAdvisor: {
+    title: "Decision Advisor",
+    subtitle:
+      "Bandingkan pilihan berdasarkan hasil engine Finora — AI menyarankan, kamu yang memutuskan.",
+    preferenceLabel: "Prioritas keputusan",
+    preferenceHint:
+      "Hanya dipakai jika kamu pilih secara eksplisit. UNSET = AI harus bilang preferensi belum ditetapkan.",
+    preferenceSaved: "Prioritas keputusan disimpan",
+    scenariosLabel: "Skenario tersimpan (opsional, maks. 3)",
+    scenariosHint:
+      "Centang skenario dari Decision Lab agar AI membandingkan hasil engine.",
+    noScenarios:
+      "Belum ada skenario tersimpan. Simpan di Decision Lab untuk perbandingan.",
+    maxScenarios: "Maksimal 3 skenario untuk Decision Advisor",
+    askTitle: "Tanya Decision Advisor",
+    askDesc:
+      "Jawaban memakai format rekomendasi, alasan, trade-off, risiko, alternatif, kondisi perubahan, dan batasan.",
+    defaultQuestion:
+      "Berdasarkan kondisi dan prioritas saya, apa pilihan yang paling masuk akal — dan apa trade-off-nya?",
+    disabled:
+      "Decision Advisor sedang dinonaktifkan (controlled rollout). Perhitungan Finora tetap berjalan.",
   },
 };

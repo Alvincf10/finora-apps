@@ -1,0 +1,66 @@
+import mongoose, { Schema, models, model, type InferSchemaType } from "mongoose";
+
+/**
+ * Standalone Gold cicilan tracker (Weekly Report hidden panel).
+ * Bunga = sisa pokok × monthlyRatePercent (default 3%/bln).
+ * Not linked to Debt / Account / Transaction.
+ */
+const GoldPaymentSchema = new Schema(
+  {
+    amount: { type: Number, required: true, min: 1 },
+    date: { type: Date, required: true },
+    notes: { type: String },
+    principalPortion: { type: Number, min: 0, default: 0 },
+    interestPortion: { type: Number, min: 0, default: 0 },
+  },
+  { _id: true }
+);
+
+const GoldPlanSchema = new Schema(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+      index: true,
+    },
+    name: { type: String, required: true, trim: true, default: "Gold" },
+    currency: { type: String, enum: ["IDR", "EUR"], default: "IDR" },
+    /** Original principal (pokok pinjaman). */
+    principal: { type: Number, required: true, min: 1 },
+    remainingPrincipal: { type: Number, required: true, min: 0 },
+    /**
+     * Monthly interest rate percent on remaining principal.
+     * Inferred 3 from 1_332_000 / 44_400_000.
+     */
+    monthlyRatePercent: { type: Number, min: 0, max: 100, default: 3 },
+    /** Legacy fields kept for migration compat. */
+    totalInterest: { type: Number, min: 0, default: 0 },
+    remainingInterest: { type: Number, min: 0, default: 0 },
+    months: { type: Number, min: 1, max: 600, default: 5 },
+    monthlyPayment: { type: Number, min: 1 },
+    startDate: { type: Date, required: true },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "PAID"],
+      default: "ACTIVE",
+    },
+    payments: { type: [GoldPaymentSchema], default: [] },
+  },
+  { timestamps: true }
+);
+
+export type GoldPlanDocument = InferSchemaType<typeof GoldPlanSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
+
+if (
+  models.GoldPlan &&
+  !models.GoldPlan.schema.path("monthlyRatePercent")
+) {
+  delete models.GoldPlan;
+}
+
+export const GoldPlan =
+  models.GoldPlan || model("GoldPlan", GoldPlanSchema);

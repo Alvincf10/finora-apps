@@ -723,6 +723,31 @@ export const en = {
     baselineNetWorth: "Net worth",
     baselineDebtBal: "Debt bal.",
     scenarioName: "Scenario name (when saving)",
+    saveScenario: "Save scenario",
+    savedToast: "Scenario saved",
+    saveBeforeExplainHint:
+      "Save the scenario first so AI can explain locked engine results (not a live draft).",
+    resultDesc: "Deterministic engine output — AI only explains these numbers.",
+    savedTitle: "Saved scenarios",
+    savedDesc:
+      "Each scenario freezes its baseline snapshot — historical results do not silently change.",
+    savedEmpty: "No saved scenarios yet.",
+    explainFocusBadge: "AI focus",
+    useForExplain: "Explain",
+    compareSelected: "Compare selected ({count})",
+    compareExplainHint:
+      "With {count} selected, Scenario Explainer will compare those engine results.",
+    scenarioExplainerTitle: "Scenario Explainer",
+    scenarioExplainerDesc:
+      "AI explains Decision Lab results from Finora’s engine — it never changes the ledger.",
+    scenarioExplainQuestion:
+      "What are the main differences vs baseline, and what trade-offs should I watch?",
+    scenarioCompareQuestion:
+      "Compare these scenarios: which fits better, and what are the trade-offs?",
+    scenarioExplainerLocked:
+      "Save a scenario or pick “Explain” on a saved row to unlock Scenario Explainer.",
+    scenarioExplainerDisabled:
+      "Scenario Explainer is temporarily off (controlled rollout). Engine simulation still works.",
   },
   reports: {
     title: "Analytics",
@@ -787,6 +812,88 @@ export const en = {
     weeklyAdviceTitle: "Next-week advice",
     weeklyAdviceDesc:
       "Cut fun/lifestyle first. Debt and fixed costs are not cut targets.",
+    goldTitle: "Gold",
+    goldHiddenBadge: "Hidden",
+    goldSubtitle:
+      "Ideal installment simulation (principal + interest annuity) and amount already paid.",
+    goldSubtitleStandalone:
+      "Standalone Gold installment tracker — not linked to Debts / ledger.",
+    goldSubtitleFlat:
+      "Interest = remaining principal × monthly rate. Flexible principal; system recommends.",
+    goldSubtitleRate:
+      "Interest ≈ 3% of remaining principal each month. You choose principal; system suggests interest & scenarios.",
+    goldSubtitleSimple:
+      "Interest 3% × remaining principal. Set principal → see 2-month projection.",
+    goldPaidTotal: "Paid so far",
+    goldPaidSplitShort: "principal {principal} · interest {interest}",
+    goldOfOriginal: "of {original}",
+    goldPlanPokok: "Principal you plan to pay",
+    goldProjIntro: "If you pay like this each month (this month total {total}):",
+    goldProjColWhen: "Month",
+    goldProjColBayar: "Total pay",
+    goldProjThisMonth: "This month",
+    goldProjNextMonth: "Next month",
+    goldProjMonthN: "+{n} months",
+    goldUsePlanPay: "Log this payment",
+    goldRemainingPokok: "Remaining principal",
+    goldLoading: "Loading Gold simulation…",
+    goldEmpty: "No Gold plan yet. Fill the form below.",
+    goldUnlocked: "Gold menu unlocked",
+    goldSetupTitle: "Gold installment setup",
+    goldSetupHint:
+      "Enter loan principal. Default rate 3%/mo (from your payment pattern).",
+    goldSetupHintRate:
+      "Just principal + monthly rate. No tenor picker — the system recommends.",
+    goldName: "Name",
+    goldStartDate: "Start date",
+    goldPokokPinjaman: "Loan principal",
+    goldMonthlyRate: "Interest % / month",
+    goldMonthlyRateHint: "From your data: 1,332,000 ÷ 44,400,000 = 3%.",
+    goldSavePlan: "Save plan",
+    goldSaved: "Gold plan saved",
+    goldEdit: "Edit plan",
+    goldNeedPrincipal: "Enter principal first",
+    goldNeedPayment: "Enter payment amount",
+    goldNeedPaymentSplit: "Enter principal and/or interest paid",
+    goldPayPokok: "Pay principal",
+    goldPayBunga: "Pay interest",
+    goldPaymentSplitHint:
+      "Enter amounts from your receipt — principal and interest separately.",
+    goldPaymentSplitHintRate:
+      "Interest due now ≈ {interest}. Principal is flexible.",
+    goldPaymentTotalPreview: "Total payment: {total}",
+    goldPokok: "Principal",
+    goldBunga: "Interest",
+    goldOnTrack: "Active",
+    goldMetaRate: "Interest {rate}%/mo · {status}",
+    goldSummaryTitle: "Summary vs original loan",
+    goldSummaryLine:
+      "Original principal {original} · paid {paid} (principal {principalPaid} + interest {interestPaid}) · remaining principal {remaining}",
+    goldNextDueTitle: "Interest due now",
+    goldNextDueHint: "{rate}% × remaining principal {remaining}",
+    goldRecommendedHorizon: "Est. payoff ~{months} mo (standard scenario)",
+    goldScenariosTitle: "This month’s payment recommendations",
+    goldScenariosHint:
+      "Tap a scenario to fill the form. Hemat = larger principal → lower interest next month.",
+    goldScenarioHemat: "Save on interest",
+    goldScenarioStandar: "Standard",
+    goldScenarioLonggar: "Loose",
+    goldScenarioDetail:
+      "Principal {principal} + interest {interest} · next-mo interest ~{nextInterest} · ~{months} mo",
+    goldPaymentsTitle: "Payment history",
+    goldPaymentsEmpty: "No payments recorded yet.",
+    goldAddPayment: "Log payment",
+    goldPaymentAmount: "Amount",
+    goldPaymentDate: "Date",
+    goldPaymentNotes: "Notes",
+    goldSavePayment: "Save payment",
+    goldPaymentSaved: "Gold payment recorded",
+    goldPaymentUpdated: "Payment updated",
+    goldPaymentDeleted: "Payment deleted",
+    goldPaymentSplit: "principal {principal} · interest {interest}",
+    goldEditPayment: "Edit payment",
+    goldEditPaymentTitle: "Edit payment log",
+    goldUpdatePayment: "Save changes",
   },
   whatsapp: {
     title: "WhatsApp (Vira)",
@@ -856,6 +963,28 @@ export const en = {
     unavailable:
       "AI explanation isn’t available. Finora’s data and calculations still work normally.",
     modelLabel: "Model: {model}",
+  },
+  decisionAdvisor: {
+    title: "Decision Advisor",
+    subtitle:
+      "Compare options from Finora’s engine — AI advises; you decide.",
+    preferenceLabel: "Decision priority",
+    preferenceHint:
+      "Used only when you set it explicitly. UNSET means the AI must say preference is unknown.",
+    preferenceSaved: "Decision priority saved",
+    scenariosLabel: "Saved scenarios (optional, max 3)",
+    scenariosHint:
+      "Select Decision Lab scenarios so the AI can compare engine results.",
+    noScenarios:
+      "No saved scenarios yet. Save some in Decision Lab to compare.",
+    maxScenarios: "Decision Advisor accepts at most 3 scenarios",
+    askTitle: "Ask Decision Advisor",
+    askDesc:
+      "Answers use recommendation, rationale, trade-offs, risks, alternatives, change conditions, and limits.",
+    defaultQuestion:
+      "Given my situation and priorities, which choice makes the most sense — and what are the trade-offs?",
+    disabled:
+      "Decision Advisor is temporarily off (controlled rollout). Finora calculations still work.",
   },
 } as const;
 

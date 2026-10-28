@@ -23,6 +23,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import {
+  GoldPanel,
+  GoldUnlockTitle,
+  isGoldUnlocked,
+} from "@/components/reports/gold-panel";
 
 type OverSignal = "PACE_OVER" | "PACE_WARN" | "WOW";
 
@@ -79,6 +84,11 @@ export default function WeeklyReviewPage() {
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<WeeklyReview | null>(null);
   const [sending, setSending] = useState(false);
+  const [goldOpen, setGoldOpen] = useState(false);
+
+  useEffect(() => {
+    setGoldOpen(isGoldUnlocked());
+  }, []);
 
   useEffect(() => {
     setData(null);
@@ -108,9 +118,17 @@ export default function WeeklyReviewPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="font-heading text-3xl font-semibold tracking-tight">
-            {t("reports.weeklyTitle")}
-          </h1>
+          <GoldUnlockTitle
+            unlocked={goldOpen}
+            onUnlock={() => {
+              setGoldOpen(true);
+              toast.success(t("reports.goldUnlocked"));
+            }}
+          >
+            <h1 className="font-heading text-3xl font-semibold tracking-tight">
+              {t("reports.weeklyTitle")}
+            </h1>
+          </GoldUnlockTitle>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">
             {t("reports.weeklySubtitle")}
           </p>
@@ -154,6 +172,8 @@ export default function WeeklyReviewPage() {
           </Button>
         </div>
       </div>
+
+      {goldOpen ? <GoldPanel /> : null}
 
       {!data ? (
         <p className="text-muted-foreground">{t("reports.weeklyLoading")}</p>
