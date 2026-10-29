@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { api } from "@/lib/client-api";
 import { fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
+import {
+  DECISION_PREFERENCE_LABELS,
+  DECISION_PREFERENCES,
+} from "@/lib/ai/decision-preferences";
 import { useI18n } from "@/components/i18n-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { SettingsCategories } from "@/components/settings-categories";
@@ -22,6 +26,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+type DecisionPreference =
+  | "UNSET"
+  | "LIQUIDITY"
+  | "DEBT_PAYOFF"
+  | "MAXIMIZE_SAVINGS"
+  | "SPENDING_STABILITY"
+  | "ROADMAP_FOCUS";
+
 type Settings = {
   paydayDay: number;
   monthlySalary: number;
@@ -29,17 +41,21 @@ type Settings = {
   timezone: string;
   name: string;
   email: string;
+  decisionPreference?: DecisionPreference;
 };
 
 export default function SettingsPage() {
   const { data } = useSession();
   const { theme, setTheme } = useTheme();
-  const { t, intlLocale } = useI18n();
+  const { t, intlLocale, locale } = useI18n();
   const [mounted, setMounted] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [paydayDay, setPaydayDay] = useState(25);
   const [salaryMajor, setSalaryMajor] = useState(0);
+  const [decisionPreference, setDecisionPreference] =
+    useState<DecisionPreference>("UNSET");
   const [saving, setSaving] = useState(false);
+  const [savingPref, setSavingPref] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -55,9 +71,28 @@ export default function SettingsPage() {
         setSalaryMajor(
           fromMinorUnits(s.monthlySalary ?? 0, s.baseCurrency ?? "IDR")
         );
+        setDecisionPreference(s.decisionPreference ?? "UNSET");
       })
       .catch((e) => toast.error(e.message));
   }, []);
+
+  async function saveDecisionPreference(next: DecisionPreference) {
+    setDecisionPreference(next);
+    setSavingPref(true);
+    try {
+      const updated = await api<Settings>("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ decisionPreference: next }),
+      });
+      setSettings(updated);
+      setDecisionPreference(updated.decisionPreference ?? next);
+      toast.success(t("decisionAdvisor.preferenceSaved"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setSavingPref(false);
+    }
+  }
 
   async function savePayCycle(e: React.FormEvent) {
     e.preventDefault();
@@ -189,6 +224,37 @@ export default function SettingsPage() {
               {saving ? t("common.saving") : t("settings.savePayCycle")}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("decisionAdvisor.preferenceLabel")}</CardTitle>
+          <CardDescription>
+            {t("decisionAdvisor.preferenceHint")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="settings-decision-pref">
+            {t("decisionAdvisor.title")}
+          </Label>
+          <select
+            id="settings-decision-pref"
+            className="flex h-9 w-full max-w-md rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:opacity-50"
+            value={decisionPreference}
+            disabled={savingPref || !settings}
+            onChange={(e) =>
+              void saveDecisionPreference(
+                e.target.value as DecisionPreference
+              )
+            }
+          >
+            {DECISION_PREFERENCES.map((code) => (
+              <option key={code} value={code}>
+                {DECISION_PREFERENCE_LABELS[code][locale === "en" ? "en" : "id"]}
+              </option>
+            ))}
+          </select>
         </CardContent>
       </Card>
 

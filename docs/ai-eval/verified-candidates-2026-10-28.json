@@ -1,0 +1,64 @@
+{
+  "verifiedAt": "2026-10-28",
+  "source": "GET https://openrouter.ai/api/v1/models",
+  "catalogSize": 464,
+  "notes": [
+    "pricing.prompt/completion === \"0\" treated as free at verification time — re-check before production promotion.",
+    "Never use nvidia/nemotron-3.5-content-safety:free for chat/explain (classifier).",
+    "Dashboard display names are not API IDs."
+  ],
+  "candidates": [
+    {
+      "role": "baseline_production",
+      "displayName": "Nemotron 3.5 Lightning",
+      "modelId": "nvidia/nemotron-3.5-lightning:free",
+      "pricingVerifiedFree": true,
+      "contextLength": 1000000,
+      "inCurrentFallbackChain": true,
+      "benchmarkPriority": "P0"
+    },
+    {
+      "role": "reasoning_primary_candidate",
+      "displayName": "Nemotron 3 Ultra",
+      "modelId": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "pricingVerifiedFree": true,
+      "contextLength": 1000000,
+      "inCurrentFallbackChain": false,
+      "benchmarkPriority": "P0"
+    },
+    {
+      "role": "reasoning_comparator",
+      "displayName": "Xing4.0 29B A4B",
+      "modelId": "xingchen-agi/xing4.0-29b-a4b:free",
+      "pricingVerifiedFree": true,
+      "contextLength": 262144,
+      "inCurrentFallbackChain": false,
+      "benchmarkPriority": "P0"
+    },
+    {
+      "role": "optional_light_summary",
+      "displayName": "LFM2.5-2.6B",
+      "modelId": "liquid/lfm-2.5-2.6b:free",
+      "pricingVerifiedFree": true,
+      "contextLength": 65536,
+      "inCurrentFallbackChain": false,
+      "benchmarkPriority": "P2"
+    },
+    {
+      "role": "optional_reasoning_alt",
+      "displayName": "Nemotron 3 Nano Omni",
+      "modelId": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "pricingVerifiedFree": true,
+      "contextLength": 256000,
+      "inCurrentFallbackChain": true,
+      "benchmarkPriority": "P1"
+    },
+    {
+      "role": "do_not_use_chat",
+      "displayName": "Nemotron 3.5 Content Safety",
+      "modelId": "nvidia/nemotron-3.5-content-safety:free",
+      "pricingVerifiedFree": true,
+      "blockedReason": "safety classifier — not a financial explainer"
+    }
+  ]
+}

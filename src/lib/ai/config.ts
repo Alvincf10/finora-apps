@@ -2,6 +2,8 @@
  * Phase 5 AI config — OpenRouter Free only, no paid fallback.
  */
 
+import { resolveFreeChatModel } from "@/lib/ai/model-guard";
+
 export function getOpenRouterApiKey(): string {
   return (process.env.OPENROUTER_API_KEY ?? "").trim();
 }
@@ -10,15 +12,21 @@ export function isAIConfigured(): boolean {
   return getOpenRouterApiKey().length > 0;
 }
 
-/** Default free router; override with OPENROUTER_MODEL (prefer *:free / openrouter/free). */
+/**
+ * Pin to a free *chat/instruct* model.
+ * Avoid bare `openrouter/free` — it can route to content-safety classifiers.
+ */
 export function getOpenRouterModel(): string {
   const configured = (process.env.OPENROUTER_MODEL ?? "").trim();
-  return configured || "openrouter/free";
+  return resolveFreeChatModel(
+    configured || "nvidia/nemotron-3.5-lightning:free"
+  );
 }
 
 export function getAIMaxOutputTokens(): number {
-  const n = Number(process.env.OPENROUTER_MAX_OUTPUT_TOKENS ?? 800);
-  if (!Number.isFinite(n) || n < 64) return 800;
+  // 1200 default: Lightning free often spends tokens on hidden reasoning first
+  const n = Number(process.env.OPENROUTER_MAX_OUTPUT_TOKENS ?? 1200);
+  if (!Number.isFinite(n) || n < 64) return 1200;
   return Math.min(2000, Math.floor(n));
 }
 

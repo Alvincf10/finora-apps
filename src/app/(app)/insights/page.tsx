@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { AiExplainer } from "@/components/ai-explainer";
+import { DecisionAdvisor } from "@/components/decision-advisor";
 
 type Insight = {
   _id: string;
@@ -848,6 +849,11 @@ export default function InsightsPage() {
           year && month ? { year, month } : undefined
         }
         defaultQuestion={t("aiExplainer.defaultQuestion")}
+      />
+
+      <DecisionAdvisor
+        year={year ?? undefined}
+        month={month ?? undefined}
       />
 
       <Card>

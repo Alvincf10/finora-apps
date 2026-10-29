@@ -68,12 +68,33 @@ NEXT_PUBLIC_APP_NAME=Finora
 
 # Opsional — Phase 5 Financial Explainer (OpenRouter Free only)
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=openrouter/free
-OPENROUTER_MAX_OUTPUT_TOKENS=800
+# Pin chat/instruct :free — jangan pakai openrouter/free (bisa kena content-safety)
+OPENROUTER_MODEL=nvidia/nemotron-3.5-lightning:free
+# 1200 default — Lightning free sering memakai token untuk reasoning dulu
+OPENROUTER_MAX_OUTPUT_TOKENS=1200
 AI_REQUEST_TIMEOUT_MS=20000
 AI_DAILY_REQUEST_LIMIT=20
 AI_PER_MINUTE_LIMIT=3
+
+# Opsional — Phase 5.1 Free Model Router (default off = jalur Phase 5)
+# Phase 5.2-C: biarkan false sampai Ultra/Xing lulus full benchmark
+AI_ROUTER_ENABLED=false
+AI_MAX_RETRIES=1
+OPENROUTER_MODEL_SIMPLE_SUMMARY=
+OPENROUTER_MODEL_FINANCIAL_EXPLAINER=
+OPENROUTER_MODEL_FINANCIAL_REASONING=
+OPENROUTER_MODEL_ACTION_ADVISOR=
+# CSV model :free saja — berbayar diabaikan
+OPENROUTER_FALLBACK_MODELS=
+
+# Phase 5.2-F/G controlled rollout (default on; set false untuk rollback cepat)
+AI_SCENARIO_EXPLAINER_ENABLED=true
+AI_DECISION_ADVISOR_ENABLED=true
 ```
+
+Phase 5.2-G (readiness): lihat `docs/phase5.2-g-ai-production-readiness.md`.  
+Benchmark: `npm run ai:benchmark` (mock) / `npm run ai:benchmark:live` · usage: `npm run ai:usage:summary`.
+
 
 Generate `AUTH_SECRET` cepat:
 
@@ -262,7 +283,7 @@ Hasil build (`.next/`, `out/`, `build/`, `dist/`) diabaikan Git — jangan di-co
 - Semua angka finansial dihitung **backend (deterministic)** — metrik pay-cycle-aware.
 - Finora 2.0 **tidak memakai AI/LLM** untuk health, forecast, skenario, atau Action Center.
 - AI / OpenRouter **tidak boleh** menulis transaksi, saldo, budget, atau hutang (opsional: penjelasan teks saja).
-- Phase 5 AI memakai **OpenRouter Free** (`openrouter/free`) — tanpa fallback model berbayar; request hanya on-demand.
+- Phase 5 AI memakai **OpenRouter Free** model chat bertanda `:free` (default `nvidia/nemotron-3.5-lightning:free`, fallback otomatis jika rate-limit) — tanpa fallback berbayar; request hanya on-demand. Hindari router `openrouter/free` karena bisa memilih model content-safety.
 - Tidak ada silent write ke ledger: skenario Decision Lab & rekomendasi butuh aksi user.
 - WhatsApp Vira menulis transaksi lewat **parser deterministik** → `createTransaction` (bukan OpenRouter).
 - Smart Budget **tidak** menimpa budget sebelum user klik Accept.

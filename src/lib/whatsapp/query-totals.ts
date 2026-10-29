@@ -36,12 +36,19 @@ export function parseTotalsQuery(text: string): TotalsQuery | null {
     t === "total" ||
     t === "total bulan ini";
 
-  if (isExpense && isIncome) return { kind: "both", range };
-  if (isExpense) return { kind: "expense", range };
-  if (isIncome) return { kind: "income", range };
-  if (isSummary || (/\btotal\b/.test(t) && !/\d/.test(t))) {
+  // Digits ⇒ create intent ("pengeluaran makan 50rb"), not a totals query.
+  // Same guard as "total xxx 50rb" below.
+  const looksLikeMoneyCreate = /\d/.test(t);
+
+  if (!looksLikeMoneyCreate) {
+    if (isExpense && isIncome) return { kind: "both", range };
+    if (isExpense) return { kind: "expense", range };
+    if (isIncome) return { kind: "income", range };
+  }
+
+  if (isSummary || (/\btotal\b/.test(t) && !looksLikeMoneyCreate)) {
     // "total" alone / "total bulan ini" → both; avoid eating "total xxx 50rb"
-    if (/\d/.test(t)) return null;
+    if (looksLikeMoneyCreate) return null;
     return { kind: "both", range };
   }
 

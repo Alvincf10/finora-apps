@@ -39,4 +39,17 @@ describe("AI explain schema + context types", () => {
     });
     expect(parsed.contextRef?.scenarioId).toBe("abc123");
   });
+
+  it("accepts decision_advisor with preference override", () => {
+    const parsed = aiExplainSchema.parse({
+      question: "Mana yang lebih sesuai?",
+      contextType: "decision_advisor",
+      contextRef: {
+        decisionPreference: "LIQUIDITY",
+        scenarioIds: ["a", "b"],
+      },
+    });
+    expect(parsed.contextType).toBe("decision_advisor");
+    expect(parsed.contextRef?.decisionPreference).toBe("LIQUIDITY");
+  });
 });

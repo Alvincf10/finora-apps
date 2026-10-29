@@ -1,3 +1,6 @@
+/** Trailing payment source on WA messages: `… 50rb cc` / `… 50rb debit`. */
+export type AccountHint = "cc" | "debit";
+
 export type ParsedMoneyIntent = {
   type: "INCOME" | "EXPENSE";
   amount: number;
@@ -5,7 +8,23 @@ export type ParsedMoneyIntent = {
   description: string;
   categoryHint: string;
   merchant?: string;
+  accountHint?: AccountHint;
 };
+
+/** Strip trailing `cc` / `debit` (and aliases) after the amount. */
+export function stripAccountHint(text: string): {
+  body: string;
+  hint: AccountHint | null;
+} {
+  const cleaned = text.trim().replace(/\s+/g, " ");
+  const m = cleaned.match(/\s+(cc|credit|kartu\s+kredit|debit|db)$/i);
+  if (!m || m.index === undefined) return { body: cleaned, hint: null };
+
+  const raw = m[1].toLowerCase().replace(/\s+/g, " ");
+  const hint: AccountHint =
+    raw === "debit" || raw === "db" ? "debit" : "cc";
+  return { body: cleaned.slice(0, m.index).trim(), hint };
+}
 
 /** Keyword → category name (must match seeded category names). */
 const EXPENSE_KEYWORDS: Array<{ keys: string[]; category: string }> = [
@@ -144,12 +163,12 @@ function matchCategory(
  * - "gaji 10jt"
  * - "expense kopi 35k"
  * - "income freelance 2jt"
+ * - "pengeluaran beli recheese 50rb cc"
+ * - "pengeluaran beli recheese 50rb debit"
  */
 export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
   const cleaned = text.trim().replace(/\s+/g, " ");
   if (!cleaned || cleaned.length > 500) return null;
-
-  const lower = cleaned.toLowerCase();
 
   // Explicit type prefix
   let forcedType: "INCOME" | "EXPENSE" | null = null;
@@ -161,6 +180,9 @@ export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
     forcedType = "INCOME";
     body = cleaned.replace(/^(income|pemasukan|masuk|in)\s+/i, "");
   }
+
+  const { body: withoutAccount, hint: accountHint } = stripAccountHint(body);
+  body = withoutAccount;
 
   // Find amount token: last number-like token with optional suffix
   const amountMatch = body.match(
@@ -175,8 +197,9 @@ export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
   const descPart = body.slice(0, amountMatch.index).trim();
   if (!descPart) return null;
 
-  const incomeHint = matchCategory(lower, INCOME_KEYWORDS, "");
-  const expenseHint = matchCategory(lower, EXPENSE_KEYWORDS, "Other");
+  const categoryHaystack = `${descPart} ${amountRaw}`.toLowerCase();
+  const incomeHint = matchCategory(categoryHaystack, INCOME_KEYWORDS, "");
+  const expenseHint = matchCategory(categoryHaystack, EXPENSE_KEYWORDS, "Other");
 
   let type: "INCOME" | "EXPENSE" =
     forcedType ?? (incomeHint ? "INCOME" : "EXPENSE");
@@ -195,5 +218,6 @@ export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
     description: descPart,
     categoryHint,
     merchant: descPart.slice(0, 80),
+    ...(accountHint ? { accountHint } : {}),
   };
 }

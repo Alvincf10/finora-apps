@@ -10,7 +10,13 @@ export type AIUsageLogEntry = {
   requestId: string;
   userIdHash: string;
   contextType: string;
+  /** Phase 5.1 task category when router is used */
+  taskType?: string;
   model: string | null;
+  requestedModel?: string | null;
+  fallbackUsed?: boolean;
+  attempts?: number;
+  routerEnabled?: boolean;
   status: "ok" | "error";
   errorCode?: string;
   latencyMs: number;
@@ -40,7 +46,7 @@ export function appendAIUsageLog(entry: AIUsageLogEntry) {
       `${JSON.stringify({
         ...entry,
         agent_name: "finora",
-        task_type: "ai_explain",
+        task_type: entry.taskType ?? "ai_explain",
         month_key: new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Jakarta",
           year: "numeric",

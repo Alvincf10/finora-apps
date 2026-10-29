@@ -260,13 +260,25 @@ export const aiExplainSchema = z.object({
     "action_center",
     "roadmap",
     "general_summary",
+    "decision_advisor",
   ]),
   contextRef: z
     .object({
       periodDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).optional(),
       scenarioId: z.string().min(1).optional(),
+      scenarioIds: z.array(z.string().min(1)).min(1).max(3).optional(),
       year: z.number().int().min(2000).max(2100).optional(),
       month: z.number().int().min(1).max(12).optional(),
+      decisionPreference: z
+        .enum([
+          "UNSET",
+          "LIQUIDITY",
+          "DEBT_PAYOFF",
+          "MAXIMIZE_SAVINGS",
+          "SPENDING_STABILITY",
+          "ROADMAP_FOCUS",
+        ])
+        .optional(),
     })
     .optional(),
 });
@@ -276,6 +288,16 @@ export const updateSettingsSchema = z.object({
   monthlySalary: z.number().int().min(0).optional(),
   educationGoalApplicability: z
     .enum(["APPLICABLE", "NOT_APPLICABLE", "UNSET"])
+    .optional(),
+  decisionPreference: z
+    .enum([
+      "UNSET",
+      "LIQUIDITY",
+      "DEBT_PAYOFF",
+      "MAXIMIZE_SAVINGS",
+      "SPENDING_STABILITY",
+      "ROADMAP_FOCUS",
+    ])
     .optional(),
 });
 

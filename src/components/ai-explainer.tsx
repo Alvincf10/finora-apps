@@ -21,15 +21,18 @@ export type AiExplainerContextType =
   | "scenario"
   | "action_center"
   | "roadmap"
-  | "general_summary";
+  | "general_summary"
+  | "decision_advisor";
 
 type Props = {
   contextType: AiExplainerContextType;
   contextRef?: {
     periodDays?: 30 | 60 | 90;
     scenarioId?: string;
+    scenarioIds?: string[];
     year?: number;
     month?: number;
+    decisionPreference?: string;
   };
   /** Prefill question; user can edit before submit */
   defaultQuestion?: string;
@@ -53,6 +56,7 @@ export function AiExplainer({
   const [loading, setLoading] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function onExplain() {
@@ -63,11 +67,13 @@ export function AiExplainer({
     }
     setLoading(true);
     setError(null);
+    setWarnings([]);
     try {
       const result = await api<{
         explanation: string;
         model?: string;
         disclaimer?: string;
+        validationWarnings?: string[];
       }>("/api/ai/explain", {
         method: "POST",
         body: JSON.stringify({
@@ -82,11 +88,13 @@ export function AiExplainer({
           : result.explanation
       );
       setModel(result.model ?? null);
+      setWarnings(result.validationWarnings ?? []);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t("aiExplainer.unavailable");
       setError(message);
       setExplanation(null);
+      setWarnings([]);
       toast.error(message);
     } finally {
       setLoading(false);
@@ -143,6 +151,14 @@ export function AiExplainer({
         {error ? (
           <div className="rounded-lg border border-amber-500/40 bg-amber-50/60 p-3 text-sm dark:bg-amber-950/30">
             {error}
+          </div>
+        ) : null}
+
+        {warnings.length > 0 ? (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-50/60 p-3 text-sm dark:bg-amber-950/30">
+            {warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
           </div>
         ) : null}
 

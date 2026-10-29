@@ -101,6 +101,7 @@ async function loadAppModules() {
   const accountMod = await import("../src/models/Account");
   const parseMod = await import("../src/lib/whatsapp/parse-expense");
   const catMod = await import("../src/lib/whatsapp/resolve-category");
+  const accountResolveMod = await import("../src/lib/whatsapp/resolve-account");
   const txMod = await import("../src/lib/financial/transactions");
   const moneyMod = await import("../src/lib/money");
   const helpMod = await import("../src/lib/whatsapp/help-text");
@@ -119,6 +120,7 @@ async function loadAppModules() {
     Account: accountMod.Account,
     parseMoneyMessage: parseMod.parseMoneyMessage,
     resolveCategoryId: catMod.resolveCategoryId,
+    resolveWaAccount: accountResolveMod.resolveWaAccount,
     createTransaction: txMod.createTransaction,
     formatMoney: moneyMod.formatMoney,
     getViraHelpText: helpMod.getViraHelpText,
@@ -178,17 +180,31 @@ async function stopSocket(userId: string, logout: boolean) {
   starting.delete(userId);
 }
 
-function needsFreshAuth(code: number | undefined): boolean {
+/**
+ * Hard logout from WhatsApp — auth is definitely unusable, wipe immediately.
+ * Do NOT include badSession (500): Baileys defaults many unknown stream/WS
+ * failures to 500, which previously forced a daily QR re-scan.
+ */
+function isHardLogout(code: number | undefined): boolean {
   if (code === undefined) return false;
   return (
     code === DisconnectReason.loggedOut ||
-    code === DisconnectReason.badSession ||
     code === DisconnectReason.multideviceMismatch ||
     code === DisconnectReason.forbidden ||
     // WhatsApp often returns 405 when session/creds are unusable
     code === 405
   );
 }
+
+/** Soft “session suspect” — retry with same auth before wiping. */
+function isSoftSessionSuspect(code: number | undefined): boolean {
+  return code === DisconnectReason.badSession;
+}
+
+/** Consecutive soft 500s before clearing auth (was 1 — too aggressive). */
+const SOFT_SESSION_CLEAR_AFTER = 3;
+/** Any reconnect loop this long → give up and ask for QR. */
+const MAX_RECONNECT_FAILS = 8;
 
 async function startSocket(userId: string, mods: AppModules) {
   if (active.has(userId) || starting.has(userId)) return;
@@ -205,7 +221,8 @@ async function startSocket(userId: string, mods: AppModules) {
       version,
       auth: state,
       logger: pino({ level: "silent" }),
-      browser: Browsers.macOS("Finora"),
+      // Match this VPS (Ubuntu 22.04) — WhatsApp Linked Devices shows "Finora" on Ubuntu
+      browser: Browsers.ubuntu("Finora"),
       printQRInTerminal: false,
       syncFullHistory: false,
       markOnlineOnConnect: false,
@@ -271,7 +288,12 @@ async function startSocket(userId: string, mods: AppModules) {
         const fails = (failCount.get(userId) ?? 0) + 1;
         failCount.set(userId, fails);
 
-        if (needsFreshAuth(code) || fails >= 5) {
+        const wipeAuth =
+          isHardLogout(code) ||
+          (isSoftSessionSuspect(code) && fails >= SOFT_SESSION_CLEAR_AFTER) ||
+          fails >= MAX_RECONNECT_FAILS;
+
+        if (wipeAuth) {
           await clearAuthFolder(userId);
           failCount.set(userId, 0);
           cooldownUntil.set(userId, Date.now() + 3_000);
@@ -282,12 +304,13 @@ async function startSocket(userId: string, mods: AppModules) {
             lastError: `Session di-reset (code ${code ?? "?"}). Menunggu QR baru…`,
           });
           logger.warn(
-            { userId, code, fails },
+            { userId, code, fails, msg },
             "cleared auth — next connect will show new QR"
           );
           return;
         }
 
+        // Soft 500 / transient close: keep .wa-auth and reconnect.
         // Exponential backoff: 3s, 6s, 12s… max 30s. Do NOT startSocket here —
         // tick() owns starts so we never open duplicate sockets.
         const delay = Math.min(30_000, 3_000 * 2 ** (fails - 1));
@@ -296,7 +319,12 @@ async function startSocket(userId: string, mods: AppModules) {
           status: "connecting",
           lastError: `${msg} (code ${code ?? "?"}) · retry in ${Math.round(delay / 1000)}s`,
         });
-        logger.info({ userId, code, delay }, "will reconnect after backoff");
+        logger.info(
+          { userId, code, fails, delay, msg },
+          isSoftSessionSuspect(code)
+            ? "soft badSession — keeping auth, will reconnect"
+            : "will reconnect after backoff"
+        );
       }
     });
 
@@ -457,24 +485,16 @@ async function handleMessage(
     return;
   }
 
-  if (!session.defaultAccountId) {
-    await sock.sendMessage(jid, {
-      text: "Vira · set rekening default dulu di menu WhatsApp (Vira) di app.",
-    });
-    return;
-  }
-
-  const account = await mods.Account.findOne({
-    _id: session.defaultAccountId,
+  const resolved = await mods.resolveWaAccount(
     userId,
-    isActive: true,
-  });
-  if (!account) {
-    await sock.sendMessage(jid, {
-      text: "Vira · rekening default tidak ditemukan. Pilih lagi di app.",
-    });
+    session.defaultAccountId ? String(session.defaultAccountId) : null,
+    parsed.accountHint ?? null
+  );
+  if (!resolved.ok) {
+    await sock.sendMessage(jid, { text: resolved.error });
     return;
   }
+  const account = resolved.account;
 
   if (account.currency !== parsed.currency) {
     await sock.sendMessage(jid, {
@@ -495,6 +515,12 @@ async function handleMessage(
     return;
   }
 
+  const payTag = parsed.accountHint
+    ? parsed.accountHint === "cc"
+      ? "cc"
+      : "debit"
+    : null;
+
   const tx = await mods.createTransaction(userId, {
     type: parsed.type,
     amount: parsed.amount,
@@ -504,8 +530,12 @@ async function handleMessage(
     description: parsed.description,
     merchant: parsed.merchant,
     date: new Date().toISOString(),
-    notes: "via WhatsApp Vira",
-    tags: ["whatsapp", "vira"],
+    notes: payTag
+      ? `via WhatsApp Vira (${payTag})`
+      : "via WhatsApp Vira",
+    tags: payTag
+      ? ["whatsapp", "vira", payTag]
+      : ["whatsapp", "vira"],
   });
 
   await patchSession(mods.WhatsAppSession, userId, {
@@ -515,7 +545,8 @@ async function handleMessage(
   await sock.sendMessage(jid, {
     text:
       `OK · ${parsed.type === "EXPENSE" ? "Expense" : "Income"} ` +
-      `${parsed.categoryHint} ${mods.formatMoney(parsed.amount, parsed.currency)}`,
+      `${parsed.categoryHint} ${mods.formatMoney(parsed.amount, parsed.currency)}` +
+      ` · ${account.name}`,
   });
 
   logger.info(

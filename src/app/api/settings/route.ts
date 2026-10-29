@@ -18,6 +18,7 @@ export async function GET() {
       email: user.email,
       educationGoalApplicability:
         user.roadmapPreferences?.educationGoalApplicability ?? "UNSET",
+      decisionPreference: user.decisionPreference ?? "UNSET",
     });
   } catch (error) {
     return handleError(error);
@@ -38,6 +39,9 @@ export async function PATCH(request: Request) {
       $set["roadmapPreferences.educationGoalApplicability"] =
         input.educationGoalApplicability;
     }
+    if (input.decisionPreference !== undefined) {
+      $set.decisionPreference = input.decisionPreference;
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -56,6 +60,7 @@ export async function PATCH(request: Request) {
       email: user.email,
       educationGoalApplicability:
         user.roadmapPreferences?.educationGoalApplicability ?? "UNSET",
+      decisionPreference: user.decisionPreference ?? "UNSET",
     });
   } catch (error) {
     return handleError(error);

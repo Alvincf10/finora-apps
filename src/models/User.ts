@@ -30,6 +30,22 @@ const UserSchema = new Schema(
         default: "UNSET",
       },
     },
+    /**
+     * Decision Advisor priority (PRD 5.2-E). Explicit only — never invent.
+     * UNSET = advisor must state preference is unknown.
+     */
+    decisionPreference: {
+      type: String,
+      enum: [
+        "UNSET",
+        "LIQUIDITY",
+        "DEBT_PAYOFF",
+        "MAXIMIZE_SAVINGS",
+        "SPENDING_STABILITY",
+        "ROADMAP_FOCUS",
+      ],
+      default: "UNSET",
+    },
   },
   { timestamps: true }
 );
@@ -43,7 +59,8 @@ export type UserDocument = InferSchemaType<typeof UserSchema> & {
 if (
   models.User &&
   (!models.User.schema.path("monthlySalary") ||
-    !models.User.schema.path("roadmapPreferences"))
+    !models.User.schema.path("roadmapPreferences") ||
+    !models.User.schema.path("decisionPreference"))
 ) {
   delete models.User;
 }

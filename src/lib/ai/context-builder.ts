@@ -1,12 +1,21 @@
 import { AIError } from "@/lib/ai/errors";
 import { getCommandCenter } from "@/lib/financial/command-center";
-import { getScenario } from "@/lib/financial/decision/scenario-service";
+import {
+  compareUserScenarios,
+  getScenario,
+} from "@/lib/financial/decision/scenario-service";
 import { getHorizonCashFlowForecast } from "@/lib/financial/forecast/cash-flow-forecast-service";
 import { getFinancialHealth } from "@/lib/financial/metrics/financial-health";
 import { getUserPaydayDay, periodFromDate } from "@/lib/financial/pay-cycle";
 import { getActionCenter } from "@/lib/financial/recommendations/action-center";
 import { evaluateWealthLadder } from "@/lib/financial/wealth-ladder";
 import type { Period } from "@/lib/financial/phase2-types";
+import {
+  DECISION_PREFERENCE_LABELS,
+  isDecisionPreference,
+  type DecisionPreference,
+} from "@/lib/ai/decision-preferences";
+import { User } from "@/models/User";
 
 export const AI_CONTEXT_TYPES = [
   "financial_health",
@@ -15,6 +24,7 @@ export const AI_CONTEXT_TYPES = [
   "action_center",
   "roadmap",
   "general_summary",
+  "decision_advisor",
 ] as const;
 
 export type AIContextType = (typeof AI_CONTEXT_TYPES)[number];
@@ -22,8 +32,12 @@ export type AIContextType = (typeof AI_CONTEXT_TYPES)[number];
 export type AIContextRef = {
   periodDays?: number;
   scenarioId?: string;
+  /** Compare up to 3 owned scenarios (PRD 5.2-D). Prefer over single id when set. */
+  scenarioIds?: string[];
   year?: number;
   month?: number;
+  /** Override stored User.decisionPreference for this request only. */
+  decisionPreference?: string;
 };
 
 export type AIExplainContext = {
@@ -134,56 +148,138 @@ export async function buildAIExplainContext(
     }
 
     case "scenario": {
-      const scenarioId = contextRef?.scenarioId?.trim();
-      if (!scenarioId) {
+      const multi = (contextRef?.scenarioIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      const single = contextRef?.scenarioId?.trim();
+      const ids = multi.length > 0 ? multi : single ? [single] : [];
+
+      if (ids.length === 0) {
         throw new AIError(
           "INSUFFICIENT_CONTEXT",
           "Pilih skenario Decision Lab terlebih dahulu.",
           400
         );
       }
-      const scenario = await getScenario(userId, scenarioId);
-      if (!scenario) {
+
+      if (ids.length === 1) {
+        const scenario = await getScenario(userId, ids[0]!);
+        if (!scenario) {
+          throw new AIError(
+            "INSUFFICIENT_CONTEXT",
+            "Skenario tidak ditemukan atau bukan milik Anda.",
+            404
+          );
+        }
+        return {
+          currency: scenario.currency,
+          period: {
+            year: period.year,
+            month: period.month,
+            label: (scenario.baselineSnapshot as { cycleLabel?: string })
+              ?.cycleLabel,
+          },
+          contextType,
+          dataLimitations: [],
+          payload: {
+            scenario: {
+              id: scenario.id,
+              name: scenario.name,
+              currency: scenario.currency,
+              assumptions: scenario.assumptions,
+              results: scenario.results,
+              baseline: {
+                income: (scenario.baselineSnapshot as { income?: number })
+                  .income,
+                expenses: (scenario.baselineSnapshot as { expenses?: number })
+                  .expenses,
+                debtPayment: (
+                  scenario.baselineSnapshot as { debtPayment?: number }
+                ).debtPayment,
+                liquidAssets: (
+                  scenario.baselineSnapshot as { liquidAssets?: number }
+                ).liquidAssets,
+                netWorth: (scenario.baselineSnapshot as { netWorth?: number })
+                  .netWorth,
+                debtBalance: (
+                  scenario.baselineSnapshot as { debtBalance?: number }
+                ).debtBalance,
+                endingBalance: (
+                  scenario.baselineSnapshot as { endingBalance?: number }
+                ).endingBalance,
+              },
+              rulesVersion: scenario.rulesVersion,
+            },
+          },
+        };
+      }
+
+      const loaded = await Promise.all(
+        ids.map((id) => getScenario(userId, id))
+      );
+      if (loaded.some((s) => !s)) {
         throw new AIError(
           "INSUFFICIENT_CONTEXT",
-          "Skenario tidak ditemukan atau bukan milik Anda.",
+          "Satu atau lebih skenario tidak ditemukan atau bukan milik Anda.",
           404
         );
       }
+      const scenarios = loaded as NonNullable<(typeof loaded)[number]>[];
+      const currencies = new Set(scenarios.map((s) => s.currency));
+      const dataLimitations: string[] = [];
+      if (currencies.size > 1) {
+        dataLimitations.push(
+          "scenarios_mixed_currency — bandingkan hanya dalam mata uang yang sama"
+        );
+      }
+
+      const comparison = (await compareUserScenarios(userId, ids)) as {
+        warning?: string | null;
+        bestCashFlowId: string | null;
+        bestEndingBalanceId: string | null;
+        fastestDebtPayoffId: string | null;
+      };
+      if (comparison.warning) {
+        dataLimitations.push(comparison.warning);
+      }
+
       return {
-        currency: scenario.currency,
+        currency: scenarios[0]!.currency,
         period: {
           year: period.year,
           month: period.month,
-          label: (scenario.baselineSnapshot as { cycleLabel?: string })
-            ?.cycleLabel,
+          label: (
+            scenarios[0]!.baselineSnapshot as { cycleLabel?: string }
+          )?.cycleLabel,
         },
         contextType,
-        dataLimitations: [],
+        dataLimitations,
         payload: {
-          scenario: {
-            id: scenario.id,
-            name: scenario.name,
-            currency: scenario.currency,
-            assumptions: scenario.assumptions,
-            results: scenario.results,
-            baseline: {
-              income: (scenario.baselineSnapshot as { income?: number }).income,
-              expenses: (scenario.baselineSnapshot as { expenses?: number })
-                .expenses,
-              debtPayment: (
-                scenario.baselineSnapshot as { debtPayment?: number }
-              ).debtPayment,
-              liquidAssets: (
-                scenario.baselineSnapshot as { liquidAssets?: number }
-              ).liquidAssets,
-              netWorth: (scenario.baselineSnapshot as { netWorth?: number })
-                .netWorth,
-              debtBalance: (
-                scenario.baselineSnapshot as { debtBalance?: number }
-              ).debtBalance,
-            },
-            rulesVersion: scenario.rulesVersion,
+          scenarioCompare: {
+            ids,
+            warning: comparison.warning ?? null,
+            bestCashFlowId: comparison.bestCashFlowId,
+            bestEndingBalanceId: comparison.bestEndingBalanceId,
+            fastestDebtPayoffId: comparison.fastestDebtPayoffId,
+            rows: scenarios.map((s) => ({
+              id: s.id,
+              name: s.name,
+              currency: s.currency,
+              assumptions: s.assumptions,
+              results: s.results,
+              baseline: {
+                income: (s.baselineSnapshot as { income?: number }).income,
+                expenses: (s.baselineSnapshot as { expenses?: number }).expenses,
+                debtPayment: (s.baselineSnapshot as { debtPayment?: number })
+                  .debtPayment,
+                liquidAssets: (s.baselineSnapshot as { liquidAssets?: number })
+                  .liquidAssets,
+                debtBalance: (s.baselineSnapshot as { debtBalance?: number })
+                  .debtBalance,
+              },
+              rulesVersion: s.rulesVersion,
+            })),
           },
         },
       };
@@ -284,6 +380,174 @@ export async function buildAIExplainContext(
                 }
               : null,
             periodChange: center.periodChange,
+          },
+        },
+      };
+    }
+
+    case "decision_advisor": {
+      const user = await User.findById(userId)
+        .select("decisionPreference")
+        .lean();
+      let preference: DecisionPreference = "UNSET";
+      if (
+        contextRef?.decisionPreference &&
+        isDecisionPreference(contextRef.decisionPreference)
+      ) {
+        preference = contextRef.decisionPreference;
+      } else if (isDecisionPreference(user?.decisionPreference)) {
+        preference = user.decisionPreference;
+      }
+
+      const [health, forecast, actions, roadmap] = await Promise.all([
+        getFinancialHealth(userId, period),
+        getHorizonCashFlowForecast(userId, 30),
+        getActionCenter(userId, {
+          searchParams: new URLSearchParams({
+            year: String(period.year),
+            month: String(period.month),
+          }),
+        }),
+        evaluateWealthLadder(userId, period),
+      ]);
+
+      if (health.quality?.length) {
+        dataLimitations.push(...health.quality);
+      }
+      if (forecast.limitations?.length) {
+        dataLimitations.push(...forecast.limitations.slice(0, 3));
+      }
+      if (preference === "UNSET") {
+        dataLimitations.push(
+          "decision_preference_unset — preferensi pengguna belum ditetapkan"
+        );
+      }
+      if (roadmap.starterGoalMissing) {
+        dataLimitations.push("starter_goal_missing");
+      }
+
+      let scenarioCompare: Record<string, unknown> | null = null;
+      const ids = (contextRef?.scenarioIds ?? []).slice(0, 3);
+      if (ids.length >= 1) {
+        const loaded = await Promise.all(
+          ids.map((id) => getScenario(userId, id))
+        );
+        if (loaded.some((s) => !s)) {
+          throw new AIError(
+            "INSUFFICIENT_CONTEXT",
+            "Satu atau lebih skenario tidak ditemukan atau bukan milik Anda.",
+            404
+          );
+        }
+        const scenarios = loaded as NonNullable<(typeof loaded)[number]>[];
+        const currencies = new Set(scenarios.map((s) => s.currency));
+        if (currencies.size > 1) {
+          dataLimitations.push(
+            "scenarios_mixed_currency — bandingkan hanya dalam mata uang yang sama"
+          );
+        }
+        const comparison = (await compareUserScenarios(userId, ids)) as {
+          warning?: string | null;
+          bestCashFlowId: string | null;
+          bestEndingBalanceId: string | null;
+          fastestDebtPayoffId: string | null;
+        };
+        if (comparison.warning) {
+          dataLimitations.push(comparison.warning);
+        }
+        scenarioCompare = {
+          ids,
+          warning: comparison.warning ?? null,
+          bestCashFlowId: comparison.bestCashFlowId,
+          bestEndingBalanceId: comparison.bestEndingBalanceId,
+          fastestDebtPayoffId: comparison.fastestDebtPayoffId,
+          rows: scenarios.map((s) => ({
+            id: s.id,
+            name: s.name,
+            currency: s.currency,
+            assumptions: s.assumptions,
+            results: s.results,
+            baseline: {
+              income: (s.baselineSnapshot as { income?: number }).income,
+              expenses: (s.baselineSnapshot as { expenses?: number }).expenses,
+              debtPayment: (s.baselineSnapshot as { debtPayment?: number })
+                .debtPayment,
+              liquidAssets: (s.baselineSnapshot as { liquidAssets?: number })
+                .liquidAssets,
+              debtBalance: (s.baselineSnapshot as { debtBalance?: number })
+                .debtBalance,
+            },
+          })),
+        };
+      }
+
+      return {
+        currency: health.currency,
+        period: {
+          year: period.year,
+          month: period.month,
+          label: health.period.label,
+        },
+        contextType,
+        dataLimitations,
+        payload: {
+          decisionAdvisor: {
+            preference: {
+              code: preference,
+              labelId: DECISION_PREFERENCE_LABELS[preference].id,
+              isSet: preference !== "UNSET",
+            },
+            financialHealth: {
+              income: health.income.value,
+              expense: health.expense.value,
+              netCashFlow: health.netCashFlow.value,
+              savingsRate: health.savingsRate.value,
+              savingsRateAvailable: health.savingsRate.available,
+              liquidAssets: health.liquidAssets.value,
+              netWorth: health.netWorth.value,
+              totalLiabilities: health.totalLiabilities.value,
+              emergencyCoverageMonths: health.emergencyCoverageMonths.value,
+              quality: health.quality,
+            },
+            forecast30d: {
+              endingBalance: forecast.endingBalance,
+              lowestBalance: forecast.lowestBalance,
+              shortfallCount: forecast.shortfalls.length,
+              nextShortfall: forecast.shortfalls[0]
+                ? {
+                    date: forecast.shortfalls[0].date,
+                    balanceAfter: forecast.shortfalls[0].balanceAfter,
+                    causingLabel: forecast.shortfalls[0].causingLabel,
+                  }
+                : null,
+              assumptions: forecast.assumptions?.slice(0, 4),
+              limitations: forecast.limitations?.slice(0, 3),
+            },
+            actionCenter: {
+              counts: actions.counts,
+              top: actions.actions.slice(0, 6).map((a) => ({
+                issueKey: a.issueKey,
+                type: a.type,
+                priority: a.priority,
+                title: a.title,
+                message: a.message,
+              })),
+            },
+            roadmap: {
+              currentStep: roadmap.currentStep,
+              progressPercent: roadmap.progressPercent,
+              focus:
+                roadmap.steps.find(
+                  (s) => s.status === "FOCUS" || s.status === "UNKNOWN"
+                ) ?? null,
+              steps: roadmap.steps.map((s) => ({
+                id: s.id,
+                title: s.title,
+                status: s.status,
+                reason: s.reason,
+              })),
+            },
+            scenarioCompare,
           },
         },
       };

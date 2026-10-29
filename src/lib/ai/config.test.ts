@@ -12,9 +12,14 @@ describe("AI config", () => {
     vi.unstubAllEnvs();
   });
 
-  it("defaults model to openrouter/free", () => {
+  it("defaults to a pinned free chat model (not openrouter/free router)", () => {
     vi.stubEnv("OPENROUTER_MODEL", "");
-    expect(getOpenRouterModel()).toBe("openrouter/free");
+    expect(getOpenRouterModel()).toBe("nvidia/nemotron-3.5-lightning:free");
+  });
+
+  it("rewrites openrouter/free env to pinned chat model", () => {
+    vi.stubEnv("OPENROUTER_MODEL", "openrouter/free");
+    expect(getOpenRouterModel()).toBe("nvidia/nemotron-3.5-lightning:free");
   });
 
   it("isAIConfigured is false without key", () => {
@@ -29,5 +34,10 @@ describe("AI config", () => {
     expect(getAIMaxOutputTokens()).toBe(800);
     expect(getAIRequestTimeoutMs()).toBe(20_000);
     expect(getAIDailyRequestLimit()).toBe(20);
+  });
+
+  it("defaults max output tokens to 1200 when unset", () => {
+    vi.stubEnv("OPENROUTER_MAX_OUTPUT_TOKENS", "");
+    expect(getAIMaxOutputTokens()).toBe(1200);
   });
 });

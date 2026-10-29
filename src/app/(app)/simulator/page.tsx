@@ -6,6 +6,7 @@ import { api } from "@/lib/client-api";
 import { formatMoney, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
+import { AiExplainer } from "@/components/ai-explainer";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -136,7 +137,10 @@ export default function SimulatorPage() {
   const [saved, setSaved] = useState<SavedScenario[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [comparison, setComparison] = useState<ComparisonPayload | null>(null);
+  /** Scenario id for AI Scenario Explainer (must be persisted). */
+  const [explainFocusId, setExplainFocusId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scenarioExplainerOn, setScenarioExplainerOn] = useState(true);
 
   const loadSaved = useCallback(async () => {
     const data = await api<{ scenarios: SavedScenario[] }>("/api/scenarios");
@@ -148,11 +152,15 @@ export default function SimulatorPage() {
       api<DebtPack>("/api/simulator"),
       api<{ baseline: BaselineSnapshot }>("/api/scenarios?baseline=1"),
       loadSaved(),
+      api<{ features?: { scenarioExplainer?: boolean } }>("/api/ai/status").catch(
+        () => ({ features: { scenarioExplainer: true } })
+      ),
     ])
-      .then(([debtPack, base]) => {
+      .then(([debtPack, base, , status]) => {
         setPack(debtPack);
         setBaseline(base.baseline);
         setCurrency(base.baseline.currency);
+        setScenarioExplainerOn(status.features?.scenarioExplainer !== false);
       })
       .catch((e) => toast.error(e.message));
   }, [loadSaved]);
@@ -206,14 +214,18 @@ export default function SimulatorPage() {
     try {
       setBusy(true);
       const assumptions = buildAssumptionsBody();
-      await api("/api/scenarios", {
+      const created = await api<SavedScenario>("/api/scenarios", {
         method: "POST",
         body: JSON.stringify({
           name: scenarioName.trim() || "Untitled scenario",
           assumptions,
         }),
       });
-      toast.success("Skenario disimpan");
+      toast.success(t("simulator.savedToast"));
+      setExplainFocusId(created.id);
+      setSelectedIds((prev) =>
+        prev.includes(created.id) ? prev : [...prev, created.id]
+      );
       await loadSaved();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -226,6 +238,7 @@ export default function SimulatorPage() {
     try {
       await api(`/api/scenarios/${id}`, { method: "DELETE" });
       setSelectedIds((prev) => prev.filter((x) => x !== id));
+      setExplainFocusId((prev) => (prev === id ? null : prev));
       await loadSaved();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
@@ -417,9 +430,12 @@ export default function SimulatorPage() {
               disabled={busy}
               className="flex-1"
             >
-              Simpan skenario
+              {t("simulator.saveScenario")}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {t("simulator.saveBeforeExplainHint")}
+          </p>
         </CardContent>
       </Card>
 
@@ -427,6 +443,7 @@ export default function SimulatorPage() {
         <Card>
           <CardHeader>
             <CardTitle>{t("simulator.result")}</CardTitle>
+            <CardDescription>{t("simulator.resultDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
@@ -490,15 +507,14 @@ export default function SimulatorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Skenario tersimpan</CardTitle>
-          <CardDescription>
-            Snapshot baseline terkunci per skenario — hasil historis tidak berubah
-            diam-diam.
-          </CardDescription>
+          <CardTitle>{t("simulator.savedTitle")}</CardTitle>
+          <CardDescription>{t("simulator.savedDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {saved.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada skenario.</p>
+            <p className="text-sm text-muted-foreground">
+              {t("simulator.savedEmpty")}
+            </p>
           ) : (
             saved.map((s) => (
               <div
@@ -513,6 +529,11 @@ export default function SimulatorPage() {
                   />
                   <span>
                     <span className="font-medium">{s.name}</span>
+                    {explainFocusId === s.id ? (
+                      <span className="ml-2 text-xs text-emerald-700 dark:text-emerald-400">
+                        {t("simulator.explainFocusBadge")}
+                      </span>
+                    ) : null}
                     <span className="text-muted-foreground">
                       {" "}
                       · CF {formatMoney(s.results.cashFlow, s.currency, intlLocale)}
@@ -526,13 +547,22 @@ export default function SimulatorPage() {
                     </span>
                   </span>
                 </label>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => void removeScenario(s.id)}
-                >
-                  Hapus
-                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant={explainFocusId === s.id ? "secondary" : "outline"}
+                    onClick={() => setExplainFocusId(s.id)}
+                  >
+                    {t("simulator.useForExplain")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void removeScenario(s.id)}
+                  >
+                    {t("common.delete")}
+                  </Button>
+                </div>
               </div>
             ))
           )}
@@ -541,10 +571,54 @@ export default function SimulatorPage() {
             disabled={busy || selectedIds.length === 0}
             onClick={() => void compareSelected()}
           >
-            Bandingkan terpilih ({selectedIds.length})
+            {t("simulator.compareSelected", {
+              count: String(selectedIds.length),
+            })}
           </Button>
+          {selectedIds.length >= 2 ? (
+            <p className="text-xs text-muted-foreground">
+              {t("simulator.compareExplainHint", {
+                count: String(Math.min(3, selectedIds.length)),
+              })}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
+
+      {!scenarioExplainerOn ? (
+        <Card>
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            {t("simulator.scenarioExplainerDisabled")}
+          </CardContent>
+        </Card>
+      ) : selectedIds.length >= 2 || explainFocusId ? (
+        <AiExplainer
+          key={
+            selectedIds.length >= 2
+              ? `cmp:${selectedIds.slice(0, 3).join(",")}`
+              : `one:${explainFocusId}`
+          }
+          contextType="scenario"
+          contextRef={
+            selectedIds.length >= 2
+              ? { scenarioIds: selectedIds.slice(0, 3) }
+              : { scenarioId: explainFocusId ?? undefined }
+          }
+          title={t("simulator.scenarioExplainerTitle")}
+          description={t("simulator.scenarioExplainerDesc")}
+          defaultQuestion={
+            selectedIds.length >= 2
+              ? t("simulator.scenarioCompareQuestion")
+              : t("simulator.scenarioExplainQuestion")
+          }
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-6 text-sm text-muted-foreground">
+            {t("simulator.scenarioExplainerLocked")}
+          </CardContent>
+        </Card>
+      )}
 
       {comparison ? (
         <Card>

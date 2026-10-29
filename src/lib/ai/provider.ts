@@ -1,18 +1,20 @@
 import {
+  getAIDailyRequestLimit,
   getAIMaxOutputTokens,
+  getAIPerMinuteLimit,
   getAIRequestTimeoutMs,
   getOpenRouterApiKey,
   getOpenRouterModel,
   isAIConfigured,
 } from "@/lib/ai/config";
 import { AIError } from "@/lib/ai/errors";
+import { extractOpenRouterText } from "@/lib/ai/extract-text";
 import {
-  checkRateLimit,
-} from "@/lib/rate-limit";
-import {
-  getAIDailyRequestLimit,
-  getAIPerMinuteLimit,
-} from "@/lib/ai/config";
+  freeChatFallbackModels,
+  isSafetyClassifierModel,
+  looksLikeSafetyOnlyOutput,
+} from "@/lib/ai/model-guard";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export interface AIRequest {
   system: string;
@@ -30,10 +32,30 @@ export interface AIResponse {
 
 export interface AIProvider {
   generateText(input: AIRequest): Promise<AIResponse>;
+  /** Single-model call (no cascade) — used by Free Model Router */
+  generateTextOnModel(
+    modelId: string,
+    input: AIRequest,
+    opts?: { timeoutMs?: number }
+  ): Promise<AIResponse>;
 }
 
 type OpenRouterChatResponse = {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    message?: {
+      role?: string;
+      content?: string | Array<{ type?: string; text?: string }> | null;
+      refusal?: string | null;
+      reasoning?: string | null;
+      reasoning_details?: Array<{
+        type?: string;
+        text?: string;
+        summary?: string;
+        content?: string;
+      }> | null;
+    };
+    finish_reason?: string | null;
+  }>;
   model?: string;
   usage?: {
     prompt_tokens?: number;
@@ -64,6 +86,9 @@ export class OpenRouterProvider implements AIProvider {
     this.maxTokensDefault = opts?.maxTokensDefault ?? getAIMaxOutputTokens();
   }
 
+  /**
+   * Phase 5 path: primary + hard-coded free fallback chain (safety-aware).
+   */
   async generateText(input: AIRequest): Promise<AIResponse> {
     if (!this.apiKey) {
       throw new AIError(
@@ -73,6 +98,62 @@ export class OpenRouterProvider implements AIProvider {
       );
     }
 
+    const modelChain = freeChatFallbackModels(this.model);
+    let lastError: AIError | null = null;
+
+    for (const modelId of modelChain) {
+      try {
+        return await this.generateTextOnModel(modelId, input);
+      } catch (error) {
+        if (error instanceof AIError) {
+          // Try next free model on rate limit / empty / bad classifier
+          if (
+            error.code === "AI_PROVIDER_UNAVAILABLE" ||
+            error.code === "AI_RESPONSE_INVALID" ||
+            error.code === "AI_TIMEOUT"
+          ) {
+            lastError = error;
+            continue;
+          }
+        }
+        throw error;
+      }
+    }
+
+    throw (
+      lastError ??
+      new AIError(
+        "AI_PROVIDER_UNAVAILABLE",
+        "Layanan penjelasan AI sedang tidak tersedia.",
+        503
+      )
+    );
+  }
+
+  /**
+   * Single-model call for Free Model Router (no internal cascade).
+   * Timeout can be overridden per attempt by the router.
+   */
+  async generateTextOnModel(
+    modelId: string,
+    input: AIRequest,
+    opts?: { timeoutMs?: number }
+  ): Promise<AIResponse> {
+    if (!this.apiKey) {
+      throw new AIError(
+        "AI_NOT_CONFIGURED",
+        "Layanan penjelasan AI belum dikonfigurasi.",
+        503
+      );
+    }
+    return this.callModel(modelId, input, opts?.timeoutMs ?? this.timeoutMs);
+  }
+
+  private async callModel(
+    modelId: string,
+    input: AIRequest,
+    timeoutMs: number = this.timeoutMs
+  ): Promise<AIResponse> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
       "Content-Type": "application/json",
@@ -81,7 +162,7 @@ export class OpenRouterProvider implements AIProvider {
     if (this.appName) headers["X-Title"] = this.appName;
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     let response: Response;
     try {
@@ -90,12 +171,15 @@ export class OpenRouterProvider implements AIProvider {
         headers,
         signal: controller.signal,
         body: JSON.stringify({
-          model: this.model,
+          model: modelId,
           messages: [
             { role: "system", content: input.system },
             { role: "user", content: input.prompt },
           ],
           max_tokens: input.maxTokens ?? this.maxTokensDefault,
+          // Do NOT set reasoning.exclude — Nemotron Lightning free often returns
+          // content=null + finish=length; excluding reasoning yields empty parses.
+          // extractOpenRouterText already prefers content, then reasoning.
         }),
       });
     } catch (error) {
@@ -119,7 +203,6 @@ export class OpenRouterProvider implements AIProvider {
     }
 
     if (!response.ok) {
-      // Never surface provider body (may contain keys / internals)
       if (response.status === 429) {
         throw new AIError(
           "AI_PROVIDER_UNAVAILABLE",
@@ -152,7 +235,7 @@ export class OpenRouterProvider implements AIProvider {
       );
     }
 
-    const text = json.choices?.[0]?.message?.content?.trim() ?? "";
+    const text = extractOpenRouterText(json.choices?.[0]?.message);
     if (!text) {
       throw new AIError(
         "AI_RESPONSE_INVALID",
@@ -161,9 +244,21 @@ export class OpenRouterProvider implements AIProvider {
       );
     }
 
+    const actualModel = json.model ?? modelId;
+    if (
+      isSafetyClassifierModel(actualModel) ||
+      looksLikeSafetyOnlyOutput(text)
+    ) {
+      throw new AIError(
+        "AI_RESPONSE_INVALID",
+        "Model AI salah jalur (safety classifier). Coba lagi — Finora memakai model chat gratis.",
+        502
+      );
+    }
+
     return {
       text,
-      model: json.model ?? this.model,
+      model: actualModel,
       provider: "openrouter",
       inputTokens: json.usage?.prompt_tokens,
       outputTokens: json.usage?.completion_tokens,

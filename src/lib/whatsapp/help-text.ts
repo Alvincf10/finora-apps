@@ -21,10 +21,17 @@ Expense:
 • ${pre}bayar parkir 5rb
 • ${pre}isi flazz 100rb
 • ${pre}belanja 150rb
+• ${pre}pengeluaran beli recheese 50rb cc
+• ${pre}pengeluaran beli recheese 50rb debit
 
 Income:
 • ${pre}gaji 10jt
 • ${pre}freelance 2 juta
+
+Rekening (opsional di akhir):
+• cc / credit → kartu kredit
+• debit / db → rekening bank
+Tanpa suffix → pakai rekening default Vira.
 
 Cek saldo / total (tanpa AI):
 • ${pre}saldo
