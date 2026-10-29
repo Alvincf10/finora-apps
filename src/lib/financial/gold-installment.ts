@@ -132,55 +132,120 @@ function monthsToClear(remaining: number, monthlyPrincipal: number): number {
 }
 
 /**
- * Project remaining pokok + bunga for the next N months if the user
- * keeps paying the same principal amount each month (plus interest due).
+ * Project remaining pokok + bunga if the user keeps paying the same
+ * principal amount each month (plus interest due).
+ * Stops when lunas or when monthsAhead / untilPaidOff limit is hit.
  */
 export function projectGoldMonths(input: {
   remainingPrincipal: number;
   monthlyRatePercent: number;
   /** Pokok yang direncanakan tiap bulan. */
   principalPayPerMonth: number;
-  /** How many future months to project (default 2 after this month). */
+  /** Extra months after this month (ignored if untilPaidOff). */
   monthsAhead?: number;
+  /** Keep projecting until remaining pokok = 0 (cap 36). */
+  untilPaidOff?: boolean;
 }): GoldProjectionMonth[] {
   const rate = Math.max(0, input.monthlyRatePercent);
   let rem = Math.max(0, Math.floor(input.remainingPrincipal));
   const pokok = Math.max(0, Math.floor(input.principalPayPerMonth));
-  const ahead = Math.min(12, Math.max(1, Math.floor(input.monthsAhead ?? 2)));
+  const untilPaidOff = Boolean(input.untilPaidOff);
+  const maxOffset = untilPaidOff
+    ? 36
+    : Math.min(12, Math.max(1, Math.floor(input.monthsAhead ?? 2)));
   const rows: GoldProjectionMonth[] = [];
 
-  // Month 0: current due (before payment)
-  const interest0 = monthlyInterestDue(rem, rate);
-  const pay0 = Math.min(rem, pokok);
-  rows.push({
-    offset: 0,
-    labelKey: "reports.goldProjThisMonth",
-    remainingPrincipal: rem,
-    interestDue: interest0,
-    principalPay: pay0,
-    totalPay: pay0 + interest0,
-  });
+  if (rem <= 0 || pokok <= 0) {
+    return [
+      {
+        offset: 0,
+        labelKey: "reports.goldProjThisMonth",
+        remainingPrincipal: rem,
+        interestDue: monthlyInterestDue(rem, rate),
+        principalPay: 0,
+        totalPay: monthlyInterestDue(rem, rate),
+      },
+    ];
+  }
 
-  rem = Math.max(0, rem - pay0);
-
-  for (let i = 1; i <= ahead; i++) {
+  for (let offset = 0; offset <= maxOffset && rem > 0; offset++) {
     const interest = monthlyInterestDue(rem, rate);
     const pay = Math.min(rem, pokok);
     rows.push({
-      offset: i,
+      offset,
       labelKey:
-        i === 1
-          ? "reports.goldProjNextMonth"
-          : "reports.goldProjMonthN",
+        offset === 0
+          ? "reports.goldProjThisMonth"
+          : offset === 1
+            ? "reports.goldProjNextMonth"
+            : "reports.goldProjMonthN",
       remainingPrincipal: rem,
       interestDue: interest,
       principalPay: pay,
       totalPay: pay + interest,
     });
     rem = Math.max(0, rem - pay);
+    if (untilPaidOff && rem <= 0) break;
+    if (!untilPaidOff && offset >= maxOffset) break;
   }
 
   return rows;
+}
+
+export type GoldPayoffSummary = {
+  monthsToClear: number;
+  /** Cash still to pay from now until lunas (pokok sisa + bunga proyeksi). */
+  remainingCash: number;
+  remainingPrincipal: number;
+  remainingInterestProjected: number;
+  /** Already paid cash (pokok + bunga). */
+  paidRecorded: number;
+  principalPaid: number;
+  interestPaid: number;
+  /** Grand total cash if projection holds: paid + remaining cash. */
+  grandTotal: number;
+  /** Total bunga seumur hidup (sudah + proyeksi). */
+  totalInterestLifetime: number;
+  originalPrincipal: number;
+};
+
+export function summarizeGoldPayoff(input: {
+  originalPrincipal: number;
+  remainingPrincipal: number;
+  monthlyRatePercent: number;
+  principalPayPerMonth: number;
+  paidRecorded: number;
+  principalPaid: number;
+  interestPaid: number;
+}): GoldPayoffSummary {
+  const rows = projectGoldMonths({
+    remainingPrincipal: input.remainingPrincipal,
+    monthlyRatePercent: input.monthlyRatePercent,
+    principalPayPerMonth: input.principalPayPerMonth,
+    untilPaidOff: true,
+  });
+  const remainingInterestProjected = rows.reduce(
+    (sum, r) => sum + r.interestDue,
+    0
+  );
+  const remainingPrincipal = Math.max(0, Math.floor(input.remainingPrincipal));
+  const remainingCash = remainingPrincipal + remainingInterestProjected;
+  const paidRecorded = Math.max(0, Math.floor(input.paidRecorded));
+  const interestPaid = Math.max(0, Math.floor(input.interestPaid));
+  const originalPrincipal = Math.max(0, Math.floor(input.originalPrincipal));
+
+  return {
+    monthsToClear: rows.length,
+    remainingCash,
+    remainingPrincipal,
+    remainingInterestProjected,
+    paidRecorded,
+    principalPaid: Math.max(0, Math.floor(input.principalPaid)),
+    interestPaid,
+    grandTotal: paidRecorded + remainingCash,
+    totalInterestLifetime: interestPaid + remainingInterestProjected,
+    originalPrincipal,
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   inferMonthlyRatePercent,
   monthlyInterestDue,
   projectGoldMonths,
+  summarizeGoldPayoff,
 } from "./gold-installment";
 
 describe("inferMonthlyRatePercent", () => {
@@ -34,10 +35,46 @@ describe("projectGoldMonths", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]!.interestDue).toBe(993_960);
     expect(rows[0]!.remainingPrincipal).toBe(33_132_000);
-    // after paying 8.283jt pokok
     expect(rows[1]!.remainingPrincipal).toBe(33_132_000 - 8_283_000);
     expect(rows[1]!.interestDue).toBe(
       monthlyInterestDue(33_132_000 - 8_283_000, 3)
+    );
+  });
+
+  it("projects until paid off", () => {
+    const rows = projectGoldMonths({
+      remainingPrincipal: 33_132_000,
+      monthlyRatePercent: 3,
+      principalPayPerMonth: 13_000_000,
+      untilPaidOff: true,
+    });
+    expect(rows).toHaveLength(3);
+    const last = rows.at(-1)!;
+    expect(last.remainingPrincipal - last.principalPay).toBe(0);
+  });
+});
+
+describe("summarizeGoldPayoff", () => {
+  it("totals cash vs original principal", () => {
+    const summary = summarizeGoldPayoff({
+      originalPrincipal: 44_400_000,
+      remainingPrincipal: 33_132_000,
+      monthlyRatePercent: 3,
+      principalPayPerMonth: 13_000_000,
+      paidRecorded: 13_895_000,
+      principalPaid: 11_268_000,
+      interestPaid: 2_627_000,
+    });
+    expect(summary.monthsToClear).toBe(3);
+    expect(summary.originalPrincipal).toBe(44_400_000);
+    expect(summary.grandTotal).toBe(
+      13_895_000 + summary.remainingCash
+    );
+    expect(summary.totalInterestLifetime).toBe(
+      2_627_000 + summary.remainingInterestProjected
+    );
+    expect(summary.grandTotal).toBe(
+      summary.originalPrincipal + summary.totalInterestLifetime
     );
   });
 });

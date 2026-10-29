@@ -828,7 +828,8 @@ export const en = {
     goldPaidSplitShort: "principal {principal} · interest {interest}",
     goldOfOriginal: "of {original}",
     goldPlanPokok: "Principal you plan to pay",
-    goldProjIntro: "If you pay like this each month (this month total {total}):",
+    goldProjIntro:
+      "If you keep paying like this from {month} (total {total}):",
     goldProjColWhen: "Month",
     goldProjColBayar: "Total pay",
     goldProjThisMonth: "This month",
@@ -836,6 +837,11 @@ export const en = {
     goldProjMonthN: "+{n} months",
     goldUsePlanPay: "Log this payment",
     goldRemainingPokok: "Remaining principal",
+    goldPayoffTitle: "Payoff projection ~{months} months",
+    goldPayoffFromPrincipal:
+      "Total pay {total} from principal {principal} (interest {interest})",
+    goldPayoffBreakdown:
+      "Paid {paid} · remaining cash {remaining} (incl. interest ~{remainingInterest})",
     goldLoading: "Loading Gold simulation…",
     goldEmpty: "No Gold plan yet. Fill the form below.",
     goldUnlocked: "Gold menu unlocked",
@@ -851,6 +857,10 @@ export const en = {
     goldMonthlyRateHint: "From your data: 1,332,000 ÷ 44,400,000 = 3%.",
     goldSavePlan: "Save plan",
     goldSaved: "Gold plan saved",
+    goldAddItem: "Add item",
+    goldAddItemTitle: "New Gold item",
+    goldDeleteConfirm: "Delete “{name}”? Payments will be removed too.",
+    goldDeleted: "Gold item deleted",
     goldEdit: "Edit plan",
     goldNeedPrincipal: "Enter principal first",
     goldNeedPayment: "Enter payment amount",
@@ -869,7 +879,7 @@ export const en = {
     goldSummaryTitle: "Summary vs original loan",
     goldSummaryLine:
       "Original principal {original} · paid {paid} (principal {principalPaid} + interest {interestPaid}) · remaining principal {remaining}",
-    goldNextDueTitle: "Interest due now",
+    goldNextDueTitle: "Interest next month",
     goldNextDueHint: "{rate}% × remaining principal {remaining}",
     goldRecommendedHorizon: "Est. payoff ~{months} mo (standard scenario)",
     goldScenariosTitle: "This month’s payment recommendations",

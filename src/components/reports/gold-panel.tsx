@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -12,7 +13,10 @@ import { toast } from "sonner";
 import { Coins, Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
-import { projectGoldMonths } from "@/lib/financial/gold-installment";
+import {
+  projectGoldMonths,
+  summarizeGoldPayoff,
+} from "@/lib/financial/gold-installment";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +42,18 @@ type Scenario = {
   nextInterestAfter: number;
   estimatedMonthsLeft: number;
 };
+
+/** Projection starts next month — current month already paid. */
+function goldProjectionMonthLabel(offset: number, locale: string): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setHours(12, 0, 0, 0);
+  d.setMonth(d.getMonth() + 1 + offset);
+  return new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+  }).format(d);
+}
 
 type GoldPlanRow = {
   id: string;
@@ -73,7 +89,10 @@ type GoldPlanRow = {
   };
 };
 
-type GoldResponse = { plan: GoldPlanRow | null };
+type GoldResponse = {
+  plans: GoldPlanRow[];
+  plan: GoldPlanRow | null;
+};
 
 export const GOLD_UNLOCK_KEY = "finora.weekly.gold";
 
@@ -103,12 +122,14 @@ function toDateInput(iso?: string) {
 export function GoldPanel() {
   const { t, intlLocale } = useI18n();
   const [data, setData] = useState<GoldResponse | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
-  const [name, setName] = useState("Gold");
+  const [name, setName] = useState("Gold bracelet");
   const [principalMajor, setPrincipalMajor] = useState(0);
   const [rate, setRate] = useState(3);
   const [startDate, setStartDate] = useState(toDateInput());
@@ -118,7 +139,10 @@ export function GoldPanel() {
   const [payDate, setPayDate] = useState(toDateInput());
   const [payNotes, setPayNotes] = useState("");
 
-  const currency: Currency = data?.plan?.currency ?? "IDR";
+  const plans = data?.plans ?? [];
+  const plan =
+    plans.find((p) => p.id === selectedId) ?? plans[0] ?? data?.plan ?? null;
+  const currency: Currency = plan?.currency ?? "IDR";
 
   const money = useCallback(
     (amount: number, cur: Currency = currency) =>
@@ -134,6 +158,38 @@ export function GoldPanel() {
     setEditingPaymentId(null);
   }
 
+  function applyPlanToForm(p: GoldPlanRow) {
+    const cur = p.currency;
+    setSelectedId(p.id);
+    setName(p.name);
+    setPrincipalMajor(fromMinorUnits(p.principal, cur));
+    setRate(p.monthlyRatePercent || 3);
+    setStartDate(toDateInput(p.startDate));
+    const standar = p.recommendation.scenarios.find((s) => s.id === "STANDAR");
+    setPlanPokokMajor(
+      fromMinorUnits(
+        standar?.principalPay ?? Math.ceil(p.remainingPrincipal / 4),
+        cur
+      )
+    );
+    setEditing(false);
+    setCreating(false);
+    setPayOpen(false);
+    resetPayForm();
+  }
+
+  function startCreate() {
+    setCreating(true);
+    setEditing(false);
+    setName("Gold necklace");
+    setPrincipalMajor(0);
+    setRate(3);
+    setStartDate(toDateInput());
+    setPlanPokokMajor(0);
+    setPayOpen(false);
+    resetPayForm();
+  }
+
   function startEditPayment(p: GoldPlanRow["payments"][number]) {
     setEditingPaymentId(p.id);
     setPayPokokMajor(fromMinorUnits(p.principalPortion, currency));
@@ -143,28 +199,25 @@ export function GoldPanel() {
     setPayOpen(true);
   }
 
-  const load = useCallback(async () => {
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  const load = useCallback(async (preferId?: string | null) => {
     const res = await api<GoldResponse>("/api/reports/weekly/gold");
-    setData(res);
-    if (res.plan) {
-      const cur = res.plan.currency;
-      setName(res.plan.name);
-      setPrincipalMajor(fromMinorUnits(res.plan.principal, cur));
-      setRate(res.plan.monthlyRatePercent || 3);
-      setStartDate(toDateInput(res.plan.startDate));
-      const standar = res.plan.recommendation.scenarios.find(
-        (s) => s.id === "STANDAR"
-      );
-      setPlanPokokMajor(
-        fromMinorUnits(
-          standar?.principalPay ??
-            Math.ceil(res.plan.remainingPrincipal / 4),
-          cur
-        )
-      );
-      setEditing(false);
+    const list = res.plans ?? (res.plan ? [res.plan] : []);
+    setData({ plans: list, plan: list[0] ?? null });
+    const wanted =
+      preferId !== undefined ? preferId : selectedIdRef.current;
+    const pick =
+      (wanted ? list.find((p) => p.id === wanted) : undefined) ??
+      list[0] ??
+      null;
+    if (pick) {
+      applyPlanToForm(pick);
     } else {
-      setEditing(true);
+      setSelectedId(null);
+      setCreating(true);
+      setEditing(false);
     }
   }, []);
 
@@ -172,18 +225,32 @@ export function GoldPanel() {
     load().catch((e) => toast.error(e.message));
   }, [load]);
 
-  const plan = data?.plan ?? null;
   const rec = plan?.recommendation;
+
+  const planPokokMinor = toMinorUnits(Math.max(0, planPokokMajor), currency);
 
   const projection = useMemo(() => {
     if (!plan) return [];
     return projectGoldMonths({
       remainingPrincipal: plan.remainingPrincipal,
       monthlyRatePercent: plan.monthlyRatePercent,
-      principalPayPerMonth: toMinorUnits(Math.max(0, planPokokMajor), currency),
-      monthsAhead: 2,
+      principalPayPerMonth: planPokokMinor,
+      untilPaidOff: true,
     });
-  }, [plan, planPokokMajor, currency]);
+  }, [plan, planPokokMinor]);
+
+  const payoff = useMemo(() => {
+    if (!plan) return null;
+    return summarizeGoldPayoff({
+      originalPrincipal: plan.principal,
+      remainingPrincipal: plan.remainingPrincipal,
+      monthlyRatePercent: plan.monthlyRatePercent,
+      principalPayPerMonth: planPokokMinor,
+      paidRecorded: plan.paidRecorded,
+      principalPaid: plan.principalPaid,
+      interestPaid: plan.interestPaid,
+    });
+  }, [plan, planPokokMinor]);
 
   async function savePlan(e: FormEvent) {
     e.preventDefault();
@@ -193,20 +260,36 @@ export function GoldPanel() {
     }
     setSaving(true);
     try {
-      const hasExisting = Boolean(data?.plan);
-      await api<GoldResponse>("/api/reports/weekly/gold", {
-        method: "PUT",
-        body: JSON.stringify({
-          name: name.trim() || "Gold",
-          currency,
-          principal: toMinorUnits(principalMajor, currency),
-          monthlyRatePercent: rate,
-          startDate,
-          resetPayments: !hasExisting,
-        }),
-      });
-      toast.success(t("reports.goldSaved"));
-      await load();
+      if (creating || !plan) {
+        const res = await api<GoldResponse>("/api/reports/weekly/gold", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "create_plan",
+            name: name.trim() || "Gold",
+            currency,
+            principal: toMinorUnits(principalMajor, currency),
+            monthlyRatePercent: rate,
+            startDate,
+          }),
+        });
+        toast.success(t("reports.goldSaved"));
+        await load(res.plan?.id ?? null);
+      } else {
+        await api<GoldResponse>("/api/reports/weekly/gold", {
+          method: "PUT",
+          body: JSON.stringify({
+            planId: plan.id,
+            name: name.trim() || "Gold",
+            currency,
+            principal: toMinorUnits(principalMajor, currency),
+            monthlyRatePercent: rate,
+            startDate,
+            resetPayments: false,
+          }),
+        });
+        toast.success(t("reports.goldSaved"));
+        await load(plan.id);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -216,6 +299,7 @@ export function GoldPanel() {
 
   async function savePayment(e: FormEvent) {
     e.preventDefault();
+    if (!plan) return;
     if (payPokokMajor <= 0 && payBungaMajor <= 0) {
       toast.error(t("reports.goldNeedPaymentSplit"));
       return;
@@ -232,6 +316,7 @@ export function GoldPanel() {
           method: "POST",
           body: JSON.stringify({
             action: "edit_payment",
+            planId: plan.id,
             paymentId: editingPaymentId,
             principalPortion,
             interestPortion,
@@ -245,6 +330,7 @@ export function GoldPanel() {
           method: "POST",
           body: JSON.stringify({
             action: "add_payment",
+            planId: plan.id,
             principalPortion,
             interestPortion,
             amount: principalPortion + interestPortion,
@@ -256,7 +342,7 @@ export function GoldPanel() {
       }
       setPayOpen(false);
       resetPayForm();
-      await load();
+      await load(plan.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -265,14 +351,39 @@ export function GoldPanel() {
   }
 
   async function deletePayment(paymentId: string) {
+    if (!plan) return;
     setSaving(true);
     try {
       await api("/api/reports/weekly/gold", {
         method: "POST",
-        body: JSON.stringify({ action: "delete_payment", paymentId }),
+        body: JSON.stringify({
+          action: "delete_payment",
+          planId: plan.id,
+          paymentId,
+        }),
       });
       toast.success(t("reports.goldPaymentDeleted"));
-      await load();
+      await load(plan.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deletePlan() {
+    if (!plan) return;
+    if (!window.confirm(t("reports.goldDeleteConfirm", { name: plan.name }))) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/reports/weekly/gold", {
+        method: "POST",
+        body: JSON.stringify({ action: "delete_plan", planId: plan.id }),
+      });
+      toast.success(t("reports.goldDeleted"));
+      await load(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -286,13 +397,14 @@ export function GoldPanel() {
     );
   }
 
-  const thisMonth = projection[0];
+  const nextDueMonth = projection[0];
   const afterPay = projection[0]
     ? Math.max(
         0,
-        (plan?.remainingPrincipal ?? 0) - (thisMonth?.principalPay ?? 0)
+        (plan?.remainingPrincipal ?? 0) - (nextDueMonth?.principalPay ?? 0)
       )
     : 0;
+  const nextMonthName = goldProjectionMonthLabel(0, intlLocale);
 
   return (
     <Card className="border-amber-500/25 bg-gradient-to-br from-amber-50/80 via-card to-card ring-1 ring-amber-500/20 dark:from-amber-950/40">
@@ -301,7 +413,7 @@ export function GoldPanel() {
           <div>
             <CardTitle className="flex items-center gap-2 font-heading">
               <Coins className="size-5 text-amber-700 dark:text-amber-400" />
-              {plan?.name ?? t("reports.goldTitle")}
+              {t("reports.goldTitle")}
               <Badge variant="outline" className="font-normal">
                 {t("reports.goldHiddenBadge")}
               </Badge>
@@ -310,21 +422,53 @@ export function GoldPanel() {
               {t("reports.goldSubtitleSimple")}
             </CardDescription>
           </div>
-          {plan && !editing ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditing(true)}
-            >
-              {t("reports.goldEdit")}
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={startCreate}
+            disabled={saving || creating}
+          >
+            <Plus className="size-4" />
+            {t("reports.goldAddItem")}
+          </Button>
         </div>
+
+        {plans.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {plans.map((p) => (
+              <Button
+                key={p.id}
+                type="button"
+                size="sm"
+                variant={
+                  !creating && plan?.id === p.id ? "default" : "outline"
+                }
+                onClick={() => applyPlanToForm(p)}
+              >
+                {p.name}
+              </Button>
+            ))}
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
-        {(editing || !plan) && (
+        {(creating || editing || !plan) && (
           <form onSubmit={savePlan} className="grid gap-3 sm:grid-cols-2">
+            <p className="sm:col-span-2 text-sm font-medium">
+              {creating || !plan
+                ? t("reports.goldAddItemTitle")
+                : t("reports.goldEdit")}
+            </p>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="gold-name">{t("reports.goldName")}</Label>
+              <Input
+                id="gold-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Gold bracelet / Gold necklace"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label>{t("reports.goldPokokPinjaman")}</Label>
               <CurrencyAmountInput
@@ -347,14 +491,6 @@ export function GoldPanel() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="gold-name">{t("reports.goldName")}</Label>
-              <Input
-                id="gold-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="gold-start">{t("reports.goldStartDate")}</Label>
               <Input
                 id="gold-start"
@@ -364,16 +500,20 @@ export function GoldPanel() {
                 required
               />
             </div>
-            <div className="flex gap-2 sm:col-span-2">
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="submit" disabled={saving} size="sm">
                 {t("reports.goldSavePlan")}
               </Button>
-              {plan ? (
+              {plan && (creating || editing) ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setEditing(false)}
+                  onClick={() => {
+                    setCreating(false);
+                    setEditing(false);
+                    applyPlanToForm(plan);
+                  }}
                 >
                   {t("common.cancel")}
                 </Button>
@@ -382,8 +522,39 @@ export function GoldPanel() {
           </form>
         )}
 
-        {plan && !editing && rec ? (
+        {plan && !editing && !creating && rec ? (
           <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium">{plan.name}</p>
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(true);
+                    setCreating(false);
+                    setName(plan.name);
+                    setPrincipalMajor(
+                      fromMinorUnits(plan.principal, plan.currency)
+                    );
+                    setRate(plan.monthlyRatePercent || 3);
+                    setStartDate(toDateInput(plan.startDate));
+                  }}
+                >
+                  {t("reports.goldEdit")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => void deletePlan()}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            </div>
             {/* Compact status */}
             <div className="grid gap-2 text-sm sm:grid-cols-3">
               <div>
@@ -465,8 +636,10 @@ export function GoldPanel() {
 
               <p className="text-xs text-muted-foreground">
                 {t("reports.goldProjIntro", {
+                  month: nextMonthName,
                   total: money(
-                    (thisMonth?.principalPay ?? 0) + (thisMonth?.interestDue ?? 0)
+                    (nextDueMonth?.principalPay ?? 0) +
+                      (nextDueMonth?.interestDue ?? 0)
                   ),
                 })}
               </p>
@@ -491,12 +664,10 @@ export function GoldPanel() {
                   </thead>
                   <tbody className="font-mono text-xs tabular-nums sm:text-sm">
                     {projection.map((row, idx) => {
-                      const label =
-                        row.offset === 0
-                          ? t("reports.goldProjThisMonth")
-                          : row.offset === 1
-                            ? t("reports.goldProjNextMonth")
-                            : t("reports.goldProjMonthN", { n: row.offset });
+                      const label = goldProjectionMonthLabel(
+                        row.offset,
+                        intlLocale
+                      );
                       const sisaSetelah =
                         idx === 0
                           ? afterPay
@@ -509,7 +680,7 @@ export function GoldPanel() {
                           key={row.offset}
                           className="border-b border-border/40"
                         >
-                          <td className="py-2 pr-3 font-sans text-foreground">
+                          <td className="py-2 pr-3 font-sans text-foreground capitalize">
                             {label}
                           </td>
                           <td className="py-2 pr-3">
@@ -528,6 +699,32 @@ export function GoldPanel() {
                   </tbody>
                 </table>
               </div>
+
+              {payoff && planPokokMinor > 0 ? (
+                <div className="rounded-lg bg-amber-500/10 px-3 py-2.5 text-sm ring-1 ring-amber-500/20">
+                  <p className="font-medium">
+                    {t("reports.goldPayoffTitle", {
+                      months: payoff.monthsToClear,
+                    })}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    {t("reports.goldPayoffFromPrincipal", {
+                      total: money(payoff.grandTotal),
+                      principal: money(payoff.originalPrincipal),
+                      interest: money(payoff.totalInterestLifetime),
+                    })}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("reports.goldPayoffBreakdown", {
+                      paid: money(payoff.paidRecorded),
+                      remaining: money(payoff.remainingCash),
+                      remainingInterest: money(
+                        payoff.remainingInterestProjected
+                      ),
+                    })}
+                  </p>
+                </div>
+              ) : null}
 
               <Button
                 type="button"

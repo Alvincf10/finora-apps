@@ -834,7 +834,8 @@ export const id: Dictionary = {
     goldPaidSplitShort: "pokok {principal} · bunga {interest}",
     goldOfOriginal: "dari {original}",
     goldPlanPokok: "Pokok yang mau dibayar",
-    goldProjIntro: "Kalau tiap bulan bayar seperti ini (total {total} bulan ini):",
+    goldProjIntro:
+      "Kalau tiap bulan bayar seperti ini mulai {month} (total {total}):",
     goldProjColWhen: "Bulan",
     goldProjColBayar: "Total bayar",
     goldProjThisMonth: "Bulan ini",
@@ -842,6 +843,11 @@ export const id: Dictionary = {
     goldProjMonthN: "+{n} bulan",
     goldUsePlanPay: "Catat bayaran ini",
     goldRemainingPokok: "Sisa pokok",
+    goldPayoffTitle: "Proyeksi lunas ~{months} bulan",
+    goldPayoffFromPrincipal:
+      "Total bayar {total} dari pokok {principal} (bunga {interest})",
+    goldPayoffBreakdown:
+      "Sudah {paid} · sisa kas {remaining} (termasuk bunga sisa ~{remainingInterest})",
     goldLoading: "Memuat simulasi Gold…",
     goldEmpty: "Belum ada rencana Gold. Isi form di bawah.",
     goldUnlocked: "Menu Gold terbuka",
@@ -857,6 +863,10 @@ export const id: Dictionary = {
     goldMonthlyRateHint: "Dari data kamu: 1.332.000 ÷ 44.400.000 = 3%.",
     goldSavePlan: "Simpan rencana",
     goldSaved: "Rencana Gold tersimpan",
+    goldAddItem: "Tambah item",
+    goldAddItemTitle: "Item Gold baru",
+    goldDeleteConfirm: "Hapus “{name}”? Riwayat bayar ikut terhapus.",
+    goldDeleted: "Item Gold dihapus",
     goldEdit: "Ubah rencana",
     goldNeedPrincipal: "Isi pokok dulu",
     goldNeedPayment: "Isi nominal bayaran",
@@ -875,7 +885,7 @@ export const id: Dictionary = {
     goldSummaryTitle: "Ringkasan vs pinjaman awal",
     goldSummaryLine:
       "Pokok awal {original} · sudah bayar {paid} (pokok {principalPaid} + bunga {interestPaid}) · sisa pokok {remaining}",
-    goldNextDueTitle: "Bunga jatuh tempo sekarang",
+    goldNextDueTitle: "Bunga bulan depan",
     goldNextDueHint: "{rate}% × sisa pokok {remaining}",
     goldRecommendedHorizon: "Perkiraan lunas ~{months} bln (skenario standar)",
     goldScenariosTitle: "Rekomendasi bayar bulan ini",
