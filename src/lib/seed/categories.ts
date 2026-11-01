@@ -26,6 +26,21 @@ export const SYSTEM_CATEGORIES = [
     children: ["Shopping", "Entertainment", "Travel", "Subscription"],
   },
   {
+    name: "Transport",
+    type: "EXPENSE" as const,
+    icon: "car",
+  },
+  {
+    name: "Fuel",
+    type: "EXPENSE" as const,
+    icon: "fuel",
+  },
+  {
+    name: "Flazz",
+    type: "EXPENSE" as const,
+    icon: "credit-card",
+  },
+  {
     name: "Relationship",
     type: "EXPENSE" as const,
     icon: "heart",

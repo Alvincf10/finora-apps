@@ -78,6 +78,12 @@ const EXPENSE_KEYWORDS: Array<{ keys: string[]; category: string }> = [
       "belanja",
       "shopping",
       "baju",
+      "celana",
+      "parfum",
+      "perfume",
+      "sepatu",
+      "tas",
+      "skincare",
       "hiburan",
       "nonton",
       "netflix",
@@ -86,6 +92,36 @@ const EXPENSE_KEYWORDS: Array<{ keys: string[]; category: string }> = [
       "subscription",
     ],
     category: "Lifestyle",
+  },
+  {
+    keys: [
+      "flazz",
+      "topup flazz",
+      "isi flazz",
+      "isi saldo flazz",
+    ],
+    category: "Flazz",
+  },
+  {
+    keys: [
+      "gojek",
+      "grab",
+      "ojek",
+      "parkir",
+      "tol",
+      "mrt",
+      "krl",
+      "transjakarta",
+      "transport",
+      "taksi",
+      "taxi",
+      "uber",
+    ],
+    category: "Transport",
+  },
+  {
+    keys: ["bensin", "bbm", "pertalite", "pertamax", "solar", "fuel", "isi bensin"],
+    category: "Fuel",
   },
   {
     keys: ["tagihan", "bill", "pulsa", "kuota", "bpjs", "pajak"],
@@ -156,9 +192,54 @@ function matchCategory(
   return best?.category ?? fallback;
 }
 
+const RELATIONSHIP_KEYS =
+  EXPENSE_KEYWORDS.find((r) => r.category === "Relationship")?.keys ?? [];
+
+/** Date / partner context wins over Food when both match (e.g. makan + pacar). */
+function resolveExpenseCategory(haystack: string): string {
+  const lower = haystack.toLowerCase();
+  const hasRelationship = RELATIONSHIP_KEYS.some((k) => lower.includes(k));
+  if (hasRelationship) return "Relationship";
+  return matchCategory(haystack, EXPENSE_KEYWORDS, "Other");
+}
+
+const AMOUNT_TOKEN_RE =
+  /(\d+(?:[.,]\d+)?\s*(?:jt|juta|rb|ribu|k)|\d{1,3}(?:[.\s]\d{3})+|\d+(?:[.,]\d+)?)/gi;
+
+/**
+ * Locate amount: prefer trailing token (legacy), else first clear money token
+ * with suffix / thousand separators (allows `belanja 115rb beli baju`).
+ */
+function locateAmount(body: string): { raw: string; index: number } | null {
+  const endMatch = body.match(
+    /(\d+(?:[.,]\d+)?(?:\s*(?:jt|juta|rb|ribu|k))?|\d{1,3}(?:[.\s]\d{3})+)\s*$/i
+  );
+  if (endMatch && endMatch.index !== undefined) {
+    const raw = endMatch[0].trim();
+    if (parseIdrAmount(raw) !== null) {
+      return { raw, index: endMatch.index };
+    }
+  }
+
+  AMOUNT_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = AMOUNT_TOKEN_RE.exec(body)) !== null) {
+    const raw = m[0].trim();
+    // Mid-message bare integers are ambiguous (`beli 2 baju`) — require money cue
+    const hasMoneyCue =
+      /(?:jt|juta|rb|ribu|k)$/i.test(raw) ||
+      /\d{1,3}(?:[.\s]\d{3})+/.test(raw);
+    if (!hasMoneyCue) continue;
+    if (parseIdrAmount(raw) === null) continue;
+    return { raw, index: m.index };
+  }
+  return null;
+}
+
 /**
  * Parse free-text money intents, e.g.:
  * - "makan 50rb"
+ * - "belanja 115rb beli baju running"
  * - "gojek 25.000"
  * - "gaji 10jt"
  * - "expense kopi 35k"
@@ -184,22 +265,20 @@ export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
   const { body: withoutAccount, hint: accountHint } = stripAccountHint(body);
   body = withoutAccount;
 
-  // Find amount token: last number-like token with optional suffix
-  const amountMatch = body.match(
-    /(\d+(?:[.,]\d+)?(?:\s*(?:jt|juta|rb|ribu|k))?|\d{1,3}(?:[.\s]\d{3})+)\s*$/i
-  );
-  if (!amountMatch || amountMatch.index === undefined) return null;
+  const located = locateAmount(body);
+  if (!located) return null;
 
-  const amountRaw = amountMatch[0];
-  const amount = parseIdrAmount(amountRaw);
+  const amount = parseIdrAmount(located.raw);
   if (amount === null) return null;
 
-  const descPart = body.slice(0, amountMatch.index).trim();
+  const before = body.slice(0, located.index).trim();
+  const after = body.slice(located.index + located.raw.length).trim();
+  const descPart = [before, after].filter(Boolean).join(" ");
   if (!descPart) return null;
 
-  const categoryHaystack = `${descPart} ${amountRaw}`.toLowerCase();
+  const categoryHaystack = `${descPart} ${located.raw}`.toLowerCase();
   const incomeHint = matchCategory(categoryHaystack, INCOME_KEYWORDS, "");
-  const expenseHint = matchCategory(categoryHaystack, EXPENSE_KEYWORDS, "Other");
+  const expenseHint = resolveExpenseCategory(categoryHaystack);
 
   let type: "INCOME" | "EXPENSE" =
     forcedType ?? (incomeHint ? "INCOME" : "EXPENSE");
@@ -208,7 +287,7 @@ export function parseMoneyMessage(text: string): ParsedMoneyIntent | null {
 
   if (forcedType === "INCOME" && !incomeHint) categoryHint = "Other Income";
   if (forcedType === "EXPENSE" && expenseHint === "Other") {
-    categoryHint = matchCategory(descPart, EXPENSE_KEYWORDS, "Other");
+    categoryHint = resolveExpenseCategory(descPart);
   }
 
   return {

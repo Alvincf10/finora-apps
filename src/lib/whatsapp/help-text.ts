@@ -7,41 +7,42 @@ export function getViraHelpText(): string {
 
   return `Vira · cara catat uang
 ${
-  p
-    ? `Satu nomor dengan OpenClaw: selalu awali dengan "${p} " supaya Finora yang jawab.\n`
-    : ""
-}
+    p
+      ? `Awali dengan "${p} " supaya Finora yang jawab (bukan OpenClaw).\n`
+      : ""
+  }
 Format: ${pre}deskripsi + jumlah
+Jumlah boleh di tengah: ${pre}belanja 115rb beli baju
+Jumlah: 50rb · 35k · 25.000 · 1.5jt · 10 juta
 
-Expense:
-• ${pre}makan 50rb
-• ${pre}kopi 35k
-• ${pre}gojek 25.000
-• ${pre}isi bensin 200rb
-• ${pre}bayar parkir 5rb
-• ${pre}isi flazz 100rb
-• ${pre}belanja 150rb
-• ${pre}pengeluaran beli recheese 50rb cc
-• ${pre}pengeluaran beli recheese 50rb debit
+Kategori (kata kunci di deskripsi):
+• Food — ${pre}makan 50rb · kopi · gofood
+• Groceries — ${pre}belanja bulanan 200rb · indomaret
+• Relationship — ${pre}makan malem sm pacar 300rb · kencan
+• Housing — ${pre}bayar listrik 350rb · wifi · kos
+• Lifestyle — ${pre}beli baju 150rb · parfum · celana
+• Flazz — ${pre}topup flazz 100rb
+• Transport — ${pre}gojek 25rb · grab · parkir
+• Fuel — ${pre}isi bensin 200rb · bbm · pertamax
+• Bills — ${pre}pulsa 50rb · bpjs · pajak
+• Debt — ${pre}cicilan 1jt · hutang
+• Savings — ${pre}tabungan 500rb · investasi
+• Other — deskripsi tanpa kata kunci di atas
 
 Income:
 • ${pre}gaji 10jt
-• ${pre}freelance 2 juta
+• ${pre}freelance 2jt
 
 Rekening (opsional di akhir):
 • cc / credit → kartu kredit
 • debit / db → rekening bank
-Tanpa suffix → pakai rekening default Vira.
+Tanpa suffix → rekening default Vira
 
-Cek saldo / total (tanpa AI):
+Cek:
 • ${pre}saldo
-• ${pre}total pengeluaran
-• ${pre}pengeluaran hari ini
-• ${pre}total pemasukan
-• ${pre}ringkasan
+• ${pre}total pengeluaran · pengeluaran hari ini
+• ${pre}total pemasukan · ringkasan
 • ${pre}report minggu
-
-Jumlah: 50rb / 35k / 25.000 / 1.5jt / 10 juta
 
 Ketik ${pre}help untuk pesan ini.`;
 }

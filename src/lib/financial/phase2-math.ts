@@ -310,9 +310,18 @@ export function runWhatIf(
 export function defaultClassification(name: string): ExpenseClass {
   const n = name.toLowerCase();
   if (
-    ["housing", "rent", "electricity", "internet", "groceries", "food", "bills"].some(
-      (k) => n.includes(k)
-    )
+    [
+      "housing",
+      "rent",
+      "electricity",
+      "internet",
+      "groceries",
+      "food",
+      "bills",
+      "transport",
+      "flazz",
+      "fuel",
+    ].some((k) => n.includes(k))
   ) {
     return "ESSENTIAL";
   }
