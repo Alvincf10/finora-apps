@@ -60,10 +60,12 @@ type WeeklyReview = {
     categoryName: string;
     message: string;
     dailyCap: number | null;
+    suggestedWeeklyAmount: number | null;
     priority: "HIGH" | "MEDIUM" | "LOW";
   }>;
   currency: Currency;
   daysLeftInMonth: number;
+  budgetsApplied?: number;
 };
 
 function signalLabel(
@@ -84,6 +86,7 @@ export default function WeeklyReviewPage() {
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<WeeklyReview | null>(null);
   const [sending, setSending] = useState(false);
+  const [applyingBudgets, setApplyingBudgets] = useState(false);
   const [goldOpen, setGoldOpen] = useState(false);
 
   useEffect(() => {
@@ -93,9 +96,18 @@ export default function WeeklyReviewPage() {
   useEffect(() => {
     setData(null);
     api<WeeklyReview>(`/api/reports/weekly?offset=${offset}`)
-      .then(setData)
+      .then((review) => {
+        setData(review);
+        if ((review.budgetsApplied ?? 0) > 0) {
+          toast.success(
+            t("reports.weeklyBudgetsApplied", {
+              count: String(review.budgetsApplied),
+            })
+          );
+        }
+      })
       .catch((e) => toast.error(e.message));
-  }, [offset]);
+  }, [offset, t]);
 
   async function sendToWhatsApp() {
     setSending(true);
@@ -111,6 +123,30 @@ export default function WeeklyReviewPage() {
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  async function applyBudgetsFromWeekly() {
+    setApplyingBudgets(true);
+    try {
+      const result = await api<{ applied: unknown[] }>(
+        "/api/budgets/sync-from-weekly",
+        {
+          method: "POST",
+          body: JSON.stringify({ offset }),
+        }
+      );
+      toast.success(
+        t("reports.weeklyBudgetsApplied", {
+          count: String(result.applied.length),
+        })
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t("common.failed")
+      );
+    } finally {
+      setApplyingBudgets(false);
     }
   }
 
@@ -161,6 +197,16 @@ export default function WeeklyReviewPage() {
               <ArrowRight className="size-4" />
             </Button>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={applyingBudgets || !data}
+            onClick={() => void applyBudgetsFromWeekly()}
+          >
+            {applyingBudgets
+              ? t("reports.weeklyApplyingBudgets")
+              : t("reports.weeklyApplyBudgets")}
+          </Button>
           <Button
             type="button"
             variant="outline"

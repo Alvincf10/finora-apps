@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { formatMoney, toMinorUnits } from "@/lib/money";
+import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { CurrencyAmountInput } from "@/components/currency-amount-input";
@@ -35,14 +35,28 @@ type BudgetRow = {
   utilizationPercentage: number;
   currency: Currency;
   overBudget: boolean;
+  warnBudget: boolean;
 };
 
 type Category = { _id: string; name: string; type: string };
 
 type BudgetResponse = {
   items: BudgetRow[];
-  period: { year: number; month: number };
-  cycleLabel: string;
+  weekKey: string;
+  label: string;
+  offset: number;
+};
+
+type SyncResponse = {
+  applied: Array<{
+    categoryId: string;
+    categoryName: string;
+    weeklyAmount: number;
+    currency: Currency;
+  }>;
+  weekKey: string;
+  weekLabel: string;
+  targetOffset: number;
 };
 
 export default function BudgetPage() {
@@ -50,41 +64,66 @@ export default function BudgetPage() {
   const [rows, setRows] = useState<BudgetRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState<number | null>(null);
-  const [year, setYear] = useState<number | null>(null);
-  const [cycleLabel, setCycleLabel] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BudgetRow | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [weekLabel, setWeekLabel] = useState<string | null>(null);
+  const [weekKey, setWeekKey] = useState<string | null>(null);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
+  const [syncing, setSyncing] = useState(false);
 
-  async function load() {
-    const qs =
-      year != null && month != null ? `?year=${year}&month=${month}` : "";
+  async function load(options?: { autoSyncMissing?: boolean }) {
     const [budget, cats] = await Promise.all([
-      api<BudgetResponse>(`/api/budgets${qs}`),
+      api<BudgetResponse>(`/api/weekly-budgets?offset=${offset}`),
       api<Category[]>("/api/categories"),
     ]);
-    setRows(budget.items);
-    setCycleLabel(budget.cycleLabel);
-    if (year == null && budget.period) {
-      setYear(budget.period.year);
-      setMonth(budget.period.month);
-    }
+    setWeekLabel(budget.label);
+    setWeekKey(budget.weekKey);
     setCategories(cats.filter((c) => c.type === "EXPENSE"));
+
+    // Current week empty → fill from last week's "minggu depan" advice.
+    if (options?.autoSyncMissing && offset === 0 && budget.items.length === 0) {
+      try {
+        const synced = await api<SyncResponse>("/api/budgets/sync-from-weekly", {
+          method: "POST",
+          body: JSON.stringify({ offset: -1, onlyMissing: true }),
+        });
+        if (synced.applied.length > 0 && synced.targetOffset === 0) {
+          toast.success(
+            t("budget.syncedFromWeekly", {
+              count: String(synced.applied.length),
+            })
+          );
+          const refreshed = await api<BudgetResponse>(
+            `/api/weekly-budgets?offset=0`
+          );
+          setRows(refreshed.items);
+          setWeekLabel(refreshed.label);
+          setWeekKey(refreshed.weekKey);
+          return;
+        }
+      } catch {
+        // Keep empty state if sync fails; user can retry manually.
+      }
+    }
+
+    setRows(budget.items);
   }
 
   useEffect(() => {
-    load().catch((e) => toast.error(e.message));
-  }, [month, year]);
+    load({ autoSyncMissing: true }).catch((e) => toast.error(e.message));
+  }, [offset]);
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     const currency = String(form.get("currency")) as Currency;
     try {
-      await api("/api/budgets", {
+      await api("/api/weekly-budgets", {
         method: "POST",
         body: JSON.stringify({
-          month,
-          year,
+          offset,
+          weekKey,
           categoryId: form.get("categoryId"),
           amount: toMinorUnits(Number(form.get("amount")), currency),
           currency,
@@ -98,6 +137,65 @@ export default function BudgetPage() {
     }
   }
 
+  async function onEdit(e: React.FormEvent<HTMLFormElement>, row: BudgetRow) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const currency = String(form.get("currency") ?? row.currency) as Currency;
+    try {
+      await api(`/api/weekly-budgets/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          categoryId: String(form.get("categoryId") || row.categoryId),
+          amount: toMinorUnits(Number(form.get("amount")), currency),
+          currency,
+        }),
+      });
+      toast.success(t("budget.updated"));
+      setEditOpen(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    }
+  }
+
+  async function onDelete() {
+    if (!deleteTarget) return;
+    try {
+      await api(`/api/weekly-budgets/${deleteTarget.id}`, { method: "DELETE" });
+      toast.success(t("budget.deleted"));
+      setDeleteTarget(null);
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    }
+  }
+
+  async function syncFromWeekly() {
+    setSyncing(true);
+    try {
+      // Current report advice → next week caps (or force refresh viewed week via -1 when on current)
+      const adviceOffset = offset === 0 ? -1 : offset - 1;
+      const result = await api<SyncResponse>("/api/budgets/sync-from-weekly", {
+        method: "POST",
+        body: JSON.stringify({ offset: adviceOffset }),
+      });
+      toast.success(
+        t("budget.syncedFromWeekly", {
+          count: String(result.applied.length),
+        })
+      );
+      if (result.targetOffset !== offset) {
+        setOffset(result.targetOffset);
+      } else {
+        await load();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -106,27 +204,48 @@ export default function BudgetPage() {
             {t("budget.title")}
           </h1>
           <p className="text-muted-foreground">{t("budget.subtitle")}</p>
-          {cycleLabel ? (
+          {weekLabel ? (
             <p className="mt-1 text-sm font-medium">
-              {t("budget.cycleLabel", { label: cycleLabel })}
+              {t("budget.weekLabel", { label: weekLabel })}
             </p>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            className="w-24"
-            value={month ?? ""}
-            min={1}
-            max={12}
-            onChange={(e) => setMonth(Number(e.target.value))}
-          />
-          <Input
-            type="number"
-            className="w-28"
-            value={year ?? ""}
-            onChange={(e) => setYear(Number(e.target.value))}
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-2xl bg-card/80 p-1.5 ring-1 ring-border/70">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-10"
+              disabled={offset <= -52}
+              onClick={() => setOffset((o) => o - 1)}
+              aria-label={t("budget.prevWeek")}
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <span className="min-w-[9rem] text-center font-mono text-sm">
+              {weekLabel ?? "…"}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-10"
+              disabled={offset >= 1}
+              onClick={() => setOffset((o) => Math.min(1, o + 1))}
+              aria-label={t("budget.nextWeek")}
+            >
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={syncing}
+            onClick={() => void syncFromWeekly()}
+          >
+            {syncing ? t("budget.syncing") : t("budget.syncFromWeekly")}
+          </Button>
           <Dialog
             open={open}
             onOpenChange={(v) => {
@@ -140,10 +259,7 @@ export default function BudgetPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {t("budget.forPeriod", {
-                    month: month ?? "—",
-                    year: year ?? "—",
-                  })}
+                  {t("budget.forWeek", { label: weekLabel ?? "—" })}
                 </DialogTitle>
               </DialogHeader>
               <form className="space-y-3" onSubmit={onCreate}>
@@ -242,12 +358,125 @@ export default function BudgetPage() {
                   <p className="text-sm text-destructive">
                     {t("budget.overBudget")}
                   </p>
+                ) : row.warnBudget ? (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    {t("budget.warnBudget")}
+                  </p>
                 ) : null}
+                <div className="flex gap-2">
+                  <Dialog
+                    open={editOpen === row.id}
+                    onOpenChange={(v) => setEditOpen(v ? row.id : null)}
+                  >
+                    <DialogTrigger
+                      render={<Button variant="outline" className="flex-1" />}
+                    >
+                      {t("common.edit")}
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>
+                          {t("budget.editTitle", { name: row.categoryName })}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <form
+                        className="space-y-3"
+                        onSubmit={(e) => onEdit(e, row)}
+                      >
+                        <div className="space-y-2">
+                          <Label>{t("common.category")}</Label>
+                          <select
+                            name="categoryId"
+                            className="flex h-9 w-full rounded-md border px-3 text-sm"
+                            defaultValue={row.categoryId}
+                            required
+                          >
+                            {categories.map((c) => (
+                              <option key={c._id} value={c._id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label>{t("common.amount")}</Label>
+                            <CurrencyAmountInput
+                              name="amount"
+                              currency={row.currency}
+                              defaultValue={fromMinorUnits(
+                                row.budgetAmount,
+                                row.currency
+                              )}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("common.currency")}</Label>
+                            <select
+                              name="currency"
+                              className="flex h-9 w-full rounded-md border px-3 text-sm"
+                              defaultValue={row.currency}
+                            >
+                              <option value="IDR">IDR</option>
+                              <option value="EUR">EUR</option>
+                            </select>
+                          </div>
+                        </div>
+                        <Button type="submit" className="w-full">
+                          {t("common.save")}
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 text-destructive"
+                    onClick={() => setDeleteTarget(row)}
+                  >
+                    {t("common.delete")}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))
         )}
       </div>
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("budget.deleteTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("budget.deleteConfirm", {
+              name: deleteTarget?.categoryName ?? "",
+            })}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void onDelete()}
+            >
+              {t("common.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

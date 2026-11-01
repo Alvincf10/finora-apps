@@ -111,6 +111,17 @@ export const createBudgetSchema = z.object({
   currency: currencySchema,
 });
 
+export const createWeeklyBudgetSchema = z.object({
+  weekKey: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  offset: z.number().int().min(-52).max(1).optional(),
+  categoryId: z.string().min(1),
+  amount: z.number().int().positive(),
+  currency: currencySchema,
+});
+
 export const debtKindSchema = z.enum(["CONSUMER", "MORTGAGE", "OTHER"]);
 
 export const debtObligationTypeSchema = z.enum([

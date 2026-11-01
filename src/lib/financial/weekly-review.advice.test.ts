@@ -9,7 +9,7 @@ import {
 
 describe("buildWeeklyCutAdvice", () => {
   it("suggests a concrete next-week target from the WoW excess", () => {
-    const message = buildWeeklyCutAdvice({
+    const { message, nextWeekTarget } = buildWeeklyCutAdvice({
       categoryName: "Food",
       weekAmount: 707_100,
       prevWeekAmount: 197_000,
@@ -26,10 +26,11 @@ describe("buildWeeklyCutAdvice", () => {
     expect(message).toContain("kopi nako bogor");
     expect(message).toContain("makan malem kimatsu");
     expect(message).not.toContain("potong hepi dulu sebelum fixed");
+    expect(nextWeekTarget).toBe(197_000);
   });
 
   it("ignores fixed-cost lines when naming cut focus", () => {
-    const message = buildWeeklyCutAdvice({
+    const { message } = buildWeeklyCutAdvice({
       categoryName: "Shopping",
       weekAmount: 419_600,
       prevWeekAmount: 100_000,

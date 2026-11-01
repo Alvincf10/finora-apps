@@ -4,10 +4,12 @@ import {
   formatWeeklyReportWaText,
   getWeeklyReview,
 } from "@/lib/financial/weekly-review";
+import { applyWeeklyBudgetSuggestions } from "@/lib/financial/budget-from-weekly";
 import {
   formatFixedCostDueWaText,
   getUnpaidFixedCostsDueToday,
 } from "@/lib/financial/fixed-cost-reminders";
+import { formatMoney } from "@/lib/money";
 
 function digitsOnly(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
@@ -30,9 +32,34 @@ export async function enqueueWeeklyReport(
   options: { weekOffset?: number; kind?: "WEEKLY_REPORT" | "MANUAL" } = {}
 ) {
   const toPhone = await resolveOutboundPhone(userId);
+  const weekOffset = options.weekOffset ?? 0;
 
-  const review = await getWeeklyReview(userId, options.weekOffset ?? 0);
-  const body = formatWeeklyReportWaText(review);
+  // Auto-set next-week caps from advice (amount as-is, 1 week only).
+  let syncNote = "";
+  try {
+    const synced = await applyWeeklyBudgetSuggestions(userId, weekOffset);
+    if (synced.applied.length > 0) {
+      const lines = synced.applied
+        .slice(0, 4)
+        .map(
+          (a) =>
+            `• ${a.categoryName}: ${formatMoney(a.weeklyAmount, a.currency)}`
+        );
+      syncNote = [
+        "",
+        `Budget minggu depan (${synced.weekLabel}):`,
+        ...lines,
+      ].join("\n");
+    }
+  } catch {
+    // Budget sync is best-effort; still send the weekly report.
+  }
+
+  const review = await getWeeklyReview(userId, weekOffset);
+  let body = formatWeeklyReportWaText(review) + syncNote;
+  if (body.length > 1500) {
+    body = body.slice(0, 1490) + "…";
+  }
 
   const doc = await WhatsAppOutbound.create({
     userId,
@@ -48,6 +75,56 @@ export async function enqueueWeeklyReport(
     body,
     status: doc.status as string,
   };
+}
+
+/**
+ * Queue a once-per-week budget WhatsApp alert (80% warning or overflow).
+ * Returns null when already queued/sent for the same dedupeKey.
+ */
+export async function enqueueBudgetAlert(
+  userId: string,
+  input: {
+    dedupeKey: string;
+    kind: "BUDGET_OVERFLOW" | "BUDGET_WARNING";
+    body: string;
+  }
+) {
+  const toPhone = await resolveOutboundPhone(userId);
+
+  const existing = await WhatsAppOutbound.findOne({
+    userId,
+    dedupeKey: input.dedupeKey,
+    status: { $in: ["pending", "sent"] },
+  }).lean();
+  if (existing) return null;
+
+  try {
+    const doc = await WhatsAppOutbound.create({
+      userId,
+      toPhone,
+      body: input.body,
+      kind: input.kind,
+      dedupeKey: input.dedupeKey,
+      status: "pending",
+    });
+    return {
+      id: String(doc._id),
+      toPhone,
+      body: input.body,
+      status: doc.status as string,
+    };
+  } catch (error) {
+    // Unique partial index race — treat as already queued.
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: number }).code === 11000
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**

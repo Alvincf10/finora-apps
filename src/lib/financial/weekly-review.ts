@@ -57,6 +57,11 @@ export type WeeklyAdvice = {
   categoryName: string;
   message: string;
   dailyCap: number | null;
+  /**
+   * Weekly spending target implied by this advice.
+   * Used to auto-create pay-period budgets. Null = pacing tip only (no new cap).
+   */
+  suggestedWeeklyAmount: number | null;
   priority: "HIGH" | "MEDIUM" | "LOW";
 };
 
@@ -205,7 +210,7 @@ export function buildWeeklyCutAdvice(input: {
   prevWeekAmount: number;
   topItems: WeeklyTopItem[];
   currency: Currency;
-}): string {
+}): { message: string; nextWeekTarget: number } {
   const { categoryName, weekAmount, prevWeekAmount, currency } = input;
   const discretionaryItems = input.topItems.filter(
     (i) => !isFixedCostItemLabel(i.label)
@@ -218,7 +223,10 @@ export function buildWeeklyCutAdvice(input: {
   const nextWeekTarget = Math.max(0, weekAmount - suggestedCut);
 
   if (suggestedCut <= 0) {
-    return `${categoryName}: jaga di sekitar ${formatMoney(weekAmount, currency)} minggu depan.`;
+    return {
+      message: `${categoryName}: jaga di sekitar ${formatMoney(weekAmount, currency)} minggu depan.`,
+      nextWeekTarget: weekAmount,
+    };
   }
 
   const focus = discretionaryItems
@@ -227,7 +235,10 @@ export function buildWeeklyCutAdvice(input: {
     .join(", ");
   const focusPart = focus ? ` Utamakan tahan: ${focus}.` : "";
 
-  return `${categoryName}: target minggu depan max ~${formatMoney(nextWeekTarget, currency)} (kurang ~${formatMoney(suggestedCut, currency)}).${focusPart}`;
+  return {
+    message: `${categoryName}: target minggu depan max ~${formatMoney(nextWeekTarget, currency)} (kurang ~${formatMoney(suggestedCut, currency)}).${focusPart}`,
+    nextWeekTarget,
+  };
 }
 
 function roundEnvelopeAmount(amount: number): number {
@@ -482,12 +493,30 @@ export async function getWeeklyReview(
     return name;
   };
 
+  // Resolve envelope categories even when there was no spend this week.
+  const envelopeCats = await Category.find({
+    userId,
+    type: "EXPENSE",
+    isActive: { $ne: false },
+    name: {
+      $in: WEEKLY_ENVELOPE_NAMES.map((n) => new RegExp(`^${n}$`, "i")),
+    },
+  })
+    .select("_id name")
+    .lean();
+  const envelopeIdByName = new Map(
+    envelopeCats.map((c) => [String(c.name).toLowerCase(), c._id.toString()])
+  );
+
   // Always lead with Food / Entertainment / Relationship weekly envelopes.
   for (const envelopeName of WEEKLY_ENVELOPE_NAMES) {
     const row = rows.find(
       (r) => r.categoryName.toLowerCase() === envelopeName.toLowerCase()
     );
-    const categoryId = row?.categoryId ?? null;
+    const categoryId =
+      row?.categoryId ??
+      envelopeIdByName.get(envelopeName.toLowerCase()) ??
+      null;
     const weekAmount = row?.weekAmount ?? 0;
     const prevAmount = row?.prevWeekAmount ?? 0;
     const prev2Amount = categoryId ? (prev2ByCat.get(categoryId) ?? 0) : 0;
@@ -503,6 +532,7 @@ export async function getWeeklyReview(
       categoryName: envelopeName,
       message: envelope.message,
       dailyCap: Math.round(envelope.amount / 7),
+      suggestedWeeklyAmount: envelope.amount,
       priority: "HIGH",
     });
   }
@@ -534,6 +564,8 @@ export async function getWeeklyReview(
           ? `Tahan ${row.categoryName}: max ${formatMoney(dailyCap, currency)}/hari sisa bulan (sisa budget ${formatMoney(remaining, currency)}).`
           : `${row.categoryName} sudah habis budget bulan ini — tahan belanja hepi di kategori ini minggu depan.`,
       dailyCap: dailyCap > 0 ? dailyCap : 0,
+      // Already has a period budget — pacing tip only, do not invent a new cap.
+      suggestedWeeklyAmount: null,
       priority: row.classification === "DISCRETIONARY" ? "HIGH" : "MEDIUM",
     });
   }
@@ -552,17 +584,19 @@ export async function getWeeklyReview(
     });
   for (const row of wowOnly.slice(0, 2)) {
     if (advice.some((a) => a.categoryId === row.categoryId)) continue;
+    const cut = buildWeeklyCutAdvice({
+      categoryName: row.categoryName,
+      weekAmount: row.weekAmount,
+      prevWeekAmount: row.prevWeekAmount,
+      topItems: row.topItems,
+      currency,
+    });
     advice.push({
       categoryId: row.categoryId,
       categoryName: row.categoryName,
-      message: buildWeeklyCutAdvice({
-        categoryName: row.categoryName,
-        weekAmount: row.weekAmount,
-        prevWeekAmount: row.prevWeekAmount,
-        topItems: row.topItems,
-        currency,
-      }),
-      dailyCap: null,
+      message: cut.message,
+      dailyCap: Math.round(cut.nextWeekTarget / 7),
+      suggestedWeeklyAmount: cut.nextWeekTarget,
       priority: row.classification === "DISCRETIONARY" ? "HIGH" : "MEDIUM",
     });
   }

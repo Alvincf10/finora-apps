@@ -12,9 +12,17 @@ const WhatsAppOutboundSchema = new Schema(
     body: { type: String, required: true },
     kind: {
       type: String,
-      enum: ["WEEKLY_REPORT", "FIXED_COST_DUE", "MANUAL"],
+      enum: [
+        "WEEKLY_REPORT",
+        "FIXED_COST_DUE",
+        "BUDGET_OVERFLOW",
+        "BUDGET_WARNING",
+        "MANUAL",
+      ],
       default: "MANUAL",
     },
+    /** Stable identity for once-per-week alerts (e.g. budget-warn:2026-10-27:catId). */
+    dedupeKey: { type: String, default: null, index: true },
     status: {
       type: String,
       enum: ["pending", "sent", "failed"],
@@ -28,6 +36,16 @@ const WhatsAppOutboundSchema = new Schema(
 );
 
 WhatsAppOutboundSchema.index({ status: 1, createdAt: 1 });
+WhatsAppOutboundSchema.index(
+  { userId: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      dedupeKey: { $type: "string" },
+      status: { $in: ["pending", "sent"] },
+    },
+  }
+);
 
 export type WhatsAppOutboundDocument = InferSchemaType<
   typeof WhatsAppOutboundSchema
@@ -35,13 +53,15 @@ export type WhatsAppOutboundDocument = InferSchemaType<
   _id: mongoose.Types.ObjectId;
 };
 
-// Refresh compiled model when FIXED_COST_DUE was added to kind enum (HMR).
+// Refresh compiled model when kind enum / dedupeKey changes (HMR).
 const existingKind = models.WhatsAppOutbound?.schema.path("kind") as
   | { options?: { enum?: string[] } }
   | undefined;
+const existingDedupe = models.WhatsAppOutbound?.schema.path("dedupeKey");
 if (
   models.WhatsAppOutbound &&
-  !(existingKind?.options?.enum ?? []).includes("FIXED_COST_DUE")
+  (!(existingKind?.options?.enum ?? []).includes("BUDGET_WARNING") ||
+    !existingDedupe)
 ) {
   delete models.WhatsAppOutbound;
 }

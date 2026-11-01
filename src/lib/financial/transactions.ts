@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { Transaction } from "@/models/Transaction";
 import { getAccountOrThrow, recalculateAccountBalance } from "@/lib/financial/balances";
+import { maybeNotifyBudgetOverflow } from "@/lib/financial/budget-overflow-wa";
 import { sessionOption, withTransaction } from "@/lib/with-transaction";
 import type { createTransactionSchema } from "@/lib/validations";
 import type { z } from "zod";
@@ -53,6 +54,12 @@ export async function createTransaction(userId: string, input: CreateInput) {
   });
 
   await recalculateAccountBalance(input.accountId);
+  if (input.type === "EXPENSE") {
+    await maybeNotifyBudgetOverflow(
+      userId,
+      input.categoryId ? String(input.categoryId) : null
+    );
+  }
   return tx;
 }
 
@@ -210,6 +217,12 @@ export async function updateTransaction(
   await recalculateAccountBalance(nextAccountId);
   if (nextAccountId !== previousAccountId) {
     await recalculateAccountBalance(previousAccountId);
+  }
+  if (tx.type === "EXPENSE") {
+    await maybeNotifyBudgetOverflow(
+      userId,
+      tx.categoryId ? String(tx.categoryId) : null
+    );
   }
   return tx;
 }
