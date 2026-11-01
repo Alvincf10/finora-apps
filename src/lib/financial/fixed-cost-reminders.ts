@@ -18,7 +18,7 @@ export type FixedCostDueItem = {
 };
 
 const FOOTER =
-  "Catat bayar di Fixed costs supaya cycle tetap rapi.";
+  "Catat bayar di Fixed costs supaya periode tetap rapi.";
 
 /**
  * Active fixed costs whose due day (clamped to month length) is today in

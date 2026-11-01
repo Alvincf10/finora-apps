@@ -7,7 +7,18 @@ import {
   changePercent,
   formatChangePct,
 } from "@/lib/financial/change-pct";
+import {
+  isCuttableCategory,
+  meanPositive,
+} from "@/lib/financial/phase2-math";
 import type { Currency } from "@/types";
+
+/** Lifestyle envelopes we always surface in next-week advice. */
+export const WEEKLY_ENVELOPE_NAMES = [
+  "Food",
+  "Entertainment",
+  "Relationship",
+] as const;
 
 export { changePercent, formatChangePct } from "@/lib/financial/change-pct";
 
@@ -118,26 +129,13 @@ export function getWeekBounds(weekOffset: number, now = new Date()) {
   return { start, end, label, year: y, month: m, mondayDay: d };
 }
 
-function isCuttable(name: string, classification: string, nature: string) {
-  const n = name.toLowerCase();
-  if (nature === "FIXED") return false;
-  if (classification === "IMPORTANT") return false;
-  if (
-    ["debt", "utang", "savings", "tabungan", "rent", "housing", "cicilan"].some(
-      (k) => n.includes(k)
-    )
-  ) {
-    return false;
-  }
-  return classification === "DISCRETIONARY" || classification === "UNKNOWN";
-}
-
 function materialFloor(currency: Currency): number {
   return currency === "IDR" ? 50_000 : 500;
 }
 
 type WeekExpenseAgg = {
   byCategory: Map<string, number>;
+  fixedByCategory: Map<string, number>;
   topByCategory: Map<string, WeeklyTopItem[]>;
 };
 
@@ -153,6 +151,10 @@ function txLabel(tx: {
   return desc || merchant || "Tanpa deskripsi";
 }
 
+function isFixedCostItemLabel(label: string): boolean {
+  return label.toLowerCase().startsWith("fixed cost:");
+}
+
 async function aggregateWeekExpenses(
   userId: string,
   start: Date,
@@ -165,11 +167,18 @@ async function aggregateWeekExpenses(
   }).lean();
 
   const byCategory = new Map<string, number>();
+  const fixedByCategory = new Map<string, number>();
   const itemsByCategory = new Map<string, WeeklyTopItem[]>();
 
   for (const tx of txs) {
     const key = tx.categoryId?.toString() ?? "uncategorized";
     byCategory.set(key, (byCategory.get(key) ?? 0) + tx.amount);
+    if (tx.fixedCostId) {
+      fixedByCategory.set(
+        key,
+        (fixedByCategory.get(key) ?? 0) + tx.amount
+      );
+    }
     const list = itemsByCategory.get(key) ?? [];
     list.push({ label: txLabel(tx), amount: tx.amount });
     itemsByCategory.set(key, list);
@@ -183,7 +192,123 @@ async function aggregateWeekExpenses(
     );
   }
 
-  return { byCategory, topByCategory };
+  return { byCategory, fixedByCategory, topByCategory };
+}
+
+/**
+ * Concrete next-week cut suggestion for a discretionary category spike.
+ * Pure — same inputs → same message.
+ */
+export function buildWeeklyCutAdvice(input: {
+  categoryName: string;
+  weekAmount: number;
+  prevWeekAmount: number;
+  topItems: WeeklyTopItem[];
+  currency: Currency;
+}): string {
+  const { categoryName, weekAmount, prevWeekAmount, currency } = input;
+  const discretionaryItems = input.topItems.filter(
+    (i) => !isFixedCostItemLabel(i.label)
+  );
+  const cutBase =
+    prevWeekAmount > 0
+      ? Math.max(0, weekAmount - prevWeekAmount)
+      : Math.round(weekAmount * 0.3);
+  const suggestedCut = Math.min(weekAmount, cutBase);
+  const nextWeekTarget = Math.max(0, weekAmount - suggestedCut);
+
+  if (suggestedCut <= 0) {
+    return `${categoryName}: jaga di sekitar ${formatMoney(weekAmount, currency)} minggu depan.`;
+  }
+
+  const focus = discretionaryItems
+    .slice(0, 2)
+    .map((i) => i.label)
+    .join(", ");
+  const focusPart = focus ? ` Utamakan tahan: ${focus}.` : "";
+
+  return `${categoryName}: target minggu depan max ~${formatMoney(nextWeekTarget, currency)} (kurang ~${formatMoney(suggestedCut, currency)}).${focusPart}`;
+}
+
+function roundEnvelopeAmount(amount: number): number {
+  if (amount <= 0) return 0;
+  if (amount >= 500_000) return Math.round(amount / 50_000) * 50_000;
+  return Math.round(amount / 25_000) * 25_000;
+}
+
+function envelopeBounds(categoryName: string): { floor: number; cap: number } {
+  const n = categoryName.toLowerCase();
+  if (n.includes("food") || n.includes("makan")) {
+    return { floor: 250_000, cap: 450_000 };
+  }
+  if (n.includes("entertainment") || n.includes("hiburan")) {
+    return { floor: 100_000, cap: 250_000 };
+  }
+  if (n.includes("relationship") || n.includes("relasi")) {
+    return { floor: 75_000, cap: 200_000 };
+  }
+  return { floor: 100_000, cap: 400_000 };
+}
+
+/**
+ * Suggest a weekly spending envelope from recent week totals (newest last).
+ */
+export function suggestWeeklyEnvelopeBudget(input: {
+  categoryName: string;
+  weekAmounts: number[];
+}): number {
+  const { categoryName, weekAmounts } = input;
+  const { floor, cap } = envelopeBounds(categoryName);
+  const latest = weekAmounts[weekAmounts.length - 1] ?? 0;
+  const prior = weekAmounts.slice(0, -1).filter((v) => v > 0);
+  const positive = weekAmounts.filter((v) => v > 0);
+
+  if (positive.length === 0) {
+    return roundEnvelopeAmount((floor + cap) / 2);
+  }
+
+  const baseline =
+    prior.length > 0 ? meanPositive(prior) : meanPositive(positive);
+
+  let target: number;
+  if (latest > baseline * 1.15 && prior.length > 0) {
+    const lean = Math.min(...prior);
+    target = (baseline + lean) / 2;
+  } else if (latest > 0 && latest < baseline * 0.85) {
+    // Already lean this week — keep near current, don't rebound hard.
+    target = Math.min(cap, Math.max(latest, floor));
+  } else if (latest > 0) {
+    target = Math.min(latest, baseline) * 0.95;
+  } else {
+    target = baseline * 0.9;
+  }
+
+  target = Math.min(cap, Math.max(floor, target));
+  return roundEnvelopeAmount(target);
+}
+
+export function buildWeeklyEnvelopeAdvice(input: {
+  categoryName: string;
+  displayName: string;
+  weekAmount: number;
+  weekAmounts: number[];
+  currency: Currency;
+}): { amount: number; message: string } {
+  const amount = suggestWeeklyEnvelopeBudget({
+    categoryName: input.categoryName,
+    weekAmounts: input.weekAmounts,
+  });
+  const daily = Math.round(amount / 7);
+  const vsThis =
+    input.weekAmount > 0 ? input.weekAmount - amount : 0;
+  const trimPart =
+    vsThis > 0
+      ? ` (minggu ini ${formatMoney(input.weekAmount, input.currency)} → hemat ~${formatMoney(vsThis, input.currency)})`
+      : "";
+  return {
+    amount,
+    message: `${input.displayName}: budget minggu depan ${formatMoney(amount, input.currency)} (~${formatMoney(daily, input.currency)}/hari)${trimPart}.`,
+  };
 }
 
 async function sumExpensesByCategory(
@@ -208,13 +333,16 @@ export async function getWeeklyReview(
 ): Promise<WeeklyReview> {
   const week = getWeekBounds(weekOffset, now);
   const prev = getWeekBounds(weekOffset - 1, now);
+  const prev2 = getWeekBounds(weekOffset - 2, now);
 
-  const [weekAgg, prevByCat, accounts] = await Promise.all([
+  const [weekAgg, prevByCat, prev2ByCat, accounts] = await Promise.all([
     aggregateWeekExpenses(userId, week.start, week.end),
     sumExpensesByCategory(userId, prev.start, prev.end),
+    sumExpensesByCategory(userId, prev2.start, prev2.end),
     Account.find({ userId, isActive: true }).lean(),
   ]);
   const weekByCat = weekAgg.byCategory;
+  const weekFixedByCat = weekAgg.fixedByCategory;
   const weekTopItems = weekAgg.topByCategory;
 
   const currency = (accounts[0]?.currency as Currency) ?? "IDR";
@@ -306,6 +434,14 @@ export async function getWeeklyReview(
 
     if (weekAmount === 0 && signals.length === 0) continue;
 
+    const fixedShare =
+      weekAmount > 0
+        ? (weekFixedByCat.get(categoryId) ?? 0) / weekAmount
+        : 0;
+    const cuttable =
+      isCuttableCategory(meta.name, meta.classification, meta.nature) &&
+      fixedShare < 0.5;
+
     rows.push({
       categoryId,
       categoryName: meta.name,
@@ -318,7 +454,7 @@ export async function getWeeklyReview(
       signals,
       classification: meta.classification,
       nature: meta.nature,
-      cuttable: isCuttable(meta.name, meta.classification, meta.nature),
+      cuttable,
       topItems: weekTopItems.get(categoryId) ?? [],
     });
   }
@@ -337,17 +473,55 @@ export async function getWeeklyReview(
   const mtdByCat = await sumExpensesByCategory(userId, monthStart, monthEnd);
 
   const advice: WeeklyAdvice[] = [];
+
+  const displayNameFor = (name: string) => {
+    const n = name.toLowerCase();
+    if (n === "food") return "Makan (Food)";
+    if (n === "entertainment") return "Entertainment";
+    if (n === "relationship") return "Relationship";
+    return name;
+  };
+
+  // Always lead with Food / Entertainment / Relationship weekly envelopes.
+  for (const envelopeName of WEEKLY_ENVELOPE_NAMES) {
+    const row = rows.find(
+      (r) => r.categoryName.toLowerCase() === envelopeName.toLowerCase()
+    );
+    const categoryId = row?.categoryId ?? null;
+    const weekAmount = row?.weekAmount ?? 0;
+    const prevAmount = row?.prevWeekAmount ?? 0;
+    const prev2Amount = categoryId ? (prev2ByCat.get(categoryId) ?? 0) : 0;
+    const envelope = buildWeeklyEnvelopeAdvice({
+      categoryName: envelopeName,
+      displayName: displayNameFor(envelopeName),
+      weekAmount,
+      weekAmounts: [prev2Amount, prevAmount, weekAmount],
+      currency,
+    });
+    advice.push({
+      categoryId,
+      categoryName: envelopeName,
+      message: envelope.message,
+      dailyCap: Math.round(envelope.amount / 7),
+      priority: "HIGH",
+    });
+  }
+
+  const adviceRank = (row: WeeklyCategoryRow) => {
+    const disc = row.classification === "DISCRETIONARY" ? 0 : 1;
+    return disc;
+  };
   const cutTargets = overCategories
     .filter((r) => r.cuttable && r.signals.includes("PACE_OVER"))
     .sort((a, b) => {
-      const aDisc = a.classification === "DISCRETIONARY" ? 0 : 1;
-      const bDisc = b.classification === "DISCRETIONARY" ? 0 : 1;
-      if (aDisc !== bDisc) return aDisc - bDisc;
+      const p = adviceRank(a) - adviceRank(b);
+      if (p !== 0) return p;
       return b.weekAmount - a.weekAmount;
     });
 
-  for (const row of cutTargets.slice(0, 4)) {
+  for (const row of cutTargets.slice(0, 3)) {
     if (row.budgetAmount == null) continue;
+    if (advice.some((a) => a.categoryId === row.categoryId)) continue;
     const mtd = mtdByCat.get(row.categoryId) ?? 0;
     const remaining = Math.max(0, row.budgetAmount - mtd);
     const days = Math.max(1, daysLeftInMonth || 7);
@@ -364,46 +538,33 @@ export async function getWeeklyReview(
     });
   }
 
-  const wowOnly = overCategories.filter(
-    (r) =>
-      r.cuttable &&
-      r.signals.includes("WOW") &&
-      !r.signals.includes("PACE_OVER")
-  );
+  const wowOnly = overCategories
+    .filter(
+      (r) =>
+        r.cuttable &&
+        r.signals.includes("WOW") &&
+        !r.signals.includes("PACE_OVER")
+    )
+    .sort((a, b) => {
+      const p = adviceRank(a) - adviceRank(b);
+      if (p !== 0) return p;
+      return b.weekAmount - a.weekAmount;
+    });
   for (const row of wowOnly.slice(0, 2)) {
     if (advice.some((a) => a.categoryId === row.categoryId)) continue;
     advice.push({
       categoryId: row.categoryId,
       categoryName: row.categoryName,
-      message:
-        row.wowChangePercent == null
-          ? `${row.categoryName} baru muncul minggu ini — pantau, potong hepi dulu sebelum fixed/utang.`
-          : `${row.categoryName} naik ${formatChangePct(row.wowChangePercent)} vs minggu lalu — pantau, potong hepi dulu sebelum fixed/utang.`,
+      message: buildWeeklyCutAdvice({
+        categoryName: row.categoryName,
+        weekAmount: row.weekAmount,
+        prevWeekAmount: row.prevWeekAmount,
+        topItems: row.topItems,
+        currency,
+      }),
       dailyCap: null,
-      priority: "MEDIUM",
+      priority: row.classification === "DISCRETIONARY" ? "HIGH" : "MEDIUM",
     });
-  }
-
-  if (advice.length === 0) {
-    if (overCategories.length === 0) {
-      advice.push({
-        categoryId: null,
-        categoryName: "",
-        message:
-          "Pace budget oke minggu ini. Tetap urutan: utang → fixed → pegangan → hepi → goals.",
-        dailyCap: null,
-        priority: "LOW",
-      });
-    } else {
-      advice.push({
-        categoryId: null,
-        categoryName: "",
-        message:
-          "Ada kategori over, tapi itu fixed/utang/tabungan — jangan dipotong. Cek hepi (Lifestyle) minggu depan.",
-        dailyCap: null,
-        priority: "MEDIUM",
-      });
-    }
   }
 
   return {
@@ -421,7 +582,7 @@ export async function getWeeklyReview(
       topItems: r.topItems,
     })),
     overCategories,
-    advice: advice.slice(0, 5),
+    advice: advice.slice(0, 6),
     currency,
     daysLeftInMonth,
   };
@@ -441,14 +602,14 @@ export function formatWeeklyReportWaText(review: WeeklyReview): string {
   const overs = review.overCategories.slice(0, 5);
   if (overs.length === 0) {
     lines.push("");
-    lines.push("Tidak ada kategori over pace/WoW.");
+    lines.push("Tidak ada kategori over pace/naik.");
   } else {
     lines.push("");
     lines.push("Over / waspada:");
     for (const row of overs) {
       const tags = row.signals
         .map((s) =>
-          s === "PACE_OVER" ? "pace!" : s === "PACE_WARN" ? "pace~" : "wow"
+          s === "PACE_OVER" ? "pace!" : s === "PACE_WARN" ? "pace~" : "naik"
         )
         .join(",");
       lines.push(

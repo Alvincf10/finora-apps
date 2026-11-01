@@ -244,7 +244,7 @@ export async function POST(request: Request) {
         ...payment,
         envelopeKey: input.envelopeKey,
         message: payment.alreadyPaidThisCycle
-          ? "Fixed cost already paid this cycle"
+          ? "Fixed cost already paid this period"
           : "Fixed cost payment recorded",
       });
     }

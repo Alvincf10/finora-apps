@@ -28,6 +28,56 @@ export function mean(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
+/** Average of strictly positive values only (skips empty months / zero samples). */
+export function meanPositive(values: number[]): number {
+  const positive = values.filter((v) => v > 0);
+  if (positive.length === 0) return 0;
+  return mean(positive);
+}
+
+export function countPositive(values: number[]): number {
+  return values.filter((v) => v > 0).length;
+}
+
+/**
+ * Guard noisy "income changed vs average" insights when history is thin
+ * or diluted by empty months / first-time logging.
+ */
+export function shouldFlagIncomeChange(input: {
+  currentIncome: number;
+  averageIncome: number;
+  positiveHistoryMonths: number;
+  monthlySalary?: number;
+  thresholdPercent?: number;
+}): boolean {
+  const {
+    currentIncome,
+    averageIncome,
+    positiveHistoryMonths,
+    monthlySalary = 0,
+    thresholdPercent = 15,
+  } = input;
+  if (currentIncome <= 0 || averageIncome <= 0) return false;
+  if (positiveHistoryMonths < 2) return false;
+
+  // History still tiny vs configured salary → not a meaningful "usual" baseline.
+  if (monthlySalary > 0 && averageIncome < monthlySalary * 0.5) return false;
+
+  // Current close to salary while history is sparse → first real payday, not a spike.
+  if (
+    monthlySalary > 0 &&
+    positiveHistoryMonths < 3 &&
+    Math.abs(currentIncome - monthlySalary) / monthlySalary <= 0.2
+  ) {
+    return false;
+  }
+
+  const changePercent = Math.abs(
+    ((currentIncome - averageIncome) / averageIncome) * 100
+  );
+  return changePercent >= thresholdPercent;
+}
+
 export function stdDev(values: number[]): number {
   if (values.length < 2) return 0;
   const m = mean(values);
@@ -354,6 +404,149 @@ export function defaultNature(name: string, classification: ExpenseClass): "FIXE
   if (classification === "ESSENTIAL" && n.includes("housing")) return "FIXED";
   if (classification === "UNKNOWN") return "UNKNOWN";
   return "VARIABLE";
+}
+
+/** Categories safe to suggest cutting when cash flow is negative. */
+export function isCuttableCategory(
+  name: string,
+  classification: string,
+  nature: string
+): boolean {
+  const n = name.toLowerCase();
+  if (nature === "FIXED") return false;
+  if (classification === "IMPORTANT") return false;
+  if (classification === "ESSENTIAL") return false;
+  if (
+    ["debt", "utang", "savings", "tabungan", "rent", "housing", "cicilan"].some(
+      (k) => n.includes(k)
+    )
+  ) {
+    return false;
+  }
+  return classification === "DISCRETIONARY" || classification === "UNKNOWN";
+}
+
+export type CashflowCutCandidate = {
+  categoryId: string;
+  categoryName: string;
+  currentAmount: number;
+  classification: string;
+  nature: string;
+};
+
+export type CashflowCutSuggestion = {
+  categoryId: string;
+  categoryName: string;
+  currentAmount: number;
+  suggestedCut: number;
+  classification: string;
+};
+
+function cutMaterialFloor(currency: Currency): number {
+  return currency === "IDR" ? 25_000 : 250;
+}
+
+function maxCutShare(classification: string): number {
+  return classification === "DISCRETIONARY" ? 0.6 : 0.4;
+}
+
+function cutPriority(classification: string): number {
+  if (classification === "DISCRETIONARY") return 0;
+  if (classification === "UNKNOWN") return 1;
+  return 2;
+}
+
+/**
+ * Allocate a cash-flow deficit across the largest cuttable categories.
+ * Pure / deterministic — same inputs → same suggestions.
+ */
+export function suggestCashflowCuts(input: {
+  deficit: number;
+  categories: CashflowCutCandidate[];
+  currency?: Currency;
+  maxSuggestions?: number;
+}): {
+  suggestions: CashflowCutSuggestion[];
+  coveredAmount: number;
+  remainingDeficit: number;
+} {
+  const deficit = Math.max(0, Math.round(input.deficit));
+  const maxSuggestions = input.maxSuggestions ?? 3;
+  const currency = input.currency ?? "IDR";
+  const floor = cutMaterialFloor(currency);
+
+  if (deficit <= 0) {
+    return { suggestions: [], coveredAmount: 0, remainingDeficit: 0 };
+  }
+
+  const candidates = input.categories
+    .filter(
+      (c) =>
+        c.currentAmount >= floor &&
+        isCuttableCategory(c.categoryName, c.classification, c.nature)
+    )
+    .map((c) => ({
+      ...c,
+      maxCut: Math.max(
+        0,
+        Math.floor(c.currentAmount * maxCutShare(c.classification))
+      ),
+    }))
+    .filter((c) => c.maxCut >= floor)
+    .sort((a, b) => {
+      const p = cutPriority(a.classification) - cutPriority(b.classification);
+      if (p !== 0) return p;
+      return b.currentAmount - a.currentAmount;
+    });
+
+  const suggestions: CashflowCutSuggestion[] = [];
+  let remaining = deficit;
+
+  for (const c of candidates) {
+    if (suggestions.length >= maxSuggestions || remaining < floor) break;
+    const cut = Math.min(remaining, c.maxCut);
+    if (cut < floor) continue;
+    suggestions.push({
+      categoryId: c.categoryId,
+      categoryName: c.categoryName,
+      currentAmount: c.currentAmount,
+      suggestedCut: cut,
+      classification: c.classification,
+    });
+    remaining -= cut;
+  }
+
+  const coveredAmount = deficit - remaining;
+  return {
+    suggestions,
+    coveredAmount,
+    remainingDeficit: Math.max(0, remaining),
+  };
+}
+
+export function buildCashflowCutMessage(input: {
+  deficit: number;
+  currency: Currency;
+  suggestions: CashflowCutSuggestion[];
+  remainingDeficit: number;
+  formatMoney: (amount: number, currency: Currency) => string;
+}): string {
+  const { deficit, currency, suggestions, remainingDeficit, formatMoney } =
+    input;
+  const deficitLabel = formatMoney(deficit, currency);
+
+  if (suggestions.length === 0) {
+    return `Pengeluaran melebihi pemasukan ${deficitLabel}. Sebagian besar keluar ke fixed/essential — tinjau cicilan, fixed costs, atau cari tambahan pemasukan.`;
+  }
+
+  const parts = suggestions.map(
+    (s) => `${s.categoryName} ~${formatMoney(s.suggestedCut, currency)}`
+  );
+  let message = `Pengeluaran melebihi pemasukan ${deficitLabel}. Coba kurangi: ${parts.join(", ")}.`;
+  if (remainingDeficit >= cutMaterialFloor(currency)) {
+    message += ` Masih kurang ~${formatMoney(remainingDeficit, currency)} — cek juga tagihan/cicilan.`;
+  }
+  return message;
 }
 
 export function buildInsightFromTrend(

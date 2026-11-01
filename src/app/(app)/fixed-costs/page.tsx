@@ -251,7 +251,9 @@ export default function FixedCostsPage() {
           <p className="text-muted-foreground">{t("fixedCosts.subtitle")}</p>
           {items[0]?.cycleLabel ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              Cycle: {items[0].cycleLabel}
+              {t("dashboard.ccPeriodHint", {
+                label: items[0].cycleLabel,
+              })}
             </p>
           ) : null}
         </div>

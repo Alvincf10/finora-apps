@@ -15,9 +15,9 @@ describe("extractOpenRouterText", () => {
     expect(
       extractOpenRouterText({
         content: null,
-        reasoning: "Karena fixed cost tinggi di cycle ini.",
+        reasoning: "Karena fixed cost tinggi di periode ini.",
       })
-    ).toBe("Karena fixed cost tinggi di cycle ini.");
+    ).toBe("Karena fixed cost tinggi di periode ini.");
   });
 
   it("falls back to reasoning_details text", () => {

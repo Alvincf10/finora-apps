@@ -33,6 +33,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useI18n } from "@/components/i18n-provider";
+import {
+  getPayCycleBounds,
+  getPayCycleForPeriod,
+  periodFromDate,
+  shiftPeriodRef,
+  toDateInputValue,
+} from "@/lib/financial/pay-cycle-bounds";
+
+type PeriodPreset = "current" | "previous" | "last3" | "custom";
 
 type Account = {
   _id: string;
@@ -79,13 +88,11 @@ function toDateTimeLocalValue(value?: string | Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-function formatTxDateTime(value: string, locale: string) {
-  return new Date(value).toLocaleString(locale, {
+function formatTxDate(value: string, locale: string) {
+  return new Date(value).toLocaleDateString(locale, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -97,6 +104,15 @@ function txLabel(tx: Tx) {
       ? `→ ${tx.counterpartyAccountId?.name ?? ""}`
       : tx.type)
   );
+}
+
+function txMeta(tx: Tx, t: (key: string) => string) {
+  const parts = [
+    typeLabel(tx.type, t),
+    tx.categoryId?.name,
+    tx.accountId?.name,
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 function listParams(filters: {
@@ -118,6 +134,56 @@ function listParams(filters: {
   params.set("limit", String(PAGE_SIZE));
   params.set("skip", String(filters.skip));
   return params;
+}
+
+function resolvePeriodRange(
+  preset: Exclude<PeriodPreset, "custom">,
+  paydayDay: number
+) {
+  const current = periodFromDate(paydayDay);
+  if (preset === "current") {
+    const cycle = getPayCycleBounds(paydayDay);
+    return {
+      from: toDateInputValue(cycle.start),
+      to: toDateInputValue(cycle.end),
+      label: cycle.label,
+    };
+  }
+  if (preset === "previous") {
+    const cycle = getPayCycleForPeriod(paydayDay, shiftPeriodRef(current, 1));
+    return {
+      from: toDateInputValue(cycle.start),
+      to: toDateInputValue(cycle.end),
+      label: cycle.label,
+    };
+  }
+  const oldest = getPayCycleForPeriod(paydayDay, shiftPeriodRef(current, 2));
+  const newest = getPayCycleBounds(paydayDay);
+  const label = `${oldest.start.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+  })} – ${newest.end.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })}`;
+  return {
+    from: toDateInputValue(oldest.start),
+    to: toDateInputValue(newest.end),
+    label,
+  };
+}
+
+function amountClass(type: string) {
+  if (type === "INCOME") return "text-emerald-800 dark:text-emerald-300";
+  if (type === "EXPENSE") return "text-rose-700 dark:text-rose-400";
+  return "";
+}
+
+function amountPrefix(type: string) {
+  if (type === "INCOME") return "+";
+  if (type === "EXPENSE") return "−";
+  return "";
 }
 
 function typeLabel(
@@ -146,6 +212,9 @@ export default function TransactionsPage() {
   const [categoryId, setCategoryId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("current");
+  const [periodLabel, setPeriodLabel] = useState("");
+  const [paydayDay, setPaydayDay] = useState(25);
 
   const [open, setOpen] = useState(false);
   const [formType, setFormType] = useState<TxType>("EXPENSE");
@@ -171,15 +240,32 @@ export default function TransactionsPage() {
     void (async () => {
       setLoading(true);
       try {
-        const [accountList, categoryList, data] = await Promise.all([
+        const [accountList, categoryList, settings] = await Promise.all([
           api<Account[]>("/api/accounts"),
           api<Category[]>("/api/categories"),
-          api<TxListResponse>(
-            `/api/transactions?limit=${PAGE_SIZE}&skip=0`
-          ),
+          api<{ paydayDay?: number }>("/api/settings"),
         ]);
+        const payday = settings.paydayDay ?? 25;
+        const range = resolvePeriodRange("current", payday);
         setAccounts(accountList.filter((a) => a.isActive));
         setCategories(categoryList);
+        setPaydayDay(payday);
+        setPeriodPreset("current");
+        setPeriodLabel(range.label);
+        setFrom(range.from);
+        setTo(range.to);
+
+        const data = await api<TxListResponse>(
+          `/api/transactions?${listParams({
+            q: "",
+            type: "",
+            accountId: "",
+            categoryId: "",
+            from: range.from,
+            to: range.to,
+            skip: 0,
+          })}`
+        );
         setTxs(data.items);
         setTotal(data.total);
         setHasMore(data.hasMore);
@@ -241,15 +327,30 @@ export default function TransactionsPage() {
   }
 
   function clearFilters() {
+    const range = resolvePeriodRange("current", paydayDay);
     setQ("");
     setType("");
     setAccountId("");
     setCategoryId("");
-    setFrom("");
-    setTo("");
+    setPeriodPreset("current");
+    setPeriodLabel(range.label);
+    setFrom(range.from);
+    setTo(range.to);
+    return { from: range.from, to: range.to };
   }
 
-  async function fetchList(skip: number, append: boolean) {
+  async function fetchList(
+    skip: number,
+    append: boolean,
+    overrides?: Partial<{
+      q: string;
+      type: string;
+      accountId: string;
+      categoryId: string;
+      from: string;
+      to: string;
+    }>
+  ) {
     if (append) setLoadingMore(true);
     else setLoading(true);
     try {
@@ -262,6 +363,7 @@ export default function TransactionsPage() {
           from,
           to,
           skip,
+          ...overrides,
         })}`
       );
       setTxs((prev) => (append ? [...prev, ...data.items] : data.items));
@@ -277,6 +379,16 @@ export default function TransactionsPage() {
 
   function applyFilters() {
     return fetchList(0, false);
+  }
+
+  function applyPeriodPreset(preset: PeriodPreset) {
+    setPeriodPreset(preset);
+    if (preset === "custom") return;
+    const range = resolvePeriodRange(preset, paydayDay);
+    setPeriodLabel(range.label);
+    setFrom(range.from);
+    setTo(range.to);
+    void fetchList(0, false, { from: range.from, to: range.to });
   }
 
   function loadMore() {
@@ -595,6 +707,29 @@ export default function TransactionsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+              <Label htmlFor="filter-period">{t("transactions.period")}</Label>
+              <select
+                id="filter-period"
+                className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={periodPreset}
+                onChange={(e) =>
+                  applyPeriodPreset(e.target.value as PeriodPreset)
+                }
+              >
+                <option value="current">{t("transactions.periodCurrent")}</option>
+                <option value="previous">
+                  {t("transactions.periodPrevious")}
+                </option>
+                <option value="last3">{t("transactions.periodLast3")}</option>
+                <option value="custom">{t("transactions.periodCustom")}</option>
+              </select>
+              {periodPreset !== "custom" && periodLabel ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("transactions.periodHint", { label: periodLabel })}
+                </p>
+              ) : null}
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="filter-q">{t("common.search")}</Label>
               <Input
@@ -657,24 +792,34 @@ export default function TransactionsPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-from">{t("common.from")}</Label>
-              <Input
-                id="filter-from"
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="filter-to">{t("common.to")}</Label>
-              <Input
-                id="filter-to"
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </div>
+            {periodPreset === "custom" ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="filter-from">{t("common.from")}</Label>
+                  <Input
+                    id="filter-from"
+                    type="date"
+                    value={from}
+                    onChange={(e) => {
+                      setPeriodPreset("custom");
+                      setFrom(e.target.value);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="filter-to">{t("common.to")}</Label>
+                  <Input
+                    id="filter-to"
+                    type="date"
+                    value={to}
+                    onChange={(e) => {
+                      setPeriodPreset("custom");
+                      setTo(e.target.value);
+                    }}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
           <div className="flex items-center gap-2 border-t pt-4">
             <Button
@@ -691,32 +836,15 @@ export default function TransactionsPage() {
               size="sm"
               className="touch-manipulation text-muted-foreground"
               onClick={() => {
-                clearFilters();
-                void (async () => {
-                  setLoading(true);
-                  try {
-                    const data = await api<TxListResponse>(
-                      `/api/transactions?${listParams({
-                        q: "",
-                        type: "",
-                        accountId: "",
-                        categoryId: "",
-                        from: "",
-                        to: "",
-                        skip: 0,
-                      })}`
-                    );
-                    setTxs(data.items);
-                    setTotal(data.total);
-                    setHasMore(data.hasMore);
-                  } catch (e) {
-                    toast.error(
-                      e instanceof Error ? e.message : t("common.failed")
-                    );
-                  } finally {
-                    setLoading(false);
-                  }
-                })();
+                const range = clearFilters();
+                void fetchList(0, false, {
+                  q: "",
+                  type: "",
+                  accountId: "",
+                  categoryId: "",
+                  from: range.from,
+                  to: range.to,
+                });
               }}
               disabled={loading}
             >
@@ -741,25 +869,10 @@ export default function TransactionsPage() {
                 <div className="min-w-0 space-y-1">
                   <p className="truncate font-medium">{txLabel(tx)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {formatTxDateTime(tx.date, intlLocale)} ·{" "}
-                    {typeLabel(tx.type, t)}
-                    {tx.accountId?.name ? ` · ${tx.accountId.name}` : ""}
-                    {tx.categoryId?.name ? ` · ${tx.categoryId.name}` : ""}
+                    {formatTxDate(tx.date, intlLocale)} · {txMeta(tx, t)}
                   </p>
-                  <p
-                    className={`font-mono text-base ${
-                      tx.type === "INCOME"
-                        ? "text-emerald-800 dark:text-emerald-300"
-                        : tx.type === "EXPENSE"
-                          ? "text-rose-700 dark:text-rose-400"
-                          : ""
-                    }`}
-                  >
-                    {tx.type === "INCOME"
-                      ? "+"
-                      : tx.type === "EXPENSE"
-                        ? "−"
-                        : ""}
+                  <p className={`font-mono text-base ${amountClass(tx.type)}`}>
+                    {amountPrefix(tx.type)}
                     {money(tx.amount, tx.currency)}
                   </p>
                 </div>
@@ -796,10 +909,7 @@ export default function TransactionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t("common.date")}</TableHead>
-                <TableHead>{t("common.type")}</TableHead>
                 <TableHead>{t("common.description")}</TableHead>
-                <TableHead>{t("common.category")}</TableHead>
-                <TableHead>{t("common.account")}</TableHead>
                 <TableHead className="text-right">
                   {t("common.amount")}
                 </TableHead>
@@ -810,7 +920,7 @@ export default function TransactionsPage() {
               {txs.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={4}
                     className="py-8 text-center text-muted-foreground"
                   >
                     {loading ? t("common.loading") : t("transactions.empty")}
@@ -819,17 +929,22 @@ export default function TransactionsPage() {
               ) : (
                 txs.map((tx) => (
                   <TableRow key={tx._id}>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {formatTxDateTime(tx.date, intlLocale)}
+                    <TableCell className="whitespace-nowrap align-top tabular-nums text-muted-foreground">
+                      {formatTxDate(tx.date, intlLocale)}
                     </TableCell>
-                    <TableCell>{typeLabel(tx.type, t)}</TableCell>
-                    <TableCell>{txLabel(tx)}</TableCell>
-                    <TableCell>{tx.categoryId?.name ?? "—"}</TableCell>
-                    <TableCell>{tx.accountId?.name}</TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="min-w-0">
+                      <p className="truncate font-medium">{txLabel(tx)}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {txMeta(tx, t)}
+                      </p>
+                    </TableCell>
+                    <TableCell
+                      className={`text-right align-top font-mono ${amountClass(tx.type)}`}
+                    >
+                      {amountPrefix(tx.type)}
                       {money(tx.amount, tx.currency)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right align-top">
                       <div className="flex justify-end gap-1">
                         {tx.type !== "TRANSFER" ? (
                           <Button

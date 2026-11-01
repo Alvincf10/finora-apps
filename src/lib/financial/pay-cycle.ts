@@ -1,11 +1,4 @@
-import {
-  endOfDay,
-  endOfMonth,
-  startOfDay,
-  subDays,
-  addMonths,
-  max as maxDate,
-} from "date-fns";
+import { endOfMonth, max as maxDate } from "date-fns";
 import { Account } from "@/models/Account";
 import { Transaction } from "@/models/Transaction";
 import { User } from "@/models/User";
@@ -21,148 +14,25 @@ import {
   type FixedCostDueItem,
 } from "@/lib/financial/fixed-costs";
 import { percent } from "@/lib/money";
-import { resolvePaydayInMonth } from "@/lib/financial/payday";
+import {
+  getPayCycleBounds,
+  type PayCycleBounds,
+} from "@/lib/financial/pay-cycle-bounds";
 import type { AccountType, Currency } from "@/types";
+
+export {
+  getCycleProgress,
+  getPayCycleBounds,
+  getPayCycleForPeriod,
+  periodFromDate,
+  shiftPeriodRef,
+  toDateInputValue,
+  type PayCycleBounds,
+  type PeriodRef,
+} from "@/lib/financial/pay-cycle-bounds";
 
 /** Legacy tag from when salary was auto-posted to the ledger. */
 const AUTO_SALARY_TAG = "auto-salary";
-
-export type PayCycleBounds = {
-  start: Date;
-  end: Date;
-  paydayDay: number;
-  label: string;
-};
-
-/**
- * Pay cycle that contains `now`: payday → day before next payday.
- *
- * Weekend rule: if nominal payday falls Sat/Sun → previous Friday.
- * Next month weekday stays as-is.
- *
- * e.g. paydayDay 25, on 5 Nov 2026:
- *   Oct 25 = Sunday → start 23 Okt; Nov 25 = Wednesday → end 24 Nov.
- * e.g. on 13 Okt 2026 (before 23 Okt payday): still previous cycle
- *   Sep 25 → … – 22 Okt.
- */
-export function getPayCycleBounds(
-  paydayDay: number,
-  now: Date = new Date()
-): PayCycleBounds {
-  const day = Math.min(28, Math.max(1, paydayDay));
-  const today = startOfDay(now);
-  const y = now.getFullYear();
-  const m = now.getMonth();
-
-  const thisMonthPayday = resolvePaydayInMonth(day, y, m);
-
-  let cycleStart: Date;
-  let nextPayday: Date;
-
-  if (today.getTime() >= thisMonthPayday.getTime()) {
-    cycleStart = thisMonthPayday;
-    const nextMonth = addMonths(new Date(y, m, 1), 1);
-    nextPayday = resolvePaydayInMonth(
-      day,
-      nextMonth.getFullYear(),
-      nextMonth.getMonth()
-    );
-  } else {
-    const prevMonth = addMonths(new Date(y, m, 1), -1);
-    cycleStart = resolvePaydayInMonth(
-      day,
-      prevMonth.getFullYear(),
-      prevMonth.getMonth()
-    );
-    nextPayday = thisMonthPayday;
-  }
-
-  const cycleEnd = endOfDay(subDays(nextPayday, 1));
-
-  const label = `${cycleStart.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-  })} – ${cycleEnd.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  })}`;
-
-  return { start: cycleStart, end: cycleEnd, paydayDay: day, label };
-}
-
-export type PeriodRef = { year: number; month: number };
-
-/**
- * Pay cycle for the payday that falls in `period`'s calendar month.
- * e.g. {2026,10} + paydayDay 25 → 23 Okt – 24 Nov 2026 (weekend-adjusted).
- */
-export function getPayCycleForPeriod(
-  paydayDay: number,
-  period: PeriodRef
-): PayCycleBounds {
-  const day = Math.min(28, Math.max(1, paydayDay));
-  const y = period.year;
-  const m = period.month - 1; // 0-indexed
-  const cycleStart = resolvePaydayInMonth(day, y, m);
-  const nextMonth = addMonths(new Date(y, m, 1), 1);
-  const nextPayday = resolvePaydayInMonth(
-    day,
-    nextMonth.getFullYear(),
-    nextMonth.getMonth()
-  );
-  const cycleEnd = endOfDay(subDays(nextPayday, 1));
-  const label = `${cycleStart.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-  })} – ${cycleEnd.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  })}`;
-  return { start: cycleStart, end: cycleEnd, paydayDay: day, label };
-}
-
-/** Period key = calendar month of the cycle's payday (start). */
-export function periodFromDate(
-  paydayDay: number,
-  now: Date = new Date()
-): PeriodRef {
-  const cycle = getPayCycleBounds(paydayDay, now);
-  return {
-    year: cycle.start.getFullYear(),
-    month: cycle.start.getMonth() + 1,
-  };
-}
-
-export function shiftPeriodRef(
-  period: PeriodRef,
-  monthsBack: number
-): PeriodRef {
-  const d = addMonths(new Date(period.year, period.month - 1, 1), -monthsBack);
-  return { year: d.getFullYear(), month: d.getMonth() + 1 };
-}
-
-/** Days elapsed / total in a cycle (for projections). */
-export function getCycleProgress(
-  cycle: PayCycleBounds,
-  now: Date = new Date()
-): { elapsedDays: number; totalDays: number; isCurrent: boolean } {
-  const startMs = cycle.start.getTime();
-  const endMs = cycle.end.getTime();
-  const nowMs = now.getTime();
-  const totalMs = Math.max(1, endMs - startMs);
-  const totalDays = Math.max(1, Math.ceil(totalMs / 86_400_000));
-  const isCurrent = nowMs >= startMs && nowMs <= endMs;
-  if (!isCurrent) {
-    return { elapsedDays: totalDays, totalDays, isCurrent: false };
-  }
-  const elapsedDays = Math.max(
-    1,
-    Math.min(totalDays, Math.ceil((nowMs - startMs) / 86_400_000))
-  );
-  return { elapsedDays, totalDays, isCurrent: true };
-}
 
 export async function getUserPaydayDay(userId: string): Promise<number> {
   const user = await User.findById(userId).select("paydayDay").lean();

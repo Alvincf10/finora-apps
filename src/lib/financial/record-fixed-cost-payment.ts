@@ -340,7 +340,7 @@ export async function reassignFixedCostPaymentSource(input: {
     date: { $gte: cycle.start, $lte: cycle.end },
   });
   if (!existingTx) {
-    throw new Error("No payment recorded this cycle to reassign");
+    throw new Error("No payment recorded this period to reassign");
   }
 
   const previousAccountId = existingTx.accountId.toString();

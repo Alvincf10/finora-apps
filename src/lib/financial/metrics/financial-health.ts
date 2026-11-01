@@ -148,7 +148,7 @@ export async function getFinancialHealth(
     savings: metric(computed.savings, "MINOR", {
       currency,
       sources: ["netCashFlow"],
-      assumptions: ["Savings ≈ net cash flow for the cycle"],
+      assumptions: ["Savings ≈ net cash flow for the period"],
     }),
     savingsRate: metric(computed.savingsRate, "PERCENT", {
       available: computed.savingsRate != null,

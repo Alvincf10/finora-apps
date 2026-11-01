@@ -789,14 +789,14 @@ export default function InsightsPage() {
     return { focus, watch, info };
   }, [items]);
 
-  const periodLabel =
-    cycleLabel ??
-    (year != null && month != null
+  const periodLabel = cycleLabel
+    ? t("dashboard.ccPeriodHint", { label: cycleLabel })
+    : year != null && month != null
       ? new Date(year, month - 1, 1).toLocaleDateString(intlLocale, {
           month: "long",
           year: "numeric",
         })
-      : "…");
+      : "…";
 
   function groupTitle(group: InsightGroup) {
     if (group === "spending") return t("insights.groupSpending");

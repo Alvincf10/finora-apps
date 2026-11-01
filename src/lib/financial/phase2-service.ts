@@ -6,17 +6,22 @@ import { Account } from "@/models/Account";
 import { SavingsGoal } from "@/models/SavingsGoal";
 import { FinancialRecommendation } from "@/models/FinancialRecommendation";
 import {
+  buildCashflowCutMessage,
   buildInsightFromTrend,
   calculateDebtScenario,
   calculateEmergencyCoverage,
+  countPositive,
   defaultClassification,
   defaultNature,
   detectAnomaly,
   detectSpendingTrend,
   forecastMonthlyCashflow,
   mean,
+  meanPositive,
   projectCategorySpend,
   runWhatIf,
+  shouldFlagIncomeChange,
+  suggestCashflowCuts,
   weightedAverage3,
 } from "@/lib/financial/phase2-math";
 import { getBudgetOverview, getFinancialSummary } from "@/lib/financial/summary";
@@ -24,6 +29,11 @@ import {
   getPlanningBaselines,
   resolveExpectedIncome,
 } from "@/lib/financial/planning-baselines";
+import {
+  EMERGENCY_PATTERNS,
+  resolveEssentialMonthly,
+  resolveGoalByType,
+} from "@/lib/financial/wealth-ladder-math";
 import {
   getCycleProgress,
   getPayCycleForPeriod,
@@ -187,16 +197,21 @@ export async function buildCategorySpendingSeries(
 
 export async function getFinancialProfile(userId: string, current: Period) {
   const data = await buildCategorySpendingSeries(userId, current, 3);
-  const avgIncome = Math.round(mean(data.incomeHistory));
-  const avgExpense = Math.round(mean(data.expenseHistory));
+  const avgIncome = Math.round(meanPositive(data.incomeHistory));
+  const avgExpense = Math.round(meanPositive(data.expenseHistory));
   const avgSavings = avgIncome - avgExpense;
+  const positiveIncomeMonths = countPositive(data.incomeHistory);
+  const positiveExpenseMonths = countPositive(data.expenseHistory);
 
   const fixed = data.series
     .filter((s) => s.nature === "FIXED")
-    .reduce((sum, s) => sum + mean(s.amounts), 0);
+    .reduce((sum, s) => sum + meanPositive(s.amounts), 0);
   const variable = data.series
     .filter((s) => s.nature === "VARIABLE")
-    .reduce((sum, s) => sum + mean(s.amounts), 0);
+    .reduce((sum, s) => sum + meanPositive(s.amounts), 0);
+  const essentialFromCategories = data.series
+    .filter((s) => s.classification === "ESSENTIAL")
+    .reduce((sum, s) => sum + meanPositive([...s.amounts, s.currentAmount]), 0);
 
   const debts = await Debt.find({ userId, status: "ACTIVE" }).lean();
   const avgDebtPayment = debts.reduce(
@@ -208,7 +223,7 @@ export async function getFinancialProfile(userId: string, current: Period) {
     .map((s) => ({
       categoryId: s.categoryId,
       name: s.categoryName,
-      average: Math.round(mean(s.amounts)),
+      average: Math.round(meanPositive(s.amounts)),
     }))
     .sort((a, b) => b.average - a.average)
     .slice(0, 5);
@@ -218,15 +233,15 @@ export async function getFinancialProfile(userId: string, current: Period) {
     .map((s) => ({
       categoryId: s.categoryId,
       name: s.categoryName,
-      average: Math.round(mean(s.amounts.filter((a) => a > 0))),
+      average: Math.round(meanPositive(s.amounts)),
     }));
 
   const incomeStability =
-    data.incomeHistory.length >= 2 &&
-    stdStable(data.incomeHistory);
+    positiveIncomeMonths >= 2 &&
+    stdStable(data.incomeHistory.filter((v) => v > 0));
   const expenseStability =
-    data.expenseHistory.length >= 2 &&
-    stdStable(data.expenseHistory);
+    positiveExpenseMonths >= 2 &&
+    stdStable(data.expenseHistory.filter((v) => v > 0));
 
   return {
     userId,
@@ -236,8 +251,11 @@ export async function getFinancialProfile(userId: string, current: Period) {
     averageMonthlySavings: avgSavings,
     averageFixedExpense: Math.round(fixed),
     averageVariableExpense: Math.round(variable),
+    averageEssentialExpense: Math.round(essentialFromCategories),
     averageDebtPayment: avgDebtPayment,
     averageSavingsRate: percent(avgSavings, avgIncome),
+    positiveIncomeMonths,
+    positiveExpenseMonths,
     incomeStability: incomeStability ? "STABLE" : "VOLATILE",
     expenseStability: expenseStability ? "STABLE" : "VOLATILE",
     topExpenseCategories,
@@ -300,7 +318,7 @@ export async function generatePhase2Insights(
   period: Period
 ): Promise<InsightRecommendation[]> {
   const insights: InsightRecommendation[] = [];
-  const [analytics, budgets, summary, profile, debts, goals] =
+  const [analytics, budgets, summary, profile, debts, goals, baselines] =
     await Promise.all([
       getSpendingAnalytics(userId, period),
       getBudgetOverview(userId, period),
@@ -308,8 +326,9 @@ export async function generatePhase2Insights(
       getFinancialProfile(userId, period),
       Debt.find({ userId, status: "ACTIVE" }).lean(),
       SavingsGoal.find({ userId, status: "ACTIVE" }).lean(),
+      getPlanningBaselines(userId, period),
     ]);
-  const currency = summary.currency ?? profile.currency;
+  const currency = summary.currency ?? profile.currency ?? baselines.currency;
   const now = new Date();
   const paydayDay = await getUserPaydayDay(userId);
   const cycle = getPayCycleForPeriod(paydayDay, period);
@@ -334,7 +353,7 @@ export async function generatePhase2Insights(
         type: "UNUSUAL_CATEGORY_SPENDING",
         priority: "HIGH",
         title: `Belanja ${row.categoryName} tidak wajar`,
-        message: `${row.categoryName} cycle ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
+        message: `${row.categoryName} periode ini ${formatMoney(row.currentAmount, currency)} — di atas batas wajar ${formatMoney(row.anomaly.threshold, currency)} (rata-rata ${formatMoney(row.average3m, currency)}).`,
         categoryId: row.categoryId,
         currentValue: row.currentAmount,
         evidence: [
@@ -430,7 +449,7 @@ export async function generatePhase2Insights(
       type: "SAVINGS_TARGET_RISK",
       priority: "MEDIUM",
       title: "Rasio tabungan rendah",
-      message: `Rasio tabungan cycle ini ${summary.savingsRate}% — di bawah ambang 10%.`,
+      message: `Rasio tabungan periode ini ${summary.savingsRate}% — di bawah ambang 10%.`,
       currentValue: summary.savings,
       evidence: [{ metric: "savings_rate", current: summary.savingsRate }],
       actionType: "SIMULATE",
@@ -459,21 +478,50 @@ export async function generatePhase2Insights(
   }
 
   if (summary.netCashFlow < 0) {
+    const deficit = Math.abs(summary.netCashFlow);
+    const cuts = suggestCashflowCuts({
+      deficit,
+      currency,
+      categories: analytics.map((row) => ({
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        currentAmount: row.currentAmount,
+        classification: row.classification,
+        nature: row.nature,
+      })),
+    });
     insights.push({
       type: "CASHFLOW_RISK",
       priority: "HIGH",
       title: "Arus kas negatif",
-      message: "Pengeluaran melebihi pemasukan cycle ini.",
+      message: buildCashflowCutMessage({
+        deficit,
+        currency,
+        suggestions: cuts.suggestions,
+        remainingDeficit: cuts.remainingDeficit,
+        formatMoney,
+      }),
       currentValue: summary.netCashFlow,
+      recommendedValue: deficit,
+      difference: cuts.coveredAmount,
       evidence: [
         {
           metric: "net_cash_flow",
           current: summary.netCashFlow,
           income: summary.income,
           expense: summary.expense,
+          coveredAmount: cuts.coveredAmount,
+          remainingDeficit: cuts.remainingDeficit,
+          cutSuggestions: cuts.suggestions.map((s) => ({
+            categoryId: s.categoryId,
+            categoryName: s.categoryName,
+            suggestedCut: s.suggestedCut,
+            currentAmount: s.currentAmount,
+          })),
         },
       ],
-      actionType: "VIEW_BUDGET",
+      categoryId: cuts.suggestions[0]?.categoryId,
+      actionType: cuts.suggestions.length > 0 ? "VIEW_SPENDING" : "VIEW_BUDGET",
       period,
     });
   }
@@ -638,13 +686,41 @@ export async function generatePhase2Insights(
   }
 
   // —— Emergency fund gap ——
-  const emergencyGoal = goals.find((g) =>
-    g.name.toLowerCase().includes("emergency")
+  const emergencyResolved = resolveGoalByType(
+    goals.map((g) => ({
+      id: g._id.toString(),
+      name: g.name,
+      goalType: (g as { goalType?: string | null }).goalType ?? null,
+      targetAmount: g.targetAmount,
+      currentAmount: g.currentAmount,
+    })),
+    "EMERGENCY_FUND",
+    EMERGENCY_PATTERNS
   );
-  const essentialMonthly =
-    profile.averageFixedExpense || profile.averageMonthlyExpense;
+  const emergencyGoal = emergencyResolved.goal;
+  const essentialResolved = resolveEssentialMonthly({
+    essentialFromCategories: profile.averageEssentialExpense ?? 0,
+    averageFixedExpense: Math.max(
+      profile.averageFixedExpense,
+      baselines.fixedCostsTotal
+    ),
+    averageMonthlyExpense: profile.averageMonthlyExpense,
+    emergencyGoalTarget: emergencyGoal?.targetAmount ?? null,
+    emergencyMonths: TARGET_EMERGENCY_MONTHS,
+  });
+  const essentialMonthly = essentialResolved.essentialMonthly;
+  // Ignore nonsense floors (e.g. diluted empty-month averages).
+  const incomeForFloor =
+    summary.income > 0
+      ? summary.income
+      : baselines.monthlySalary > 0
+        ? baselines.monthlySalary
+        : profile.averageMonthlyIncome;
+  const essentialsCredible =
+    essentialMonthly > 0 &&
+    (incomeForFloor <= 0 || essentialMonthly >= incomeForFloor * 0.05);
 
-  if (!emergencyGoal && essentialMonthly > 0) {
+  if (!emergencyGoal && essentialsCredible) {
     insights.push({
       type: "EMERGENCY_FUND_GAP",
       priority: "MEDIUM",
@@ -656,12 +732,14 @@ export async function generatePhase2Insights(
           metric: "emergency_fund_missing",
           essentialMonthly,
           targetMonths: TARGET_EMERGENCY_MONTHS,
+          source: essentialResolved.source,
+          fixedCostsTotal: baselines.fixedCostsTotal,
         },
       ],
       actionType: "VIEW_GOALS",
       period,
     });
-  } else if (emergencyGoal && essentialMonthly > 0) {
+  } else if (emergencyGoal && essentialsCredible) {
     const coverage = calculateEmergencyCoverage(
       emergencyGoal.currentAmount,
       essentialMonthly
@@ -676,7 +754,7 @@ export async function generatePhase2Insights(
         priority: coverage < 1 ? "HIGH" : "MEDIUM",
         title: "Dana darurat di bawah target",
         message: `${emergencyGoal.name} menutup ~${coverage} bulan essentials; target ${TARGET_EMERGENCY_MONTHS}+ bulan (selisih ${formatMoney(gap, currency)}).`,
-        goalId: emergencyGoal._id.toString(),
+        goalId: emergencyGoal.id,
         currentValue: emergencyGoal.currentAmount,
         recommendedValue: essentialMonthly * TARGET_EMERGENCY_MONTHS,
         difference: gap,
@@ -687,6 +765,7 @@ export async function generatePhase2Insights(
             essentialMonthly,
             targetMonths: TARGET_EMERGENCY_MONTHS,
             fund: emergencyGoal.currentAmount,
+            source: essentialResolved.source,
           },
         ],
         actionType: "VIEW_GOALS",
@@ -696,33 +775,40 @@ export async function generatePhase2Insights(
   }
 
   // —— Income change vs 3-month average ——
-  if (profile.averageMonthlyIncome > 0 && summary.income > 0) {
+  if (
+    shouldFlagIncomeChange({
+      currentIncome: summary.income,
+      averageIncome: profile.averageMonthlyIncome,
+      positiveHistoryMonths: profile.positiveIncomeMonths ?? 0,
+      monthlySalary: baselines.monthlySalary,
+      thresholdPercent: INCOME_CHANGE_THRESHOLD,
+    })
+  ) {
     const incomeChange = percent(
       summary.income - profile.averageMonthlyIncome,
       profile.averageMonthlyIncome
     );
-    if (Math.abs(incomeChange) >= INCOME_CHANGE_THRESHOLD) {
-      const up = incomeChange > 0;
-      insights.push({
-        type: "INCOME_CHANGE",
-        priority: up ? "LOW" : "MEDIUM",
-        title: up ? "Income di atas biasanya" : "Income di bawah biasanya",
-        message: `Income ${Math.abs(incomeChange)}% ${up ? "di atas" : "di bawah"} rata-rata 3 bulan (${formatMoney(summary.income, currency)} vs ${formatMoney(profile.averageMonthlyIncome, currency)}).`,
-        currentValue: summary.income,
-        recommendedValue: profile.averageMonthlyIncome,
-        difference: summary.income - profile.averageMonthlyIncome,
-        evidence: [
-          {
-            metric: "income_change",
-            current: summary.income,
-            average3m: profile.averageMonthlyIncome,
-            changePercent: incomeChange,
-          },
-        ],
-        actionType: "VIEW_BUDGET",
-        period,
-      });
-    }
+    const up = incomeChange > 0;
+    insights.push({
+      type: "INCOME_CHANGE",
+      priority: up ? "LOW" : "MEDIUM",
+      title: up ? "Income di atas biasanya" : "Income di bawah biasanya",
+      message: `Income ${Math.abs(incomeChange)}% ${up ? "di atas" : "di bawah"} rata-rata 3 bulan (${formatMoney(summary.income, currency)} vs ${formatMoney(profile.averageMonthlyIncome, currency)}).`,
+      currentValue: summary.income,
+      recommendedValue: profile.averageMonthlyIncome,
+      difference: summary.income - profile.averageMonthlyIncome,
+      evidence: [
+        {
+          metric: "income_change",
+          current: summary.income,
+          average3m: profile.averageMonthlyIncome,
+          changePercent: incomeChange,
+          positiveHistoryMonths: profile.positiveIncomeMonths,
+        },
+      ],
+      actionType: "VIEW_BUDGET",
+      period,
+    });
   }
 
   const priorityRank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
@@ -803,10 +889,10 @@ export async function getCashFlowForecastForUser(
       ? "Fixed costs come from Fixed costs planning; variable spend from weighted 3-month history."
       : "Spending assumed similar to the previous 3 months (weighted).",
     baselines.debtDueTotal > 0
-      ? `Debt uses obligations due in this pay cycle (${baselines.cycleLabel}).`
+      ? `Debt uses obligations due in this pay period (${baselines.cycleLabel}).`
       : "Debt payment uses planned/minimum obligation on active debts.",
     "Transfers are excluded from expenses.",
-    `Window is the pay cycle ${baselines.cycleLabel} (payday → day before next payday).`,
+    `Window is the pay period ${baselines.cycleLabel} (payday → day before next payday).`,
   ];
 
   return {

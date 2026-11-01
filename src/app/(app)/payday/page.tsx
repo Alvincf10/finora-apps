@@ -490,7 +490,7 @@ export default function PaydayAllocationPage() {
             </h1>
             {data ? (
               <p className="mt-1 text-sm text-muted-foreground">
-                {data.cycle.label}
+                {t("paydayAllocation.cycle", { label: data.cycle.label })}
                 {data.existingStatus ? (
                   <>
                     {" · "}

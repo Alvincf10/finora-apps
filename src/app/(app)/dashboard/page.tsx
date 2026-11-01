@@ -26,6 +26,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyAmountInput } from "@/components/currency-amount-input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -272,6 +273,154 @@ function Kpi({
   );
 }
 
+function KpiSkeleton() {
+  return (
+    <Card className="border-emerald-900/5 bg-card/80">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-3.5 w-24" />
+        <Skeleton className="mt-2 h-8 w-36" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-3 w-28" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function PanelSkeleton({ lines = 3 }: { lines?: number }) {
+  return (
+    <Card className="border-emerald-900/10 bg-background/70">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="mt-1 h-3 w-44" />
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {Array.from({ length: lines }).map((_, i) => (
+          <div key={i} className="space-y-2 rounded-lg border p-2.5">
+            <Skeleton className="h-3.5 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        ))}
+        <Skeleton className="h-8 w-full" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function DashboardSkeleton({ label }: { label: string }) {
+  return (
+    <div
+      className="space-y-8"
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label={label}
+    >
+      <div className="space-y-2">
+        <Skeleton className="h-9 w-64 max-w-full sm:w-80" />
+        <Skeleton className="h-4 w-full max-w-md" />
+      </div>
+
+      <section className="space-y-4 rounded-2xl border bg-gradient-to-br from-emerald-50/80 via-card to-sky-50/50 p-4 sm:p-6 dark:from-emerald-950/40 dark:to-slate-950">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiSkeleton />
+          <KpiSkeleton />
+          <KpiSkeleton />
+          <KpiSkeleton />
+        </div>
+        <Skeleton className="h-3 w-72 max-w-full" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <PanelSkeleton lines={3} />
+          <PanelSkeleton lines={2} />
+          <PanelSkeleton lines={2} />
+        </div>
+      </section>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <KpiSkeleton />
+        <KpiSkeleton />
+        <KpiSkeleton />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <KpiSkeleton />
+        <KpiSkeleton />
+        <KpiSkeleton />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="mt-1 h-3.5 w-56" />
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-2 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <KpiSkeleton />
+        <KpiSkeleton />
+        <KpiSkeleton />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="mt-1 h-3.5 w-48" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-36" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <div className="flex justify-between">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-3.5 w-10" />
+                </div>
+                <Skeleton className="h-2 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="mt-1 h-3.5 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="space-y-2 rounded-lg border p-3">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-3 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function SurvivalCard({
   survival,
 }: {
@@ -493,7 +642,7 @@ export default function DashboardPage() {
   }, []);
 
   if (!data) {
-    return <p className="text-muted-foreground">{t("dashboard.loading")}</p>;
+    return <DashboardSkeleton label={t("dashboard.loading")} />;
   }
 
   const c = data.summary.currency;
@@ -524,9 +673,12 @@ export default function DashboardPage() {
           {t("dashboard.ccTitle")}
         </h1>
         <p className="text-sm text-muted-foreground sm:text-base">
-          {cc?.health.cycleLabel ??
-            cycle?.cycle.label ??
-            t("dashboard.subtitleFallback")}
+          {t("dashboard.ccPeriodHint", {
+            label:
+              cc?.health.cycleLabel ??
+              cycle?.cycle.label ??
+              t("dashboard.subtitleFallback"),
+          })}
           {" · "}
           {t("dashboard.ccLoop")}
         </p>
@@ -554,8 +706,11 @@ export default function DashboardPage() {
                   ? "text-emerald-800 dark:text-emerald-300"
                   : "text-rose-700 dark:text-rose-400"
               }
-              hint={t("dashboard.ccNetWorthHint", {
-                amount: money(cc.health.netWorth, cc.health.currency),
+              hint={t("dashboard.ccPeriodHint", {
+                label:
+                  cc.health.cycleLabel ??
+                  cycle?.cycle.label ??
+                  t("dashboard.subtitleFallback"),
               })}
             />
             <Kpi

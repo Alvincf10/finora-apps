@@ -470,7 +470,11 @@ export default function DebtsPage() {
             <CardTitle className="text-xl">{t("debts.payThisMonth")}</CardTitle>
             <CardDescription>
               {t("debts.payThisMonthDesc")}
-              {simCtx?.cycleLabel ? ` · ${simCtx.cycleLabel}` : null}
+              {simCtx?.cycleLabel
+                ? ` · ${t("dashboard.ccPeriodHint", {
+                    label: simCtx.cycleLabel,
+                  })}`
+                : null}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

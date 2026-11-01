@@ -295,7 +295,10 @@ export default function SimulatorPage() {
             <CardTitle>{t("simulator.baselineTitle")}</CardTitle>
             <CardDescription>
               {t("simulator.baselineCaptured", {
-                label: baseline.cycleLabel ?? t("dashboard.subtitleFallback"),
+                label: t("dashboard.ccPeriodHint", {
+                  label:
+                    baseline.cycleLabel ?? t("dashboard.subtitleFallback"),
+                }),
                 when: new Date(baseline.capturedAt).toLocaleString(intlLocale),
               })}
             </CardDescription>
