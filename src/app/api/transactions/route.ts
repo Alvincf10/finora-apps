@@ -1,16 +1,20 @@
 import { endOfDay, startOfDay } from "date-fns";
 import { ok, handleError } from "@/lib/api";
+import { sanitizeSearchQuery } from "@/lib/escape-regex";
 import { requireUser } from "@/lib/session";
 import { createTransactionSchema } from "@/lib/validations";
 import { Transaction } from "@/models/Transaction";
 import { createTransaction } from "@/lib/financial/transactions";
 
+const TX_TYPES = new Set(["INCOME", "EXPENSE", "TRANSFER"]);
+
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
     const { searchParams } = new URL(request.url);
-    const q = searchParams.get("q") ?? undefined;
-    const type = searchParams.get("type") ?? undefined;
+    const q = sanitizeSearchQuery(searchParams.get("q"));
+    const typeRaw = searchParams.get("type") ?? undefined;
+    const type = typeRaw && TX_TYPES.has(typeRaw) ? typeRaw : undefined;
     const accountId = searchParams.get("accountId") ?? undefined;
     const categoryId = searchParams.get("categoryId") ?? undefined;
     const from = searchParams.get("from");

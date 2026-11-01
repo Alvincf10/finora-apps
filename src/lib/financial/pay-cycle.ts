@@ -19,6 +19,7 @@ import {
   type PayCycleBounds,
 } from "@/lib/financial/pay-cycle-bounds";
 import type { AccountType, Currency } from "@/types";
+import { requestCached } from "@/lib/request-cache";
 
 export {
   getCycleProgress,
@@ -35,8 +36,10 @@ export {
 const AUTO_SALARY_TAG = "auto-salary";
 
 export async function getUserPaydayDay(userId: string): Promise<number> {
-  const user = await User.findById(userId).select("paydayDay").lean();
-  return Math.min(28, Math.max(1, user?.paydayDay ?? 25));
+  return requestCached(`payday-day:${userId}`, async () => {
+    const user = await User.findById(userId).select("paydayDay").lean();
+    return Math.min(28, Math.max(1, user?.paydayDay ?? 25));
+  });
 }
 
 export type CycleExpenseTopItem = {
@@ -160,6 +163,16 @@ function isLoggedSalaryIncome(
 export async function getPayCycleBuffer(
   userId: string,
   now: Date = new Date()
+): Promise<PayCycleBuffer> {
+  const dayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  return requestCached(`pay-cycle-buffer:${userId}:${dayKey}`, () =>
+    getPayCycleBufferUncached(userId, now)
+  );
+}
+
+async function getPayCycleBufferUncached(
+  userId: string,
+  now: Date
 ): Promise<PayCycleBuffer> {
   const user = await User.findById(userId).lean();
   const paydayDay = user?.paydayDay ?? 25;

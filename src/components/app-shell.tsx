@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { AlertsBell } from "@/components/alerts-bell";
+import { prefetchPrimaryTabs } from "@/lib/use-api";
 
 type NavItem = {
   href: string;
@@ -260,10 +261,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     isActivePath(pathname, tab.href)
   );
 
+  useEffect(() => {
+    prefetchPrimaryTabs();
+  }, []);
+
   return (
-    <div className="min-h-dvh bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-50 via-background to-slate-100 dark:from-emerald-950/40 dark:via-background dark:to-background">
+    <div className="min-h-dvh bg-background md:bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] md:from-emerald-50 md:via-background md:to-slate-100 dark:md:from-emerald-950/40 dark:md:via-background dark:md:to-background">
       <div className="mx-auto flex min-h-dvh max-w-[1400px]">
-        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/90 p-4 backdrop-blur-xl md:flex">
+        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/95 p-4 md:flex md:bg-sidebar/90 md:backdrop-blur-xl">
           <div className="mb-6 flex items-start justify-between gap-2 px-2">
             <div>
               <p className="font-heading text-xl font-semibold tracking-tight text-emerald-800 dark:text-emerald-300">
@@ -297,7 +302,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 backdrop-blur-xl md:hidden pt-[env(safe-area-inset-top)]">
+          <header className="sticky top-0 z-20 border-b border-border/80 bg-background/95 md:hidden pt-[env(safe-area-inset-top)] supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md">
             <div className="flex h-14 items-center gap-2 px-4">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-heading text-sm font-semibold tracking-tight text-emerald-800 dark:text-emerald-300">
@@ -323,7 +328,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </main>
 
           <nav
-            className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-background/92 backdrop-blur-xl md:hidden pb-[env(safe-area-inset-bottom)]"
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-background/95 md:hidden pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-background/92 supports-[backdrop-filter]:backdrop-blur-md"
             aria-label={t("nav.mainNav")}
           >
             <div className="mx-auto grid h-[4.25rem] max-w-lg grid-cols-5 px-1">
@@ -419,7 +424,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
             <SheetContent
               side="bottom"
-              className="max-h-[88dvh] rounded-t-3xl border-border/80 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+              className="max-h-[88dvh] rounded-t-3xl border-border/80 bg-card pb-[env(safe-area-inset-bottom)] md:hidden"
             >
               <SheetHeader className="text-left">
                 <SheetTitle className="font-heading text-emerald-800 dark:text-emerald-300">

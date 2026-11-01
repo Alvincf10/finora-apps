@@ -115,6 +115,12 @@ export const en = {
     themeLight: "Light",
     themeDark: "Dark",
     themeSystem: "System",
+    aiAssist: "AI assistant",
+    aiAssistDesc:
+      "Optional. When enabled, Finora may send a financial summary to an external AI provider (OpenRouter) to answer questions. Ledger data is never modified by AI.",
+    aiAssistEnable: "Allow AI explanations",
+    aiAssistEnabledToast: "AI assistant enabled",
+    aiAssistDisabledToast: "AI assistant disabled",
     language: "Language",
     languageDesc: "Choose Indonesian or English for the app interface.",
     categories: "Categories",
@@ -136,6 +142,9 @@ export const en = {
     subtitle: "Pay period {label}, calculated automatically.",
     subtitleFallback: "next",
     loading: "Loading dashboard...",
+    showMoreDetails: "Show more details",
+    showLessDetails: "Show less",
+    detailsLoading: "Loading charts & lists…",
     salaryCycle: "Pay period day {day} · {label}",
     setSalary: "Set salary in Settings",
     bufferConfigured:

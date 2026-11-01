@@ -46,6 +46,11 @@ const UserSchema = new Schema(
       ],
       default: "UNSET",
     },
+    /**
+     * Explicit opt-in before Finora sends financial context to an external AI provider.
+     * Default false — enable in Settings.
+     */
+    aiAssistEnabled: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
@@ -60,7 +65,8 @@ if (
   models.User &&
   (!models.User.schema.path("monthlySalary") ||
     !models.User.schema.path("roadmapPreferences") ||
-    !models.User.schema.path("decisionPreference"))
+    !models.User.schema.path("decisionPreference") ||
+    !models.User.schema.path("aiAssistEnabled"))
 ) {
   delete models.User;
 }

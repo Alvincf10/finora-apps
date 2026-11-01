@@ -1,17 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { api } from "@/lib/client-api";
 import { formatMoney, toMinorUnits, fromMinorUnits } from "@/lib/money";
 import { applyGoalAllocation } from "@/lib/financial/survival-math";
 import type { Currency } from "@/types";
@@ -32,6 +23,18 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/components/i18n-provider";
 import { AiExplainer } from "@/components/ai-explainer";
+import { useApi } from "@/lib/use-api";
+
+const CashFlowBars = dynamic(
+  () =>
+    import("@/components/charts/cash-flow-bars").then((m) => m.CashFlowBars),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full animate-pulse rounded-xl bg-muted/60" />
+    ),
+  }
+);
 
 type CommandCenterBlock = {
   health: {
@@ -606,40 +609,60 @@ function SurvivalCard({
 
 export default function DashboardPage() {
   const { t, intlLocale } = useI18n();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [phase2, setPhase2] = useState<{
-    insightsCount: number;
-    trends: Array<{ categoryName: string; percentageChange: number; trend: string }>;
-  } | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const {
+    data: core,
+    error: coreError,
+    isLoading: coreLoading,
+  } = useApi<DashboardData>("/api/dashboard?scope=core");
+  const { data: extras, isLoading: extrasLoading } = useApi<
+    Partial<DashboardData>
+  >(core ? "/api/dashboard?scope=extras" : null);
+
+  const { data: insightsPayload } = useApi<{
+    insights: Array<{ title: string }>;
+  }>(core ? "/api/insights" : null, { shouldRetryOnError: false });
+  const { data: analyticsPayload } = useApi<{
+    spending: Array<{
+      categoryName: string;
+      percentageChange: number;
+      trend: string;
+    }>;
+  }>(core ? "/api/analytics" : null, { shouldRetryOnError: false });
+
+  const data = useMemo(() => {
+    if (!core) return null;
+    if (!extras) return core;
+    return { ...core, ...extras };
+  }, [core, extras]);
+
+  const phase2 = useMemo(() => {
+    if (!insightsPayload || !analyticsPayload) return null;
+    return {
+      insightsCount: insightsPayload.insights.length,
+      trends: analyticsPayload.spending
+        .filter((s) => s.trend === "INCREASING" || s.trend === "DECREASING")
+        .slice(0, 3),
+    };
+  }, [insightsPayload, analyticsPayload]);
 
   useEffect(() => {
-    api<DashboardData>("/api/dashboard")
-      .then(setData)
-      .catch((error) => toast.error(error.message));
+    if (coreError) toast.error(coreError.message);
+  }, [coreError]);
 
-    Promise.all([
-      api<{ insights: Array<{ title: string }> }>("/api/insights"),
-      api<{
-        spending: Array<{
-          categoryName: string;
-          percentageChange: number;
-          trend: string;
-        }>;
-        profile: { currency: Currency };
-      }>("/api/analytics"),
-    ])
-      .then(([insights, analytics]) => {
-        setPhase2({
-          insightsCount: insights.insights.length,
-          trends: analytics.spending
-            .filter((s) => s.trend === "INCREASING" || s.trend === "DECREASING")
-            .slice(0, 3),
-        });
-      })
-      .catch(() => {
-        /* phase 2 widgets are optional on dashboard */
-      });
+  useEffect(() => {
+    // Desktop always shows the full dashboard; mobile starts compact.
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setShowDetails(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
+
+  if (coreLoading && !data) {
+    return <DashboardSkeleton label={t("dashboard.loading")} />;
+  }
 
   if (!data) {
     return <DashboardSkeleton label={t("dashboard.loading")} />;
@@ -1016,6 +1039,27 @@ export default function DashboardPage() {
         />
       </div>
 
+      <div className="md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full min-h-11 touch-manipulation"
+          onClick={() => setShowDetails((v) => !v)}
+        >
+          {showDetails
+            ? t("dashboard.showLessDetails")
+            : t("dashboard.showMoreDetails")}
+        </Button>
+      </div>
+
+      {showDetails ? (
+      <div className="space-y-8">
+      {extrasLoading && !extras ? (
+        <p className="text-sm text-muted-foreground">
+          {t("dashboard.detailsLoading")}
+        </p>
+      ) : null}
+
       {debtItems.length > 0 ? (
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
@@ -1204,199 +1248,206 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Kpi
-          label={t("dashboard.goalsSavings")}
-          value={money(goalsSaved)}
-          valueClassName="text-sky-800 dark:text-sky-300"
-          hint={
-            goalsTarget > 0
-              ? t("dashboard.ofTarget", { amount: money(goalsTarget) })
-              : t("dashboard.noActiveGoalHint")
-          }
-        />
-        <Kpi
-          label={t("dashboard.totalDebt")}
-          value={money(data.summary.totalDebt)}
-          valueClassName="text-rose-700 dark:text-rose-400"
-          hint={t("dashboard.secondaryDebtHint")}
-        />
-        <Kpi
-          label={t("dashboard.netWorth")}
-          value={money(data.summary.netWorth)}
-          hint={t("dashboard.secondaryNetWorthHint")}
-        />
-      </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Kpi
+              label={t("dashboard.goalsSavings")}
+              value={money(goalsSaved)}
+              valueClassName="text-sky-800 dark:text-sky-300"
+              hint={
+                goalsTarget > 0
+                  ? t("dashboard.ofTarget", { amount: money(goalsTarget) })
+                  : t("dashboard.noActiveGoalHint")
+              }
+            />
+            <Kpi
+              label={t("dashboard.totalDebt")}
+              value={money(data.summary.totalDebt)}
+              valueClassName="text-rose-700 dark:text-rose-400"
+              hint={t("dashboard.secondaryDebtHint")}
+            />
+            <Kpi
+              label={t("dashboard.netWorth")}
+              value={money(data.summary.netWorth)}
+              hint={t("dashboard.secondaryNetWorthHint")}
+            />
+          </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("dashboard.cashFlow")}</CardTitle>
-          <CardDescription>{t("dashboard.cashFlowDesc")}</CardDescription>
-        </CardHeader>
-        <CardContent className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.cashFlow}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Bar dataKey="income" fill="#059669" radius={4} />
-              <Bar dataKey="expense" fill="#64748b" radius={4} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dashboard.budgetOverview")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {data.budgets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("dashboard.noBudgetsThisMonth")}
-              </p>
-            ) : (
-              data.budgets.map((b) => (
-                <div key={b.categoryName} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>{b.categoryName}</span>
-                    <span className="font-mono text-muted-foreground">
-                      {b.utilizationPercentage}%
-                    </span>
-                  </div>
-                  <Progress value={Math.min(b.utilizationPercentage, 100)} />
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("dashboard.insights")}</CardTitle>
-            <CardDescription>{t("dashboard.insightsDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.recommendations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("dashboard.noWarnings")}
-              </p>
-            ) : (
-              data.recommendations.map((r, idx) => (
-                <div key={`${r.type}-${idx}`} className="rounded-lg border p-3">
-                  <div className="mb-1 flex items-center gap-2">
-                    <Badge
-                      variant={
-                        r.severity === "CRITICAL" ? "destructive" : "secondary"
-                      }
-                    >
-                      {r.severity}
-                    </Badge>
-                    <p className="text-sm font-medium">{r.title}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{r.message}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <AiExplainer
-        contextType="general_summary"
-        defaultQuestion={t("aiExplainer.defaultQuestion")}
-      />
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>{t("dashboard.recentTransactions")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.recentTransactions.map((tx) => (
-              <div
-                key={tx._id}
-                className="flex items-center justify-between gap-3 text-sm"
-              >
-                <div>
-                  <p className="font-medium">
-                    {tx.description || tx.categoryId?.name || tx.type}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {tx.accountId?.name} ·{" "}
-                    {new Date(tx.date).toLocaleString(intlLocale, {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                <span className="font-mono">
-                  {tx.type === "EXPENSE" || tx.type === "TRANSFER" ? "-" : "+"}
-                  {money(tx.amount, tx.currency)}
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>{t("dashboard.debts")}</CardTitle>
+              <CardTitle>{t("dashboard.cashFlow")}</CardTitle>
+              <CardDescription>{t("dashboard.cashFlowDesc")}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {data.debts.length === 0 ? (
-                <p className="text-muted-foreground">
-                  {t("dashboard.noActiveDebts")}
-                </p>
-              ) : (
-                data.debts.map((d) => (
-                  <div key={d.name} className="flex justify-between">
-                    <span>{d.name}</span>
-                    <span className="font-mono">
-                      {money(d.remainingAmount, d.currency)}
-                    </span>
-                  </div>
-                ))
-              )}
+            <CardContent className="h-72">
+              <CashFlowBars data={data.cashFlow ?? []} />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("dashboard.goals")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.goals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("dashboard.noActiveGoals")}
-                </p>
-              ) : (
-                data.goals.map((g) => (
-                  <div key={g.name} className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>{g.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {Math.round((g.currentAmount / g.targetAmount) * 100)}%
-                      </span>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("dashboard.budgetOverview")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(data.budgets ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("dashboard.noBudgetsThisMonth")}
+                  </p>
+                ) : (
+                  data.budgets.map((b) => (
+                    <div key={b.categoryName} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span>{b.categoryName}</span>
+                        <span className="font-mono text-muted-foreground">
+                          {b.utilizationPercentage}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={Math.min(b.utilizationPercentage, 100)}
+                      />
                     </div>
-                    <Progress
-                      value={Math.min(
-                        (g.currentAmount / g.targetAmount) * 100,
-                        100
-                      )}
-                    />
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("dashboard.insights")}</CardTitle>
+                <CardDescription>{t("dashboard.insightsDesc")}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(data.recommendations ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("dashboard.noWarnings")}
+                  </p>
+                ) : (
+                  data.recommendations.map((r, idx) => (
+                    <div
+                      key={`${r.type}-${idx}`}
+                      className="rounded-lg border p-3"
+                    >
+                      <div className="mb-1 flex items-center gap-2">
+                        <Badge
+                          variant={
+                            r.severity === "CRITICAL"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {r.severity}
+                        </Badge>
+                        <p className="text-sm font-medium">{r.title}</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {r.message}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <AiExplainer
+            contextType="general_summary"
+            defaultQuestion={t("aiExplainer.defaultQuestion")}
+          />
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>{t("dashboard.recentTransactions")}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(data.recentTransactions ?? []).map((tx) => (
+                  <div
+                    key={tx._id}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {tx.description || tx.categoryId?.name || tx.type}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {tx.accountId?.name} ·{" "}
+                        {new Date(tx.date).toLocaleString(intlLocale, {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <span className="font-mono">
+                      {tx.type === "EXPENSE" || tx.type === "TRANSFER"
+                        ? "-"
+                        : "+"}
+                      {money(tx.amount, tx.currency)}
+                    </span>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("dashboard.debts")}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {(data.debts ?? []).length === 0 ? (
+                    <p className="text-muted-foreground">
+                      {t("dashboard.noActiveDebts")}
+                    </p>
+                  ) : (
+                    data.debts.map((d) => (
+                      <div key={d.name} className="flex justify-between">
+                        <span>{d.name}</span>
+                        <span className="font-mono">
+                          {money(d.remainingAmount, d.currency)}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("dashboard.goals")}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(data.goals ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {t("dashboard.noActiveGoals")}
+                    </p>
+                  ) : (
+                    data.goals.map((g) => (
+                      <div key={g.name} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span>{g.name}</span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {Math.round(
+                              (g.currentAmount / g.targetAmount) * 100
+                            )}
+                            %
+                          </span>
+                        </div>
+                        <Progress
+                          value={Math.min(
+                            (g.currentAmount / g.targetAmount) * 100,
+                            100
+                          )}
+                        />
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

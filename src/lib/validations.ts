@@ -310,6 +310,8 @@ export const updateSettingsSchema = z.object({
       "ROADMAP_FOCUS",
     ])
     .optional(),
+  /** Opt-in: send financial summaries to external AI provider. */
+  aiAssistEnabled: z.boolean().optional(),
 });
 
 export const createFixedCostSchema = z.object({

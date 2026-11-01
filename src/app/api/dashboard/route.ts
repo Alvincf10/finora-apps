@@ -1,5 +1,6 @@
 import { ok, handleError } from "@/lib/api";
 import { requireUser } from "@/lib/session";
+import { runWithRequestCache } from "@/lib/request-cache";
 import {
   getBudgetOverview,
   getCashFlowSeries,
@@ -78,94 +79,202 @@ function buildCashPockets(
   };
 }
 
+type Scope = "core" | "extras" | "full";
+
+function parseScope(raw: string | null): Scope {
+  if (raw === "core" || raw === "extras") return raw;
+  return "full";
+}
+
 export async function GET(request: Request) {
-  try {
-    const { userId } = await requireUser();
-    const { searchParams } = new URL(request.url);
-    const now = new Date();
-    const paydayDay = await getUserPaydayDay(userId);
-    const period = searchParams.get("year") && searchParams.get("month")
-      ? await parsePeriod(searchParams, userId)
-      : periodFromDate(paydayDay, now);
+  return runWithRequestCache(async () => {
+    try {
+      const { userId } = await requireUser();
+      const { searchParams } = new URL(request.url);
+      const scope = parseScope(searchParams.get("scope"));
+      const now = new Date();
+      const paydayDay = await getUserPaydayDay(userId);
+      const period =
+        searchParams.get("year") && searchParams.get("month")
+          ? await parsePeriod(searchParams, userId)
+          : periodFromDate(paydayDay, now);
 
-    const payCycleBuffer = await getPayCycleBuffer(userId, now);
-    const cycle = payCycleBuffer.cycle;
+      const payCycleBuffer = await getPayCycleBuffer(userId, now);
+      const cycle = payCycleBuffer.cycle;
 
-    const [
-      summary,
-      breakdown,
-      budgets,
-      cashFlow,
-      recommendations,
-      recentTransactions,
-      debts,
-      goals,
-      accounts,
-      debtsDueThisMonth,
-      survival,
-      commandCenter,
-    ] = await Promise.all([
-      getFinancialSummary(userId, period),
-      getCycleExpenseBreakdown(userId, cycle.start, cycle.end),
-      getBudgetOverview(userId, period),
-      getCashFlowSeries(userId, 6),
-      generateRecommendations(userId, period),
-      Transaction.find({
-        userId,
-        $or: [
-          { type: { $ne: "TRANSFER" } },
-          { transferDirection: "OUT" },
-        ],
-      })
-        .sort({ date: -1, createdAt: -1, _id: -1 })
-        .limit(8)
-        .populate("accountId", "name")
-        .populate("categoryId", "name"),
-      Debt.find({ userId, status: "ACTIVE" }).limit(5),
-      SavingsGoal.find({ userId, status: "ACTIVE" }),
-      Account.find({ userId, isActive: true }),
-      getDebtsDueThisMonth(userId, period, payCycleBuffer.currency),
-      getSurvivalPlan(userId),
-      getCommandCenter(userId, period).catch(() => null),
-    ]);
+      if (scope === "core") {
+        const [summary, accounts, debtsDueThisMonth, commandCenter] =
+          await Promise.all([
+            getFinancialSummary(userId, period),
+            Account.find({ userId, isActive: true }),
+            getDebtsDueThisMonth(userId, period, payCycleBuffer.currency),
+            getCommandCenter(userId, period).catch(() => null),
+          ]);
 
-    const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
-    const goalsTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
-    const cashPockets = buildCashPockets(accounts);
+        const cashPockets = buildCashPockets(accounts);
+        const cycleIncome =
+          payCycleBuffer.monthlySalary + payCycleBuffer.otherIncome;
+        const cycleExpense = payCycleBuffer.expenses;
+        const cycleNet = cycleIncome - cycleExpense;
 
-    const cycleIncome = payCycleBuffer.monthlySalary + payCycleBuffer.otherIncome;
-    const cycleExpense = payCycleBuffer.expenses;
-    const cycleNet = cycleIncome - cycleExpense;
+        return ok({
+          scope: "core" as const,
+          summary,
+          payCycleBuffer,
+          debtsDueThisMonth,
+          cashPockets,
+          accounts,
+          commandCenter,
+          goalsSaved: 0,
+          goalsTarget: 0,
+          breakdown: [],
+          budgets: [],
+          cashFlow: [],
+          recommendations: [],
+          recentTransactions: [],
+          debts: [],
+          goals: [],
+          survival: null,
+          cycleStats: {
+            label: cycle.label,
+            start: cycle.start.toISOString(),
+            end: cycle.end.toISOString(),
+            income: cycleIncome,
+            expense: cycleExpense,
+            net: cycleNet,
+            debtRemaining: payCycleBuffer.debtRemaining,
+            currency: payCycleBuffer.currency,
+          },
+        });
+      }
 
-    return ok({
-      summary,
-      breakdown,
-      budgets,
-      cashFlow,
-      recommendations,
-      recentTransactions,
-      debts,
-      debtsDueThisMonth,
-      payCycleBuffer,
-      survival,
-      goals: goals.slice(0, 5),
-      goalsSaved,
-      goalsTarget,
-      accounts,
-      cashPockets,
-      commandCenter,
-      cycleStats: {
-        label: cycle.label,
-        start: cycle.start.toISOString(),
-        end: cycle.end.toISOString(),
-        income: cycleIncome,
-        expense: cycleExpense,
-        net: cycleNet,
-        debtRemaining: payCycleBuffer.debtRemaining,
-        currency: payCycleBuffer.currency,
-      },
-    });
-  } catch (error) {
-    return handleError(error);
-  }
+      if (scope === "extras") {
+        const [
+          breakdown,
+          budgets,
+          cashFlow,
+          recommendations,
+          recentTransactions,
+          debts,
+          goals,
+          survival,
+        ] = await Promise.all([
+          getCycleExpenseBreakdown(userId, cycle.start, cycle.end),
+          getBudgetOverview(userId, period),
+          getCashFlowSeries(userId, 6),
+          generateRecommendations(userId, period),
+          Transaction.find({
+            userId,
+            $or: [
+              { type: { $ne: "TRANSFER" } },
+              { transferDirection: "OUT" },
+            ],
+          })
+            .sort({ date: -1, createdAt: -1, _id: -1 })
+            .limit(8)
+            .populate("accountId", "name")
+            .populate("categoryId", "name"),
+          Debt.find({ userId, status: "ACTIVE" }).limit(5),
+          SavingsGoal.find({ userId, status: "ACTIVE" }),
+          getSurvivalPlan(userId),
+        ]);
+
+        const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
+        const goalsTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+
+        return ok({
+          scope: "extras" as const,
+          breakdown,
+          budgets,
+          cashFlow,
+          recommendations,
+          recentTransactions,
+          debts,
+          goals: goals.slice(0, 5),
+          goalsSaved,
+          goalsTarget,
+          survival,
+        });
+      }
+
+      const [
+        summary,
+        breakdown,
+        budgets,
+        cashFlow,
+        recommendations,
+        recentTransactions,
+        debts,
+        goals,
+        accounts,
+        debtsDueThisMonth,
+        survival,
+        commandCenter,
+      ] = await Promise.all([
+        getFinancialSummary(userId, period),
+        getCycleExpenseBreakdown(userId, cycle.start, cycle.end),
+        getBudgetOverview(userId, period),
+        getCashFlowSeries(userId, 6),
+        generateRecommendations(userId, period),
+        Transaction.find({
+          userId,
+          $or: [
+            { type: { $ne: "TRANSFER" } },
+            { transferDirection: "OUT" },
+          ],
+        })
+          .sort({ date: -1, createdAt: -1, _id: -1 })
+          .limit(8)
+          .populate("accountId", "name")
+          .populate("categoryId", "name"),
+        Debt.find({ userId, status: "ACTIVE" }).limit(5),
+        SavingsGoal.find({ userId, status: "ACTIVE" }),
+        Account.find({ userId, isActive: true }),
+        getDebtsDueThisMonth(userId, period, payCycleBuffer.currency),
+        getSurvivalPlan(userId),
+        getCommandCenter(userId, period).catch(() => null),
+      ]);
+
+      const goalsSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
+      const goalsTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+      const cashPockets = buildCashPockets(accounts);
+
+      const cycleIncome =
+        payCycleBuffer.monthlySalary + payCycleBuffer.otherIncome;
+      const cycleExpense = payCycleBuffer.expenses;
+      const cycleNet = cycleIncome - cycleExpense;
+
+      return ok({
+        scope: "full" as const,
+        summary,
+        breakdown,
+        budgets,
+        cashFlow,
+        recommendations,
+        recentTransactions,
+        debts,
+        debtsDueThisMonth,
+        payCycleBuffer,
+        survival,
+        goals: goals.slice(0, 5),
+        goalsSaved,
+        goalsTarget,
+        accounts,
+        cashPockets,
+        commandCenter,
+        cycleStats: {
+          label: cycle.label,
+          start: cycle.start.toISOString(),
+          end: cycle.end.toISOString(),
+          income: cycleIncome,
+          expense: cycleExpense,
+          net: cycleNet,
+          debtRemaining: payCycleBuffer.debtRemaining,
+          currency: payCycleBuffer.currency,
+        },
+      });
+    } catch (error) {
+      return handleError(error);
+    }
+  });
 }

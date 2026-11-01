@@ -1,4 +1,5 @@
 import { ok, handleError } from "@/lib/api";
+import { assertCategoryParentOwned } from "@/lib/financial/category-ownership";
 import { requireUser } from "@/lib/session";
 import { categoryMeta } from "@/lib/seed/categories";
 import { updateCategorySchema } from "@/lib/validations";
@@ -20,6 +21,10 @@ export async function PATCH(request: Request, { params }: Params) {
     if (input.color !== undefined) category.color = input.color;
     if (input.isActive !== undefined) category.isActive = input.isActive;
     if (input.parentId !== undefined) {
+      if (input.parentId && input.parentId === id) {
+        throw new Error("VALIDATION");
+      }
+      await assertCategoryParentOwned(userId, input.parentId);
       category.parentId = input.parentId || undefined;
     }
 

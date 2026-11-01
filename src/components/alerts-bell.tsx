@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
-import { api } from "@/lib/client-api";
 import { getDismissedAlertIds } from "@/lib/alert-dismiss";
+import { useApi } from "@/lib/use-api";
 import { useT } from "@/components/i18n-provider";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -20,32 +20,23 @@ type ActionCenterResponse = {
 
 export function AlertsBell({ className }: { className?: string }) {
   const t = useT();
-  const [visibleCount, setVisibleCount] = useState(0);
-  const [hasCritical, setHasCritical] = useState(false);
+  const { data } = useApi<ActionCenterResponse>("/api/action-center", {
+    shouldRetryOnError: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    api<ActionCenterResponse>("/api/action-center")
-      .then((data) => {
-        if (cancelled) return;
-        const dismissed = getDismissedAlertIds();
-        const remaining = data.actions.filter(
-          (a) => a.source !== "ALERT" || !dismissed.has(a.id)
-        );
-        setVisibleCount(remaining.length);
-        setHasCritical(
-          remaining.some(
-            (a) => a.priority === "CRITICAL" || a.priority === "HIGH"
-          )
-        );
-      })
-      .catch(() => {
-        /* silent — bell is non-critical */
-      });
-    return () => {
-      cancelled = true;
+  const { visibleCount, hasCritical } = useMemo(() => {
+    if (!data) return { visibleCount: 0, hasCritical: false };
+    const dismissed = getDismissedAlertIds();
+    const remaining = data.actions.filter(
+      (a) => a.source !== "ALERT" || !dismissed.has(a.id)
+    );
+    return {
+      visibleCount: remaining.length,
+      hasCritical: remaining.some(
+        (a) => a.priority === "CRITICAL" || a.priority === "HIGH"
+      ),
     };
-  }, []);
+  }, [data]);
 
   return (
     <Link

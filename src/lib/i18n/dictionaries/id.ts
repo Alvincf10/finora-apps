@@ -119,6 +119,12 @@ export const id: Dictionary = {
     themeLight: "Terang",
     themeDark: "Gelap",
     themeSystem: "Sistem",
+    aiAssist: "Asisten AI",
+    aiAssistDesc:
+      "Opsional. Jika aktif, Finora boleh mengirim ringkasan keuangan ke penyedia AI eksternal (OpenRouter) untuk menjawab pertanyaan. AI tidak pernah mengubah ledger.",
+    aiAssistEnable: "Izinkan penjelasan AI",
+    aiAssistEnabledToast: "Asisten AI diaktifkan",
+    aiAssistDisabledToast: "Asisten AI dimatikan",
     language: "Bahasa",
     languageDesc: "Pilih Bahasa Indonesia atau English untuk antarmuka aplikasi.",
     categories: "Kategori",
@@ -141,6 +147,9 @@ export const id: Dictionary = {
     subtitle: "Periode gaji {label}, dihitung otomatis.",
     subtitleFallback: "berikutnya",
     loading: "Memuat pusat kendali...",
+    showMoreDetails: "Tampilkan detail lain",
+    showLessDetails: "Sembunyikan detail",
+    detailsLoading: "Memuat grafik & daftar…",
     salaryCycle: "Periode gaji tgl {day} · {label}",
     setSalary: "Atur gaji di Pengaturan",
     bufferConfigured:

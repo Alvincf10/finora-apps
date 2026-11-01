@@ -19,6 +19,7 @@ import {
 } from "@/lib/financial/metrics/compute-summary";
 import type { Currency } from "@/types";
 import type { MetricQualityFlag } from "@/lib/financial/metrics/types";
+import { requestCached } from "@/lib/request-cache";
 
 export interface Period {
   year: number;
@@ -60,6 +61,16 @@ export type FinancialSummary = {
 };
 
 export async function getFinancialSummary(
+  userId: string,
+  period: Period
+): Promise<FinancialSummary> {
+  return requestCached(
+    `fin-summary:${userId}:${period.year}:${period.month}`,
+    () => getFinancialSummaryUncached(userId, period)
+  );
+}
+
+async function getFinancialSummaryUncached(
   userId: string,
   period: Period
 ): Promise<FinancialSummary> {
@@ -154,6 +165,13 @@ export async function getExpenseBreakdown(userId: string, period: Period) {
 }
 
 export async function getBudgetOverview(userId: string, period: Period) {
+  return requestCached(
+    `budget-overview:${userId}:${period.year}:${period.month}`,
+    () => getBudgetOverviewUncached(userId, period)
+  );
+}
+
+async function getBudgetOverviewUncached(userId: string, period: Period) {
   const { start, end } = await resolvePeriodBounds(userId, period);
   const [user, accounts] = await Promise.all([
     User.findById(userId).select("baseCurrency").lean(),
@@ -211,6 +229,12 @@ export async function getBudgetOverview(userId: string, period: Period) {
 
 /** Last N pay cycles (not calendar months). Currency-scoped to user base. */
 export async function getCashFlowSeries(userId: string, cycles = 6) {
+  return requestCached(`cashflow-series:${userId}:${cycles}`, () =>
+    getCashFlowSeriesUncached(userId, cycles)
+  );
+}
+
+async function getCashFlowSeriesUncached(userId: string, cycles = 6) {
   const [paydayDay, user, accounts] = await Promise.all([
     getUserPaydayDay(userId),
     User.findById(userId).select("baseCurrency").lean(),

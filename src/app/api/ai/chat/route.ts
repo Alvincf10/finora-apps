@@ -6,6 +6,7 @@ import {
   shouldUseModelRouter,
 } from "@/lib/ai/model-router";
 import {
+  assertAiAssistEnabled,
   assertAIRateLimit,
   getAIProvider,
   isAIConfigured,
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await assertAiAssistEnabled(userId);
     assertAIRateLimit(userId);
 
     const body = aiChatSchema.parse(await request.json().catch(() => ({})));

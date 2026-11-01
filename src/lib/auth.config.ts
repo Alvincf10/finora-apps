@@ -15,7 +15,16 @@ export const authConfig = {
       }
 
       const isAuthPage = pathname.startsWith("/login");
-      const isProtected =
+      // Auth.js handlers + closed register endpoint stay public.
+      const isPublicApi =
+        pathname.startsWith("/api/auth") ||
+        pathname === "/api/auth/register" ||
+        pathname.startsWith("/api/auth/");
+
+      const isProtectedApi =
+        pathname.startsWith("/api/") && !isPublicApi;
+
+      const isProtectedPage =
         pathname.startsWith("/dashboard") ||
         pathname.startsWith("/transactions") ||
         pathname.startsWith("/accounts") ||
@@ -38,7 +47,7 @@ export const authConfig = {
         return true;
       }
 
-      if (isProtected) {
+      if (isProtectedApi || isProtectedPage) {
         return isLoggedIn;
       }
 

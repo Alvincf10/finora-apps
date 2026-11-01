@@ -6,6 +6,7 @@ import {
 } from "@/lib/ai/context-builder";
 import { isAIError } from "@/lib/ai/errors";
 import {
+  assertAiAssistEnabled,
   assertAIRateLimit,
   getAIProvider,
   isAIConfigured,
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await assertAiAssistEnabled(userId);
     assertAIRateLimit(userId);
 
     const body = aiExplainSchema.parse(await request.json().catch(() => ({})));

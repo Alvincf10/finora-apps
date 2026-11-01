@@ -42,6 +42,7 @@ type Settings = {
   name: string;
   email: string;
   decisionPreference?: DecisionPreference;
+  aiAssistEnabled?: boolean;
 };
 
 export default function SettingsPage() {
@@ -54,8 +55,10 @@ export default function SettingsPage() {
   const [salaryMajor, setSalaryMajor] = useState(0);
   const [decisionPreference, setDecisionPreference] =
     useState<DecisionPreference>("UNSET");
+  const [aiAssistEnabled, setAiAssistEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingPref, setSavingPref] = useState(false);
+  const [savingAi, setSavingAi] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -72,9 +75,33 @@ export default function SettingsPage() {
           fromMinorUnits(s.monthlySalary ?? 0, s.baseCurrency ?? "IDR")
         );
         setDecisionPreference(s.decisionPreference ?? "UNSET");
+        setAiAssistEnabled(Boolean(s.aiAssistEnabled));
       })
       .catch((e) => toast.error(e.message));
   }, []);
+
+  async function saveAiAssist(next: boolean) {
+    setAiAssistEnabled(next);
+    setSavingAi(true);
+    try {
+      const updated = await api<Settings>("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ aiAssistEnabled: next }),
+      });
+      setSettings(updated);
+      setAiAssistEnabled(Boolean(updated.aiAssistEnabled));
+      toast.success(
+        updated.aiAssistEnabled
+          ? t("settings.aiAssistEnabledToast")
+          : t("settings.aiAssistDisabledToast")
+      );
+    } catch (error) {
+      setAiAssistEnabled(!next);
+      toast.error(error instanceof Error ? error.message : t("common.failed"));
+    } finally {
+      setSavingAi(false);
+    }
+  }
 
   async function saveDecisionPreference(next: DecisionPreference) {
     setDecisionPreference(next);
@@ -224,6 +251,25 @@ export default function SettingsPage() {
               {saving ? t("common.saving") : t("settings.savePayCycle")}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.aiAssist")}</CardTitle>
+          <CardDescription>{t("settings.aiAssistDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 size-4 accent-emerald-700"
+              checked={aiAssistEnabled}
+              disabled={savingAi || !settings}
+              onChange={(e) => void saveAiAssist(e.target.checked)}
+            />
+            <span>{t("settings.aiAssistEnable")}</span>
+          </label>
         </CardContent>
       </Card>
 

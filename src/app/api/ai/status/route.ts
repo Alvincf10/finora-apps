@@ -2,6 +2,7 @@ import { ok, handleError } from "@/lib/api";
 import { isAIConfigured } from "@/lib/ai/provider";
 import { getAiFeatureFlags } from "@/lib/ai/feature-flags";
 import { requireUser } from "@/lib/session";
+import { User } from "@/models/User";
 
 /**
  * GET /api/ai/status — rollout flags for UI (no secrets).
@@ -9,11 +10,13 @@ import { requireUser } from "@/lib/session";
  */
 export async function GET() {
   try {
-    await requireUser();
+    const { userId } = await requireUser();
     const flags = getAiFeatureFlags();
+    const user = await User.findById(userId).select("aiAssistEnabled").lean();
     // Never include API keys, tokens, prompts, or financial payloads.
     return ok({
       configured: isAIConfigured(),
+      userOptIn: Boolean(user?.aiAssistEnabled),
       features: {
         scenarioExplainer: flags.scenarioExplainer,
         decisionAdvisor: flags.decisionAdvisor,

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { Transaction } from "@/models/Transaction";
 import { getAccountOrThrow, recalculateAccountBalance } from "@/lib/financial/balances";
+import { assertCategoryOwned } from "@/lib/financial/category-ownership";
 import { maybeNotifyBudgetOverflow } from "@/lib/financial/budget-overflow-wa";
 import { sessionOption, withTransaction } from "@/lib/with-transaction";
 import type { createTransactionSchema } from "@/lib/validations";
@@ -38,6 +39,7 @@ export async function createTransaction(userId: string, input: CreateInput) {
   if (account.currency !== input.currency) {
     throw new Error("Transaction currency must match account currency");
   }
+  await assertCategoryOwned(userId, input.categoryId);
 
   const tx = await Transaction.create({
     userId,
@@ -206,7 +208,10 @@ export async function updateTransaction(
   }
 
   if (input.amount !== undefined) tx.amount = input.amount;
-  if (input.categoryId !== undefined) tx.categoryId = input.categoryId as never;
+  if (input.categoryId !== undefined) {
+    await assertCategoryOwned(userId, input.categoryId);
+    tx.categoryId = input.categoryId as never;
+  }
   if (input.description !== undefined) tx.description = input.description;
   if (input.date !== undefined) tx.date = toDate(input.date);
   if (input.notes !== undefined) tx.notes = input.notes;

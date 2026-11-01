@@ -18,6 +18,7 @@ import {
 } from "@/lib/financial/phase2-service";
 import { persistInsightsUpsert } from "@/lib/financial/recommendations/persist";
 import type { Period } from "@/lib/financial/phase2-types";
+import { requestCached } from "@/lib/request-cache";
 
 export type ActionItem = {
   id: string;
@@ -116,6 +117,16 @@ export function dedupeActions(items: ActionItem[]): ActionItem[] {
 }
 
 export async function getActionCenter(
+  userId: string,
+  opts?: { refresh?: boolean; searchParams?: URLSearchParams }
+) {
+  const params = opts?.searchParams ?? new URLSearchParams();
+  const refresh = opts?.refresh ? "1" : "0";
+  const cacheKey = `action-center:${userId}:${params.toString()}:r${refresh}`;
+  return requestCached(cacheKey, () => getActionCenterUncached(userId, opts));
+}
+
+async function getActionCenterUncached(
   userId: string,
   opts?: { refresh?: boolean; searchParams?: URLSearchParams }
 ) {

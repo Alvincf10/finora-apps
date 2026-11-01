@@ -1,4 +1,5 @@
 import { ok, handleError } from "@/lib/api";
+import { assertCategoryParentOwned } from "@/lib/financial/category-ownership";
 import { requireUser } from "@/lib/session";
 import { categoryMeta } from "@/lib/seed/categories";
 import { createCategorySchema } from "@/lib/validations";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
   try {
     const { userId } = await requireUser();
     const input = createCategorySchema.parse(await request.json());
+    await assertCategoryParentOwned(userId, input.parentId);
     const meta = categoryMeta(input.name, input.type);
 
     const category = await Category.create({

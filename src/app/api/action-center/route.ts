@@ -1,22 +1,25 @@
 import { z } from "zod";
 import { ok, handleError } from "@/lib/api";
 import { requireUser } from "@/lib/session";
+import { runWithRequestCache } from "@/lib/request-cache";
 import { getActionCenter } from "@/lib/financial/recommendations/action-center";
 import { FinancialRecommendation } from "@/models/FinancialRecommendation";
 
 export async function GET(request: Request) {
-  try {
-    const { userId } = await requireUser();
-    const url = new URL(request.url);
-    const refresh = url.searchParams.get("refresh") === "1";
-    const data = await getActionCenter(userId, {
-      refresh,
-      searchParams: url.searchParams,
-    });
-    return ok(data);
-  } catch (error) {
-    return handleError(error);
-  }
+  return runWithRequestCache(async () => {
+    try {
+      const { userId } = await requireUser();
+      const url = new URL(request.url);
+      const refresh = url.searchParams.get("refresh") === "1";
+      const data = await getActionCenter(userId, {
+        refresh,
+        searchParams: url.searchParams,
+      });
+      return ok(data);
+    } catch (error) {
+      return handleError(error);
+    }
+  });
 }
 
 const patchSchema = z.object({

@@ -15,6 +15,7 @@ import {
   looksLikeSafetyOnlyOutput,
 } from "@/lib/ai/model-guard";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { User } from "@/models/User";
 
 export interface AIRequest {
   system: string;
@@ -271,6 +272,20 @@ export function getAIProvider(): AIProvider {
 }
 
 export { isAIConfigured };
+
+/**
+ * Privacy gate: user must opt in before any financial context is sent to a provider.
+ */
+export async function assertAiAssistEnabled(userId: string): Promise<void> {
+  const user = await User.findById(userId).select("aiAssistEnabled").lean();
+  if (!user?.aiAssistEnabled) {
+    throw new AIError(
+      "AI_NOT_CONFIGURED",
+      "Asisten AI dimatikan. Aktifkan di Pengaturan jika Anda setuju ringkasan keuangan dikirim ke penyedia AI eksternal.",
+      403
+    );
+  }
+}
 
 /**
  * Enforce Finora-side limits: per-minute + daily (in-memory; single-instance OK).

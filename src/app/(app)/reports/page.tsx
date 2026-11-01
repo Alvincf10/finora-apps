@@ -1,20 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { toast } from "sonner";
 import { api } from "@/lib/client-api";
-import { formatMoney, fromMinorUnits } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import type { Currency } from "@/types";
 import { useI18n } from "@/components/i18n-provider";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +20,32 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+
+const AnalyticsCashFlowChart = dynamic(
+  () =>
+    import("@/components/charts/analytics-bars").then(
+      (m) => m.AnalyticsCashFlowChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full animate-pulse rounded-xl bg-muted/60" />
+    ),
+  }
+);
+
+const AnalyticsCategoryChart = dynamic(
+  () =>
+    import("@/components/charts/analytics-bars").then(
+      (m) => m.AnalyticsCategoryChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full animate-pulse rounded-xl bg-muted/60" />
+    ),
+  }
+);
 
 type Profile = {
   averageMonthlyIncome: number;
@@ -70,19 +87,6 @@ type AnalyticsData = {
   period: { year: number; month: number };
   months: number;
 };
-
-function moneyTick(value: number, currency: Currency) {
-  const major = fromMinorUnits(value, currency);
-  if (currency === "IDR") {
-    if (Math.abs(major) >= 1_000_000) {
-      return `${(major / 1_000_000).toFixed(1)}jt`;
-    }
-    if (Math.abs(major) >= 1_000) {
-      return `${Math.round(major / 1_000)}rb`;
-    }
-  }
-  return String(Math.round(major));
-}
 
 export default function ReportsPage() {
   const { t, intlLocale } = useI18n();
@@ -293,38 +297,13 @@ export default function ReportsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={cashFlowChart}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="short" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v) => moneyTick(Number(v), currency)}
-                    width={48}
-                  />
-                  <Tooltip
-                    formatter={(value) =>
-                      formatMoney(Number(value ?? 0), currency, intlLocale)
-                    }
-                    labelFormatter={(label, payload) =>
-                      String(payload?.[0]?.payload?.label ?? label)
-                    }
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="income"
-                    name={t("reports.income")}
-                    fill="#059669"
-                    radius={4}
-                  />
-                  <Bar
-                    dataKey="expense"
-                    name={t("reports.expense")}
-                    fill="#64748b"
-                    radius={4}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              <AnalyticsCashFlowChart
+                data={cashFlowChart}
+                currency={currency}
+                intlLocale={intlLocale}
+                incomeLabel={t("reports.income")}
+                expenseLabel={t("reports.expense")}
+              />
             </CardContent>
           </Card>
 
@@ -344,43 +323,13 @@ export default function ReportsPage() {
                     {t("reports.noCategoryData")}
                   </p>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={categoryChart} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis
-                        type="number"
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v) => moneyTick(Number(v), currency)}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={72}
-                        tick={{ fontSize: 11 }}
-                      />
-                      <Tooltip
-                        formatter={(value) =>
-                          formatMoney(Number(value ?? 0), currency, intlLocale)
-                        }
-                        labelFormatter={(_, payload) =>
-                          String(payload?.[0]?.payload?.fullName ?? "")
-                        }
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="current"
-                        name={t("reports.current")}
-                        fill="#059669"
-                        radius={4}
-                      />
-                      <Bar
-                        dataKey="average"
-                        name={t("reports.average")}
-                        fill="#94a3b8"
-                        radius={4}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <AnalyticsCategoryChart
+                    data={categoryChart}
+                    currency={currency}
+                    intlLocale={intlLocale}
+                    currentLabel={t("reports.current")}
+                    averageLabel={t("reports.average")}
+                  />
                 )}
               </CardContent>
             </Card>
