@@ -1,4 +1,3 @@
-import { endOfMonth, max as maxDate } from "date-fns";
 import { Account } from "@/models/Account";
 import { Transaction } from "@/models/Transaction";
 import { User } from "@/models/User";
@@ -7,6 +6,7 @@ import { PaydayAllocation } from "@/models/PaydayAllocation";
 import { isLiabilityAccount } from "@/lib/financial/balances";
 import {
   getDebtsDueInRange,
+  resolveDebtDueWindowEnd,
   type DebtDueItem,
 } from "@/lib/financial/debts-due";
 import {
@@ -180,7 +180,7 @@ async function getPayCycleBufferUncached(
   const currency = (user?.baseCurrency as Currency) ?? "IDR";
   const cycle = getPayCycleBounds(paydayDay, now);
 
-  const debtWindowEnd = maxDate([cycle.end, endOfMonth(cycle.end)]);
+  const debtWindowEnd = resolveDebtDueWindowEnd(cycle.end);
 
   const allocation = await PaydayAllocation.findOne({
     userId,

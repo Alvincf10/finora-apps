@@ -3,6 +3,7 @@ import { Transaction } from "@/models/Transaction";
 import { getAccountOrThrow, recalculateAccountBalance } from "@/lib/financial/balances";
 import { assertCategoryOwned } from "@/lib/financial/category-ownership";
 import { maybeNotifyBudgetOverflow } from "@/lib/financial/budget-overflow-wa";
+import { maybeNotifyCcLimit } from "@/lib/financial/cc-limit-wa";
 import { sessionOption, withTransaction } from "@/lib/with-transaction";
 import type { createTransactionSchema } from "@/lib/validations";
 import type { z } from "zod";
@@ -61,6 +62,7 @@ export async function createTransaction(userId: string, input: CreateInput) {
       userId,
       input.categoryId ? String(input.categoryId) : null
     );
+    await maybeNotifyCcLimit(userId, input.accountId);
   }
   return tx;
 }
@@ -228,6 +230,7 @@ export async function updateTransaction(
       userId,
       tx.categoryId ? String(tx.categoryId) : null
     );
+    await maybeNotifyCcLimit(userId, nextAccountId);
   }
   return tx;
 }

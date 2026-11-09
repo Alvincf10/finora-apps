@@ -113,10 +113,16 @@ describe("dedupeActions", () => {
 });
 
 describe("extractEntityFromAlertId", () => {
-  it("parses debt and budget ids", () => {
+  it("parses debt, budget, and cc ids", () => {
     expect(extractEntityFromAlertId("debt-overdue:abc").entityId).toBe("abc");
     expect(extractEntityFromAlertId("budget-over:cat9:2026-10").entityId).toBe(
       "cat9"
+    );
+    expect(extractEntityFromAlertId("cc-warn:acc1:2026-11").entityId).toBe(
+      "acc1"
+    );
+    expect(extractEntityFromAlertId("cc-over:acc2:2026-11").entityId).toBe(
+      "acc2"
     );
   });
 });

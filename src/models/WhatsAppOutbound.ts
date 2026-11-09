@@ -17,6 +17,8 @@ const WhatsAppOutboundSchema = new Schema(
         "FIXED_COST_DUE",
         "BUDGET_OVERFLOW",
         "BUDGET_WARNING",
+        "CC_LIMIT_OVERFLOW",
+        "CC_LIMIT_WARNING",
         "MANUAL",
       ],
       default: "MANUAL",
@@ -60,7 +62,7 @@ const existingKind = models.WhatsAppOutbound?.schema.path("kind") as
 const existingDedupe = models.WhatsAppOutbound?.schema.path("dedupeKey");
 if (
   models.WhatsAppOutbound &&
-  (!(existingKind?.options?.enum ?? []).includes("BUDGET_WARNING") ||
+  (!(existingKind?.options?.enum ?? []).includes("CC_LIMIT_WARNING") ||
     !existingDedupe)
 ) {
   delete models.WhatsAppOutbound;

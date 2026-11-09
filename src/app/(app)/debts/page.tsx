@@ -50,12 +50,41 @@ type Account = {
   isActive: boolean;
 };
 
+type DebtDueItem = {
+  debtId: string;
+  name: string;
+  currency: Currency;
+  dueAmount: number;
+  paidAmount: number;
+  remainingDue: number;
+  remainingAmount: number;
+  dueDate?: string;
+  monthlyPayment: number | null;
+  installmentMonths: number | null;
+  isInstallment: boolean;
+};
+
+type DebtsDueThisPeriod = {
+  items: DebtDueItem[];
+  totalDue: number;
+  totalPaid: number;
+  totalRemaining: number;
+  currency: Currency;
+  byCurrency: Array<{
+    currency: Currency;
+    totalDue: number;
+    totalPaid: number;
+    totalRemaining: number;
+  }>;
+};
+
 type SimContext = {
   currency: Currency;
   income: number;
   spareCashFlow: number;
   suggestedBudget: number;
   cycleLabel: string;
+  debtsDue?: DebtsDueThisPeriod;
 };
 
 const TENOR_PRESETS = [1, 3, 6, 9, 12, 18, 24];
@@ -154,7 +183,23 @@ export default function DebtsPage() {
     load().catch((e) => toast.error(e.message));
   }, []);
 
+  /** Payment-aware remaining due — same source as Dashboard installments. */
+  const dueByDebtId = useMemo(() => {
+    const map = new Map<string, DebtDueItem>();
+    for (const item of simCtx?.debtsDue?.items ?? []) {
+      map.set(item.debtId, item);
+    }
+    return map;
+  }, [simCtx?.debtsDue?.items]);
+
   const thisMonthByCurrency = useMemo(() => {
+    // Once simulate has loaded, always trust payment-aware totals (even if empty).
+    if (simCtx?.debtsDue) {
+      return simCtx.debtsDue.byCurrency
+        .filter((b) => b.totalRemaining > 0 || b.totalDue > 0)
+        .map((b) => [b.currency, b.totalRemaining] as [Currency, number]);
+    }
+    // Fallback before simulate loads: live tenor preview (no payments applied).
     const map = new Map<Currency, number>();
     for (const debt of debts) {
       if (debt.status !== "ACTIVE" || debt.remainingAmount <= 0) continue;
@@ -163,7 +208,15 @@ export default function DebtsPage() {
       map.set(debt.currency, (map.get(debt.currency) ?? 0) + monthly);
     }
     return [...map.entries()];
-  }, [debts, tenorByDebt]);
+  }, [debts, tenorByDebt, simCtx?.debtsDue]);
+
+  const unpaidDueCount = useMemo(() => {
+    const items = simCtx?.debtsDue?.items ?? [];
+    if (items.length > 0) {
+      return items.filter((d) => d.remainingDue > 0).length;
+    }
+    return activeDebts.filter((d) => d.remainingAmount > 0).length;
+  }, [simCtx?.debtsDue?.items, activeDebts]);
 
   function setTenor(debtId: string, months: number) {
     const safe = Math.min(600, Math.max(1, Math.floor(months) || 1));
@@ -489,8 +542,8 @@ export default function DebtsPage() {
                   </p>
                 ))}
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {t("debts.fromActiveDebts", {
-                    count: activeDebts.length,
+                  {t("debts.fromUnpaidBills", {
+                    count: unpaidDueCount,
                   })}
                 </p>
               </div>
@@ -528,6 +581,12 @@ export default function DebtsPage() {
             (debt.installmentMonths !== months ||
               (savedMonthly > 0 && savedMonthly !== monthly) ||
               savedMonthly === 0);
+          const dueItem = dueByDebtId.get(debt._id);
+          // Saved tenor → show payment-aware remaining due (sync Dashboard).
+          // Dirty preview → show what the new tenor would charge.
+          const payThisPeriod = dirty
+            ? monthly
+            : (dueItem?.remainingDue ?? monthly);
           const pct = progressPct(debt);
 
           return (
@@ -609,13 +668,26 @@ export default function DebtsPage() {
                         {t("debts.payThisMonth")}
                       </p>
                       <p className="font-heading text-2xl font-semibold tabular-nums">
-                        {money(monthly, debt.currency)}
+                        {money(payThisPeriod, debt.currency)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {t("debts.dividedByMonths", {
-                          amount: money(debt.remainingAmount, debt.currency),
-                          months,
-                        })}
+                        {dirty
+                          ? t("debts.dividedByMonths", {
+                              amount: money(debt.remainingAmount, debt.currency),
+                              months,
+                            })
+                          : dueItem && dueItem.paidAmount > 0
+                            ? t("debts.ofDuePaid", {
+                                due: money(dueItem.dueAmount, debt.currency),
+                                paid: money(dueItem.paidAmount, debt.currency),
+                              })
+                            : t("debts.dividedByMonths", {
+                                amount: money(
+                                  debt.remainingAmount,
+                                  debt.currency
+                                ),
+                                months,
+                              })}
                         {debt.dueDate
                           ? ` · ${t("debts.dueOn", {
                               date: new Date(debt.dueDate).toLocaleDateString(

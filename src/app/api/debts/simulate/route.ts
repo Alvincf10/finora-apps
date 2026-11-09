@@ -4,6 +4,10 @@ import { Debt } from "@/models/Debt";
 import { User } from "@/models/User";
 import { getPayCycleBuffer } from "@/lib/financial/pay-cycle";
 import {
+  getDebtsDueInRange,
+  resolveDebtDueWindowEnd,
+} from "@/lib/financial/debts-due";
+import {
   monthlyInstallment,
   remainingInstallments,
   simulateDebtRepayment,
@@ -40,6 +44,14 @@ export async function GET() {
         (cycle.otherIncome ?? 0) -
         (cycle.expenses ?? 0) -
         fixedCosts
+    );
+
+    // Same window + payment-aware totals as Dashboard / pay-cycle.
+    const debtsDue = await getDebtsDueInRange(
+      userId,
+      cycle.cycle.start,
+      resolveDebtDueWindowEnd(cycle.cycle.end),
+      currency
     );
 
     const debtRows = debts
@@ -98,6 +110,7 @@ export async function GET() {
       suggestedBudget,
       cycleLabel: cycle.cycle.label,
       debts: debtRows,
+      debtsDue,
     });
   } catch (error) {
     return handleError(error);

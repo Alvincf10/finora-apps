@@ -177,6 +177,11 @@ export const en = {
     billLabel: "Bill",
     ofAmount: "of {amount}",
     totalPayThisMonth: "Total due this period",
+    upcomingInstallments: "Upcoming installments",
+    upcomingInstallmentsDesc:
+      "Next dues after this period’s debt window — tenor still running.",
+    nextInstallmentLabel: "Next installment",
+    settledThisPeriod: " · settled this period",
     financialInsights: "Financial insights",
     recommendations: "{count} recommendations",
     spendingTrends: "Spending trends",
@@ -308,7 +313,7 @@ export const en = {
     countsLine:
       "{total} active · {critical} critical · {alerts} alerts · {recommendations} recommendations",
     legend:
-      "Critical — overdue / over budget · Warning — due soon / budget ≥80% · Info — soft reminder",
+      "Critical — overdue / over budget / CC at limit · Warning — due soon / budget or CC ≥80% · Info — soft reminder",
     dismissHint: "Dismiss is stored only in this browser (localStorage).",
     due: "Due {date}",
     accept: "Accept",
@@ -514,10 +519,12 @@ export const en = {
     installmentSaved: "Installment {name}: {amount} × {months} mo",
     payThisMonth: "Pay this period",
     payThisMonthDesc:
-      "Total installments from the tenor you pick on each card.",
+      "Still owed this period after payments — same as Dashboard installments.",
     payThisMonthApprox: "Pay this period ≈ ",
     timesMonths: " × {months} months",
     fromActiveDebts: "from {count} active debts",
+    fromUnpaidBills: "from {count} unpaid bills this period",
+    ofDuePaid: "of {due} · paid {paid}",
     estimatedCashLeft: "Estimated cash left",
     withinBudget: "Within budget",
     overSpare: "Exceeds spare cash",

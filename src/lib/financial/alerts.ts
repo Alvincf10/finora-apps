@@ -4,13 +4,18 @@ import {
   endOfDay,
   startOfDay,
 } from "date-fns";
+import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { FixedCost } from "@/models/FixedCost";
+import {
+  creditAvailable,
+  creditUtilizationPct,
+} from "@/lib/financial/balances";
 import { getBudgetOverview } from "@/lib/financial/summary";
 import { getUserPaydayDay, periodFromDate } from "@/lib/financial/pay-cycle";
 import { formatMoney } from "@/lib/money";
 import { daysInMonth } from "@/lib/financial/phase2-math";
-import type { Currency } from "@/types";
+import type { AccountType, Currency } from "@/types";
 
 export type AlertSeverity = "CRITICAL" | "WARNING" | "INFO";
 
@@ -19,7 +24,11 @@ export type AlertKind =
   | "DEBT_DUE_SOON"
   | "FIXED_COST_DUE"
   | "BUDGET_OVERFLOW"
-  | "BUDGET_WARNING";
+  | "BUDGET_WARNING"
+  | "CC_LIMIT_OVERFLOW"
+  | "CC_LIMIT_WARNING";
+
+const CC_WARN_PCT = 80;
 
 export type AppAlert = {
   id: string;
@@ -52,10 +61,11 @@ export async function getAlertsForUser(userId: string): Promise<AppAlert[]> {
   const paydayDay = await getUserPaydayDay(userId);
   const period = periodFromDate(paydayDay, now);
 
-  const [debts, fixedCosts, budgets] = await Promise.all([
+  const [debts, fixedCosts, budgets, creditCards] = await Promise.all([
     Debt.find({ userId, status: "ACTIVE" }).lean(),
     FixedCost.find({ userId, isActive: true }).lean(),
     getBudgetOverview(userId, period),
+    Account.find({ userId, isActive: true, type: "CREDIT_CARD" }).lean(),
   ]);
 
   const alerts: AppAlert[] = [];
@@ -134,6 +144,46 @@ export async function getAlertsForUser(userId: string): Promise<AppAlert[]> {
         title: `${b.categoryName} at ${b.utilizationPercentage}%`,
         message: `${formatMoney(b.actualAmount, b.currency)} of ${formatMoney(b.budgetAmount, b.currency)} used`,
         href: "/budget",
+      });
+    }
+  }
+
+  for (const card of creditCards) {
+    const creditLimit = Math.max(0, card.creditLimit ?? 0);
+    if (creditLimit <= 0) continue;
+    const outstanding = Math.max(0, card.currentBalance ?? 0);
+    const available =
+      creditAvailable({
+        type: card.type as AccountType,
+        creditLimit,
+        currentBalance: outstanding,
+      }) ?? 0;
+    const utilization =
+      creditUtilizationPct({
+        type: card.type as AccountType,
+        creditLimit,
+        currentBalance: outstanding,
+      }) ?? 0;
+    const currency = card.currency as Currency;
+    const periodKey = `${period.year}-${String(period.month).padStart(2, "0")}`;
+
+    if (available <= 0 || utilization >= 100) {
+      alerts.push({
+        id: `cc-over:${card._id}:${periodKey}`,
+        kind: "CC_LIMIT_OVERFLOW",
+        severity: "CRITICAL",
+        title: `${card.name} at credit limit`,
+        message: `Outstanding ${formatMoney(outstanding, currency)} / limit ${formatMoney(creditLimit, currency)}`,
+        href: "/accounts",
+      });
+    } else if (utilization >= CC_WARN_PCT) {
+      alerts.push({
+        id: `cc-warn:${card._id}:${periodKey}`,
+        kind: "CC_LIMIT_WARNING",
+        severity: "WARNING",
+        title: `${card.name} at ${utilization}% limit`,
+        message: `Sisa ${formatMoney(available, currency)} · ${formatMoney(outstanding, currency)} / ${formatMoney(creditLimit, currency)}`,
+        href: "/accounts",
       });
     }
   }

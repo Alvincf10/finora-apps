@@ -46,8 +46,13 @@ function alertToAction(alert: AppAlert, period: Period): ActionItem {
     debtId: alert.kind.startsWith("DEBT") ? entityId : null,
     categoryId: alert.kind.startsWith("BUDGET") ? entityId : null,
     goalId: null,
-    period: alert.kind.startsWith("BUDGET") ? period : null,
-    suffix: alert.dueDate?.slice(0, 10) ?? null,
+    period:
+      alert.kind.startsWith("BUDGET") || alert.kind.startsWith("CC_")
+        ? period
+        : null,
+    suffix: alert.kind.startsWith("CC_")
+      ? entityId
+      : (alert.dueDate?.slice(0, 10) ?? null),
   });
 
   return {

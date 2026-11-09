@@ -1,8 +1,18 @@
+import { endOfMonth, max as maxDate } from "date-fns";
 import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { DebtPayment } from "@/models/DebtPayment";
 import { resolvePeriodBounds, type Period } from "@/lib/financial/summary";
 import type { Currency } from "@/types";
+
+/**
+ * Debt due window matches pay-cycle: through cycle end, extended to calendar
+ * month-end so dues right after payday (e.g. Nov 25 after cycle ending Nov 24)
+ * still count as this period's bills.
+ */
+export function resolveDebtDueWindowEnd(cycleEnd: Date): Date {
+  return maxDate([cycleEnd, endOfMonth(cycleEnd)]);
+}
 
 export type DebtObligationType =
   | "INSTALLMENT"
@@ -270,6 +280,11 @@ export async function getDebtsDueThisMonth(
   preferredCurrency: Currency = "IDR"
 ): Promise<DebtsDueThisMonth> {
   const { start, end } = await resolvePeriodBounds(userId, period);
-  const due = await getDebtsDueInRange(userId, start, end, preferredCurrency);
+  const due = await getDebtsDueInRange(
+    userId,
+    start,
+    resolveDebtDueWindowEnd(end),
+    preferredCurrency
+  );
   return { period, ...due };
 }

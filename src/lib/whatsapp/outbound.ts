@@ -77,15 +77,21 @@ export async function enqueueWeeklyReport(
   };
 }
 
+type DedupeAlertKind =
+  | "BUDGET_OVERFLOW"
+  | "BUDGET_WARNING"
+  | "CC_LIMIT_OVERFLOW"
+  | "CC_LIMIT_WARNING";
+
 /**
- * Queue a once-per-week budget WhatsApp alert (80% warning or overflow).
+ * Queue a deduped WhatsApp alert (budget / CC limit).
  * Returns null when already queued/sent for the same dedupeKey.
  */
-export async function enqueueBudgetAlert(
+async function enqueueDedupeAlert(
   userId: string,
   input: {
     dedupeKey: string;
-    kind: "BUDGET_OVERFLOW" | "BUDGET_WARNING";
+    kind: DedupeAlertKind;
     body: string;
   }
 ) {
@@ -125,6 +131,30 @@ export async function enqueueBudgetAlert(
     }
     throw error;
   }
+}
+
+/** Once-per-week budget WhatsApp alert (80% warning or overflow). */
+export async function enqueueBudgetAlert(
+  userId: string,
+  input: {
+    dedupeKey: string;
+    kind: "BUDGET_OVERFLOW" | "BUDGET_WARNING";
+    body: string;
+  }
+) {
+  return enqueueDedupeAlert(userId, input);
+}
+
+/** Once-per-month CC limit WhatsApp alert (80% warning or at/over limit). */
+export async function enqueueCcLimitAlert(
+  userId: string,
+  input: {
+    dedupeKey: string;
+    kind: "CC_LIMIT_OVERFLOW" | "CC_LIMIT_WARNING";
+    body: string;
+  }
+) {
+  return enqueueDedupeAlert(userId, input);
 }
 
 /**

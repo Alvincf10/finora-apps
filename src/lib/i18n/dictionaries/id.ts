@@ -183,6 +183,11 @@ export const id: Dictionary = {
     billLabel: "Tagihan",
     ofAmount: "dari {amount}",
     totalPayThisMonth: "Total bayar periode ini",
+    upcomingInstallments: "Cicilan upcoming",
+    upcomingInstallmentsDesc:
+      "Jatuh tempo setelah jendela tagihan periode ini — tenor masih jalan.",
+    nextInstallmentLabel: "Cicilan berikutnya",
+    settledThisPeriod: " · lunas periode ini",
     financialInsights: "Wawasan keuangan",
     recommendations: "{count} rekomendasi",
     spendingTrends: "Tren pengeluaran",
@@ -314,7 +319,7 @@ export const id: Dictionary = {
     countsLine:
       "{total} aktif · {critical} kritis · {alerts} peringatan · {recommendations} saran",
     legend:
-      "Kritis — terlambat / melebihi anggaran · Peringatan — segera jatuh tempo / anggaran ≥80% · Info — pengingat ringan",
+      "Kritis — terlambat / melebihi anggaran / limit CC habis · Peringatan — segera jatuh tempo / anggaran atau CC ≥80% · Info — pengingat ringan",
     dismissHint: "Abaikan hanya disimpan di browser ini.",
     due: "Jatuh tempo {date}",
     accept: "Terima",
@@ -519,10 +524,12 @@ export const id: Dictionary = {
     installmentSaved: "Cicilan {name}: {amount} × {months} bln",
     payThisMonth: "Bayar periode ini",
     payThisMonthDesc:
-      "Total cicilan berdasarkan tenor yang kamu pilih di tiap kartu.",
+      "Sisa tagihan periode ini setelah pembayaran — sama dengan cicilan di Dashboard.",
     payThisMonthApprox: "Bayar periode ini ≈ ",
     timesMonths: " × {months} bulan",
     fromActiveDebts: "dari {count} utang aktif",
+    fromUnpaidBills: "dari {count} tagihan belum lunas periode ini",
+    ofDuePaid: "dari {due} · terbayar {paid}",
     estimatedCashLeft: "Sisa uang perkiraan",
     withinBudget: "Masih masuk anggaran",
     overSpare: "Melebihi sisa uang",
