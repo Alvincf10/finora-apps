@@ -1,0 +1,12 @@
+---
+description: Finora coding workflow and regression expectations
+alwaysApply: true
+---
+
+# Finora agent workflow
+
+- Prefer minimal, targeted diffs. Match existing patterns.
+- After behavioral fixes (especially money, WA, alerts): add or extend unit tests that would have failed on the bug.
+- Do not commit unless the user asks.
+- Long-lived workers (`finora-vira`, `finora.service`) cache modules — schema/enum changes need a service restart, not only a code edit.
+- Secrets stay in `.env*`; never commit them.

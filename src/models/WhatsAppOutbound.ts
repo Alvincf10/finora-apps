@@ -1,4 +1,5 @@
 import mongoose, { Schema, models, model, type InferSchemaType } from "mongoose";
+import { WHATSAPP_OUTBOUND_KINDS } from "@/lib/whatsapp/outbound-kinds";
 
 const WhatsAppOutboundSchema = new Schema(
   {
@@ -12,15 +13,7 @@ const WhatsAppOutboundSchema = new Schema(
     body: { type: String, required: true },
     kind: {
       type: String,
-      enum: [
-        "WEEKLY_REPORT",
-        "FIXED_COST_DUE",
-        "BUDGET_OVERFLOW",
-        "BUDGET_WARNING",
-        "CC_LIMIT_OVERFLOW",
-        "CC_LIMIT_WARNING",
-        "MANUAL",
-      ],
+      enum: [...WHATSAPP_OUTBOUND_KINDS],
       default: "MANUAL",
     },
     /** Stable identity for once-per-week alerts (e.g. budget-warn:2026-10-27:catId). */

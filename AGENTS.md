@@ -7,3 +7,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Agent bootstrap (Finora)
+
+**Before any task:** read all of `.cursor/rules/` first, then this file.
+
+WhatsApp / Vira changes: also follow `.cursor/rules/whatsapp-outbound-safety.mdc` and keep `src/lib/whatsapp/outbound-spam-guard.test.ts` green.

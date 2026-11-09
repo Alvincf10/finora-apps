@@ -10,6 +10,7 @@ import {
   getUnpaidFixedCostsDueToday,
 } from "@/lib/financial/fixed-cost-reminders";
 import { formatMoney } from "@/lib/money";
+import type { WhatsAppAlertKind } from "@/lib/whatsapp/outbound-kinds";
 
 function digitsOnly(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
@@ -77,12 +78,6 @@ export async function enqueueWeeklyReport(
   };
 }
 
-type DedupeAlertKind =
-  | "BUDGET_OVERFLOW"
-  | "BUDGET_WARNING"
-  | "CC_LIMIT_OVERFLOW"
-  | "CC_LIMIT_WARNING";
-
 /**
  * Queue a deduped WhatsApp alert (budget / CC limit).
  * Returns null when already queued/sent for the same dedupeKey.
@@ -91,7 +86,7 @@ async function enqueueDedupeAlert(
   userId: string,
   input: {
     dedupeKey: string;
-    kind: DedupeAlertKind;
+    kind: WhatsAppAlertKind;
     body: string;
   }
 ) {

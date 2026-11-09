@@ -1,0 +1,14 @@
+---
+description: Agents must read project rules before any work
+alwaysApply: true
+---
+
+# Read rules first
+
+Before exploring code, editing, running commands, or answering implementation questions:
+
+1. Read every file in `.cursor/rules/` (this folder).
+2. Read `AGENTS.md` and follow it (including Next.js docs under `node_modules/next/dist/docs/` when touching Next).
+3. Only then start the task.
+
+Do not skip this for “quick” fixes. Incident class we already hit: WhatsApp outbound spam from a stale worker + schema drift.

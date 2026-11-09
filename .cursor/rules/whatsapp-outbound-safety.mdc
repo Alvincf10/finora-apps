@@ -1,0 +1,18 @@
+---
+description: Prevent WhatsApp Vira spam / echo loops / pending-queue bugs
+globs: src/lib/whatsapp/**/*.ts,src/models/WhatsApp*.ts,src/lib/financial/**/*wa*.ts,src/lib/financial/fixed-cost-reminders.ts,src/lib/financial/weekly-review.ts,scripts/wa-vira.ts
+alwaysApply: false
+---
+
+# WhatsApp outbound safety
+
+## Never create a send loop
+
+- Bot / alert bodies must start with `Vira ·` or `OK ·` (echo-guard). Never start with the command prefix `Finora ` / `finora `.
+- After a successful or failed send, mark queue status with `markOutboundSent` / `markOutboundFailed` (`updateOne` `$set` status fields only). **Do not** `document.save()` on outbound after send — stale `kind` enum validation leaves `pending` and re-sends forever.
+- Any new `WhatsAppOutbound.kind` value must be added to `WHATSAPP_OUTBOUND_KINDS` in `src/lib/whatsapp/outbound-kinds.ts` (schema + producers share it). Restart `finora-vira` after kind changes.
+- Deduped alerts need a stable `dedupeKey`; do not enqueue duplicates as new pending rows.
+
+## Tests required
+
+When changing WA outbound, echo-guard, alert kinds, or `wa-vira` flush: update/run `src/lib/whatsapp/outbound-spam-guard.test.ts` and relevant `npm run test:wa-weekly` / `test:wa-fixed-cost` scripts.

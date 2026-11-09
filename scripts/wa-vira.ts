@@ -567,28 +567,34 @@ async function flushOutbound(
     .sort({ createdAt: 1 })
     .limit(5);
 
+  const { markOutboundSent, markOutboundFailed } = await import(
+    "../src/lib/whatsapp/outbound-flush"
+  );
+
   for (const msg of pending) {
     const phone = digitsOnly(msg.toPhone);
     if (!phone) {
-      msg.status = "failed";
-      msg.error = "invalid toPhone";
-      await msg.save();
+      await markOutboundFailed(
+        mods.WhatsAppOutbound,
+        msg._id,
+        "invalid toPhone"
+      );
       continue;
     }
     try {
       await sock.sendMessage(`${phone}@s.whatsapp.net`, { text: msg.body });
-      msg.status = "sent";
-      msg.sentAt = new Date();
-      msg.error = null;
-      await msg.save();
+      // updateOne status only — never msg.save() (stale kind enum → pending loop)
+      await markOutboundSent(mods.WhatsAppOutbound, msg._id);
       logger.info(
         { userId, outboundId: String(msg._id), kind: msg.kind },
         "outbound WhatsApp message sent"
       );
     } catch (err) {
-      msg.status = "failed";
-      msg.error = err instanceof Error ? err.message : String(err);
-      await msg.save();
+      await markOutboundFailed(
+        mods.WhatsAppOutbound,
+        msg._id,
+        err instanceof Error ? err.message : String(err)
+      );
       logger.warn(
         { err, userId, outboundId: String(msg._id) },
         "outbound WhatsApp send failed"
