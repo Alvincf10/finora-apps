@@ -31,6 +31,8 @@ function sampleReview(): WeeklyReview {
   return {
     offset: 0,
     label: "03/11–09/11/2026",
+    start: "2026-11-03",
+    end: "2026-11-09",
     expenses: 2_000_000,
     prevExpenses: 1_500_000,
     expenseChangePercent: 33.33,

@@ -367,6 +367,11 @@ export const en = {
     periodLast3: "Last 3 periods",
     periodCustom: "Custom dates",
     periodHint: "Pay cycle {label}",
+    ccLimitZero:
+      "Credit card available limit is 0. Pay the bill before adding more expenses.",
+    ccLimitExceeded:
+      "Amount exceeds available credit ({available}). Lower the amount or pick another account.",
+    ccAvailableLabel: "Available credit: {available}",
   },
   accounts: {
     title: "Accounts",
@@ -407,7 +412,7 @@ export const en = {
   paydayAllocation: {
     title: "Payday split",
     subtitle:
-      "After salary lands, allocate every rupiah: debts, CC statement, fixed costs, cash buffer, and spend caps.",
+      "After salary lands, allocate every rupiah: debts, CC statement, fixed costs, savings, physical wallet cash, debit/QRIS spend, and a CC spend cap.",
     cycle: "Period {label}",
     salary: "Actual salary this period",
     salaryHint:
@@ -422,7 +427,7 @@ export const en = {
     envelopes: "Envelopes",
     waterfallTitle: "Waterfall this period",
     waterfallSubtitle:
-      "Order: debts → fixed → goals/savings → cash buffer → fun. Daily CC spend uses the card limit (separate).",
+      "Order: debts → fixed → goals/savings → physical wallet → debit/QRIS spend. CC spend cap uses card headroom (does not reduce cash).",
     stepDebts: "1 · Debts & CC statement",
     stepDebtsDesc: "Must clear first from this period's money.",
     stepFixed: "2 · Fixed costs",
@@ -435,17 +440,20 @@ export const en = {
       "Suggested from free cash in accounts (after debts & fixed) — raise or lower as you like.",
     goalAdviceTitle: "Fill this pocket first",
     goalAdviceBody: "{reason} This period's suggestion: {amount}.",
-    stepBuffer: "4 · Cash buffer",
-    stepBufferDesc: "What’s left after goals — for ATM cash / physical float.",
-    stepFun: "5 · Fun / living",
-    stepFunDesc: "Last cash leftover for fun. CC spending uses the card limit.",
+    stepBuffer: "4 · Physical wallet",
+    stepBufferDesc:
+      "Small physical cash for shops / food that can’t take QRIS. Not your debit balance.",
+    stepFun: "5 · Debit & CC spend",
+    stepFunDesc:
+      "Day-to-day spend on debit/QRIS, plus a CC spend cap for cards in “use like debit” mode. The CC cap does not reduce cash.",
     stepOther: "Other",
     afterStep: "Left after this step: {amount}",
     stepLocked: "Locked until earlier steps fit in your total available.",
     stepEmpty: "Nothing in this step yet.",
     addGoal: "Add goals envelope",
-    addFun: "Add fun / living envelope",
-    addBuffer: "Add cash buffer",
+    addFun: "Add debit / QRIS spend",
+    addCcCap: "Add CC spend cap",
+    addBuffer: "Add physical wallet cash",
     sectionTotal: "Step total: {amount}",
     save: "Save split",
     saved: "Payday split saved",

@@ -14,6 +14,12 @@ import {
   LADDER_STARTER_GOAL_NAME,
   nameMatches,
 } from "@/lib/financial/wealth-ladder-math";
+import {
+  buildPaydayLeftoverEnvelopes,
+  countsAgainstCashTotal,
+  sumCashAllocated,
+  type LeftoverEnvelope,
+} from "@/lib/financial/payday-leftover";
 import type { AccountType, Currency } from "@/types";
 
 export type AllocationEnvelope = {
@@ -62,10 +68,6 @@ export type PaydayAllocationSuggestion = {
     suggestedAmount: number;
   } | null;
 };
-
-function roundMoney(n: number) {
-  return Math.max(0, Math.round(n));
-}
 
 /**
  * Build a suggested payday envelope split for the current pay cycle.
@@ -264,85 +266,50 @@ export async function suggestPaydayAllocation(
     );
   }
 
+  /** Plafon belanja CC: only cards marked "pakai seperti debit". */
+  const ccSpendCap = cards
+    .filter((c) => c.debitMode)
+    .reduce((sum, c) => sum + Math.max(0, c.available), 0);
+
   /**
-   * Split cash left after debts/CC/fixed for the user's real pockets:
-   * goals (tabungan) → pegangan tunai → foya/hepi.
-   * CC spend uses the card limit separately — not taken from this cash leftover.
+   * Split cash left after debts/CC/fixed:
+   * goals → physical wallet → debit/QRIS. CC plafon is planning-only.
    */
   function buildLeftoverEnvelopes(
     obligatedAmount: number,
     manualLeftovers: AllocationEnvelope[] = []
   ): AllocationEnvelope[] {
-    const manualSum = manualLeftovers.reduce((s, e) => s + e.amount, 0);
+    const manualSum = manualLeftovers.reduce(
+      (s, e) => s + (countsAgainstCashTotal(e.kind) ? e.amount : 0),
+      0
+    );
     // Cap by real spendable bank cash (ex Fixed) so saran = dashboard, not inflated plan.
-    let leftover = Math.max(0, totalIn - obligatedAmount - manualSum);
-    leftover = Math.min(leftover, Math.max(0, spendableCash));
+    const leftoverCash = Math.min(
+      Math.max(0, totalIn - obligatedAmount - manualSum),
+      Math.max(0, spendableCash)
+    );
 
-    const priorityGoal = priority?.goal ?? null;
-    const priorityGap = priorityGoal
-      ? Math.max(
-          0,
-          (priorityGoal.targetAmount ?? 0) - (priorityGoal.currentAmount ?? 0)
-        )
-      : 0;
+    const priorityGoal = priority?.goal
+      ? {
+          id: priority.goal._id.toString(),
+          name: priority.goal.name,
+          targetAmount: priority.goal.targetAmount ?? 0,
+          currentAmount: priority.goal.currentAmount ?? 0,
+        }
+      : null;
 
-    // Goals first: ~25% of clean spendable (toward the Insights-priority pocket).
-    const goalsTarget = priorityGoal
-      ? roundMoney(
-          Math.min(
-            leftover * 0.25,
-            priorityGap > 0 ? priorityGap : leftover * 0.25
-          )
-        )
-      : 0;
-    leftover -= goalsTarget;
+    const built = buildPaydayLeftoverEnvelopes({
+      leftoverCash,
+      currency,
+      priorityGoal,
+      ccSpendCap,
+      manualLeftovers: manualLeftovers as LeftoverEnvelope[],
+    });
 
-    // Physical cash buffer next: ~30% of what remains (floor ~300k IDR if possible).
-    let bufferTarget = roundMoney(leftover * 0.3);
-    if (currency === "IDR" && leftover >= 300_000) {
-      bufferTarget = Math.max(bufferTarget, 300_000);
-    }
-    bufferTarget = Math.min(leftover, bufferTarget);
-    leftover -= bufferTarget;
-
-    // Rest = foya / living cash.
-    const living = Math.max(0, leftover);
-
-    const goalsLabel = priorityGoal
-      ? `Tabungan · ${priorityGoal.name}`
-      : "Tabungan goals";
-
-    const auto: AllocationEnvelope[] = [];
-    if (goalsTarget > 0) {
-      auto.push({
-        key: priorityGoal
-          ? `goals:${priorityGoal._id.toString()}`
-          : "goals",
-        label: goalsLabel,
-        amount: goalsTarget,
-        source: "AUTO",
-        kind: "GOALS",
-      });
-    }
-    if (bufferTarget > 0) {
-      auto.push({
-        key: "cash_buffer",
-        label: "Cash pegangan (tarik tunai)",
-        amount: bufferTarget,
-        source: "AUTO",
-        kind: "CASH_BUFFER",
-      });
-    }
-    if (living > 0) {
-      auto.push({
-        key: "living",
-        label: "Foya / hepi (cash)",
-        amount: living,
-        source: "AUTO",
-        kind: "LIVING",
-      });
-    }
-    return [...manualLeftovers, ...auto];
+    return built.map((e) => ({
+      ...e,
+      kind: e.kind as AllocationEnvelope["kind"],
+    }));
   }
 
   const obligatedFresh = envelopes.reduce((s, e) => s + e.amount, 0);
@@ -447,7 +414,7 @@ export async function suggestPaydayAllocation(
     ];
   }
 
-  const allocated = finalEnvelopes.reduce((s, e) => s + e.amount, 0);
+  const allocated = sumCashAllocated(finalEnvelopes);
   const totalInFinal = salary + startingCash;
   const goalsEnvelope = finalEnvelopes.find((e) => e.kind === "GOALS");
 

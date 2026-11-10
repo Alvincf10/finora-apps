@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { Transaction } from "@/models/Transaction";
-import { getAccountOrThrow, recalculateAccountBalance } from "@/lib/financial/balances";
+import {
+  getAccountOrThrow,
+  recalculateAccountBalance,
+} from "@/lib/financial/balances";
+import { assertCcExpenseWithinLimit } from "@/lib/financial/cc-spend-limit";
 import { assertCategoryOwned } from "@/lib/financial/category-ownership";
 import { maybeNotifyBudgetOverflow } from "@/lib/financial/budget-overflow-wa";
 import { maybeNotifyCcLimit } from "@/lib/financial/cc-limit-wa";
@@ -41,6 +45,10 @@ export async function createTransaction(userId: string, input: CreateInput) {
     throw new Error("Transaction currency must match account currency");
   }
   await assertCategoryOwned(userId, input.categoryId);
+
+  if (input.type === "EXPENSE") {
+    assertCcExpenseWithinLimit(account, input.amount);
+  }
 
   const tx = await Transaction.create({
     userId,
@@ -195,18 +203,20 @@ export async function updateTransaction(
   }
 
   const previousAccountId = tx.accountId.toString();
+  const previousAmount = tx.amount;
   let nextAccountId = previousAccountId;
+  let nextAccount = await getAccountOrThrow(previousAccountId, userId);
 
   if (input.accountId !== undefined && input.accountId !== previousAccountId) {
-    const account = await getAccountOrThrow(input.accountId, userId);
-    if (account.currency !== tx.currency && input.amount === undefined) {
+    nextAccount = await getAccountOrThrow(input.accountId, userId);
+    if (nextAccount.currency !== tx.currency && input.amount === undefined) {
       throw new Error(
         "amount is required when moving to an account with a different currency"
       );
     }
-    tx.accountId = account._id as never;
-    tx.currency = account.currency;
-    nextAccountId = account._id.toString();
+    tx.accountId = nextAccount._id as never;
+    tx.currency = nextAccount.currency;
+    nextAccountId = nextAccount._id.toString();
   }
 
   if (input.amount !== undefined) tx.amount = input.amount;
@@ -219,6 +229,12 @@ export async function updateTransaction(
   if (input.notes !== undefined) tx.notes = input.notes;
   if (input.merchant !== undefined) tx.merchant = input.merchant;
   if (input.tags !== undefined) tx.tags = input.tags;
+
+  if (tx.type === "EXPENSE") {
+    const released =
+      nextAccountId === previousAccountId ? previousAmount : 0;
+    assertCcExpenseWithinLimit(nextAccount, tx.amount, released);
+  }
 
   await tx.save();
   await recalculateAccountBalance(nextAccountId);

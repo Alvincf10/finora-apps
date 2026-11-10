@@ -13,6 +13,10 @@ import {
   Wallet,
 } from "lucide-react";
 import { api } from "@/lib/client-api";
+import {
+  countsAgainstCashTotal,
+  sumCashAllocated,
+} from "@/lib/financial/payday-leftover";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { Currency } from "@/types";
@@ -126,11 +130,11 @@ function kindLabel(kind: string) {
     case "FIXED":
       return "Fixed";
     case "CASH_BUFFER":
-      return "Pegangan";
+      return "Dompet";
     case "CC_SPEND_CAP":
-      return "Cap CC";
+      return "Belanja CC";
     case "LIVING":
-      return "Hepi";
+      return "Debit";
     case "GOALS":
       return "Goal";
     default:
@@ -227,14 +231,15 @@ export default function PaydayAllocationPage() {
   const currency = data?.currency ?? "IDR";
   const money = (n: number) => formatMoney(n, currency, intlLocale);
   const totalIn = salary + startingCash;
-  const allocated = useMemo(
-    () => envelopes.reduce((s, e) => s + e.amount, 0),
-    [envelopes]
-  );
+  const allocated = useMemo(() => sumCashAllocated(envelopes), [envelopes]);
   const paidAllocated = useMemo(
     () =>
       envelopes
-        .filter((e) => e.paid || e.paymentTransactionId)
+        .filter(
+          (e) =>
+            countsAgainstCashTotal(e.kind) &&
+            (e.paid || e.paymentTransactionId)
+        )
         .reduce((s, e) => s + e.amount, 0),
     [envelopes]
   );
@@ -260,9 +265,12 @@ export default function PaydayAllocationPage() {
     let running = totalIn;
     return STEP_ORDER.map((id) => {
       const items = grouped[id];
+      const cashTotal = items
+        .filter((e) => countsAgainstCashTotal(e.kind))
+        .reduce((s, e) => s + e.amount, 0);
       const total = items.reduce((s, e) => s + e.amount, 0);
       const before = running;
-      running -= total;
+      running -= cashTotal;
       // Only lock when prior steps already used up all available cash.
       // Goals/buffer/fun stay open whenever there is cash entering the step.
       const locked =
@@ -271,8 +279,19 @@ export default function PaydayAllocationPage() {
         id !== "goals" &&
         before <= 0;
       const share =
-        totalIn > 0 ? Math.min(100, Math.round((total / totalIn) * 100)) : 0;
-      return { id, items, total, before, after: running, locked, share };
+        totalIn > 0
+          ? Math.min(100, Math.round((cashTotal / totalIn) * 100))
+          : 0;
+      return {
+        id,
+        items,
+        total,
+        cashTotal,
+        before,
+        after: running,
+        locked,
+        share,
+      };
     }).filter((s) => s.id !== "other" || s.items.length > 0);
   }, [envelopes, totalIn]);
 
@@ -862,7 +881,7 @@ export default function PaydayAllocationPage() {
                           onClick={() =>
                             addEnvelope(
                               "CASH_BUFFER",
-                              "Cash pegangan",
+                              "Uang fisik dompet (toko kecil / non-QRIS)",
                               "cash_buffer"
                             )
                           }
@@ -872,21 +891,47 @@ export default function PaydayAllocationPage() {
                         </Button>
                       ) : null}
 
-                      {!step.locked &&
-                      step.id === "fun" &&
-                      step.items.length === 0 ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full touch-manipulation"
-                          onClick={() =>
-                            addEnvelope("LIVING", "Makan & hepi", "living")
-                          }
-                        >
-                          <Plus className="size-3.5" />
-                          {t("paydayAllocation.addFun")}
-                        </Button>
+                      {!step.locked && step.id === "fun" ? (
+                        <div className="flex flex-col gap-2">
+                          {!step.items.some((e) => e.kind === "LIVING") ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full touch-manipulation"
+                              onClick={() =>
+                                addEnvelope(
+                                  "LIVING",
+                                  "Belanja debit / QRIS",
+                                  "living"
+                                )
+                              }
+                            >
+                              <Plus className="size-3.5" />
+                              {t("paydayAllocation.addFun")}
+                            </Button>
+                          ) : null}
+                          {!step.items.some(
+                            (e) => e.kind === "CC_SPEND_CAP"
+                          ) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-full touch-manipulation"
+                              onClick={() =>
+                                addEnvelope(
+                                  "CC_SPEND_CAP",
+                                  "Plafon belanja CC (seperti debit)",
+                                  "cc_spend_cap"
+                                )
+                              }
+                            >
+                              <Plus className="size-3.5" />
+                              {t("paydayAllocation.addCcCap")}
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : null}
 
                       {!step.locked && step.id === "goals" ? (

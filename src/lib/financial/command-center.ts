@@ -5,6 +5,7 @@ import { getActionCenter } from "@/lib/financial/recommendations/action-center";
 import { evaluateWealthLadder } from "@/lib/financial/wealth-ladder";
 import { getCashFlowSeries } from "@/lib/financial/summary";
 import { getUserPaydayDay, periodFromDate } from "@/lib/financial/pay-cycle";
+import { sumCashAllocated } from "@/lib/financial/payday-leftover";
 import type { Period } from "@/lib/financial/phase2-types";
 
 /**
@@ -51,9 +52,13 @@ export async function getCommandCenter(userId: string, period?: Period) {
 
   const allocated =
     allocation != null
-      ? (allocation.envelopes ?? []).reduce(
-          (sum: number, e: { amount?: number }) => sum + (e.amount ?? 0),
-          0
+      ? sumCashAllocated(
+          (allocation.envelopes ?? []).map(
+            (e: { kind?: string; amount?: number }) => ({
+              kind: e.kind ?? "OTHER",
+              amount: e.amount ?? 0,
+            })
+          )
         )
       : null;
 

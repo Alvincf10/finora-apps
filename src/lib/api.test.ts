@@ -49,6 +49,7 @@ describe("handleError", () => {
       ["NOT_FOUND", "NOT_FOUND", 404],
       ["RATE_LIMITED", "RATE_LIMITED", 429],
       ["ALLOWED_FROM_REQUIRED", "ALLOWED_FROM_REQUIRED", 400],
+      ["CC_LIMIT_EXCEEDED", "CC_LIMIT_EXCEEDED", 400],
     ];
     for (const [message, code, status] of cases) {
       const res = handleError(new Error(message));

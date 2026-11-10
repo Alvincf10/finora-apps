@@ -40,6 +40,10 @@ import {
   shiftPeriodRef,
   toDateInputValue,
 } from "@/lib/financial/pay-cycle-bounds";
+import {
+  ccSpendHeadroom,
+  isCcExpenseBlocked,
+} from "@/lib/financial/cc-spend-limit";
 
 type PeriodPreset = "current" | "previous" | "last3" | "custom";
 
@@ -49,6 +53,7 @@ type Account = {
   type: string;
   currency: Currency;
   currentBalance: number;
+  creditLimit?: number;
   isActive: boolean;
 };
 
@@ -220,6 +225,7 @@ export default function TransactionsPage() {
   const [formType, setFormType] = useState<TxType>("EXPENSE");
   const [formAccountId, setFormAccountId] = useState("");
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
+  const [formAmountMajor, setFormAmountMajor] = useState(0);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
@@ -319,11 +325,40 @@ export default function TransactionsPage() {
     return list;
   }, [accounts, editing]);
 
+  const formCcGuard = useMemo(() => {
+    if (formType !== "EXPENSE") return null;
+    const account = accounts.find((a) => a._id === formAccountId);
+    if (!account || account.type !== "CREDIT_CARD") return null;
+    const amountMinor = toMinorUnits(formAmountMajor, formCurrency);
+    const headroom = ccSpendHeadroom(account) ?? 0;
+    const blocked = isCcExpenseBlocked(account, amountMinor);
+    return { blocked, headroom, currency: account.currency };
+  }, [formType, formAccountId, formAmountMajor, formCurrency, accounts]);
+
+  const editCcGuard = useMemo(() => {
+    if (!editing || editing.type !== "EXPENSE") return null;
+    const account = editAccountOptions.find((a) => a._id === editAccountId);
+    if (!account || account.type !== "CREDIT_CARD") return null;
+    const amountMinor = toMinorUnits(editAmountMajor, editCurrency);
+    const sameCard = editing.accountId?._id === editAccountId;
+    const released = sameCard ? editing.amount : 0;
+    const headroom = ccSpendHeadroom(account, released) ?? 0;
+    const blocked = isCcExpenseBlocked(account, amountMinor, released);
+    return { blocked, headroom, currency: account.currency };
+  }, [
+    editing,
+    editAccountId,
+    editAmountMajor,
+    editCurrency,
+    editAccountOptions,
+  ]);
+
   function resetFormDefaults(accountList: Account[] = accounts) {
     setFormType("EXPENSE");
     const first = accountList[0];
     setFormAccountId(first?._id ?? "");
     setFormCurrency(first?.currency ?? "IDR");
+    setFormAmountMajor(0);
   }
 
   function clearFilters() {
@@ -401,6 +436,16 @@ export default function TransactionsPage() {
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (formCcGuard?.blocked) {
+      toast.error(
+        formCcGuard.headroom <= 0
+          ? t("transactions.ccLimitZero")
+          : t("transactions.ccLimitExceeded", {
+              available: money(formCcGuard.headroom, formCcGuard.currency),
+            })
+      );
+      return;
+    }
     const form = new FormData(e.currentTarget);
     const txType = String(form.get("type")) as TxType;
     const currency = String(form.get("currency")) as Currency;
@@ -459,6 +504,16 @@ export default function TransactionsPage() {
   async function onEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!editing) return;
+    if (editCcGuard?.blocked) {
+      toast.error(
+        editCcGuard.headroom <= 0
+          ? t("transactions.ccLimitZero")
+          : t("transactions.ccLimitExceeded", {
+              available: money(editCcGuard.headroom, editCcGuard.currency),
+            })
+      );
+      return;
+    }
     if (!editAccountId) {
       toast.error(t("transactions.selectAccountFirst"));
       return;
@@ -570,6 +625,8 @@ export default function TransactionsPage() {
                   <CurrencyAmountInput
                     name="amount"
                     currency={formCurrency}
+                    value={formAmountMajor}
+                    onValueChange={setFormAmountMajor}
                     required
                   />
                 </div>
@@ -618,6 +675,31 @@ export default function TransactionsPage() {
                 {accounts.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     {t("transactions.noActiveAccounts")}
+                  </p>
+                ) : null}
+                {formCcGuard ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t("transactions.ccAvailableLabel", {
+                      available: money(
+                        formCcGuard.headroom,
+                        formCcGuard.currency
+                      ),
+                    })}
+                  </p>
+                ) : null}
+                {formCcGuard?.blocked ? (
+                  <p
+                    role="alert"
+                    className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  >
+                    {formCcGuard.headroom <= 0
+                      ? t("transactions.ccLimitZero")
+                      : t("transactions.ccLimitExceeded", {
+                          available: money(
+                            formCcGuard.headroom,
+                            formCcGuard.currency
+                          ),
+                        })}
                   </p>
                 ) : null}
               </div>
@@ -688,7 +770,11 @@ export default function TransactionsPage() {
                   placeholder={t("transactions.optionalPlaceholder")}
                 />
               </div>
-              <Button type="submit" className="w-full">
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={Boolean(formCcGuard?.blocked)}
+              >
                 {t("common.save")}
               </Button>
             </form>
@@ -1030,6 +1116,31 @@ export default function TransactionsPage() {
                     </option>
                   ))}
                 </select>
+                {editCcGuard ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t("transactions.ccAvailableLabel", {
+                      available: money(
+                        editCcGuard.headroom,
+                        editCcGuard.currency
+                      ),
+                    })}
+                  </p>
+                ) : null}
+                {editCcGuard?.blocked ? (
+                  <p
+                    role="alert"
+                    className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  >
+                    {editCcGuard.headroom <= 0
+                      ? t("transactions.ccLimitZero")
+                      : t("transactions.ccLimitExceeded", {
+                          available: money(
+                            editCcGuard.headroom,
+                            editCcGuard.currency
+                          ),
+                        })}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>{t("common.amount")}</Label>
@@ -1075,7 +1186,11 @@ export default function TransactionsPage() {
                   placeholder={t("transactions.optionalPlaceholder")}
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={savingEdit}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={savingEdit || Boolean(editCcGuard?.blocked)}
+              >
                 {savingEdit
                   ? t("common.saving")
                   : t("transactions.saveChanges")}

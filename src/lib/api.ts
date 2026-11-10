@@ -65,6 +65,13 @@ export function handleError(error: unknown) {
         400
       );
     }
+    if (error.message === "CC_LIMIT_EXCEEDED") {
+      return fail(
+        "CC_LIMIT_EXCEEDED",
+        "Credit card available limit is insufficient for this expense",
+        400
+      );
+    }
     // Never leak internal/driver messages to clients in production
     if (process.env.NODE_ENV === "production") {
       console.error("[api]", error.message);

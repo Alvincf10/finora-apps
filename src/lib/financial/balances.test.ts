@@ -3,6 +3,10 @@ import {
   applyTransactionEffect,
   isLiabilityAccount,
 } from "@/lib/financial/balances";
+import {
+  ccSpendHeadroom,
+  isCcExpenseBlocked,
+} from "@/lib/financial/cc-spend-limit";
 
 describe("ledger transfer neutrality (same-currency accounts)", () => {
   it("transfer out decreases asset; transfer in increases asset", () => {

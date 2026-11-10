@@ -373,6 +373,11 @@ export const id: Dictionary = {
     periodLast3: "3 periode terakhir",
     periodCustom: "Tanggal custom",
     periodHint: "Siklus gaji {label}",
+    ccLimitZero:
+      "Sisa limit CC sudah Rp 0 / habis. Bayar tagihan dulu sebelum menambah pengeluaran.",
+    ccLimitExceeded:
+      "Nominal melebihi sisa limit CC ({available}). Turunkan nominal atau pilih rekening lain.",
+    ccAvailableLabel: "Sisa limit: {available}",
   },
   accounts: {
     title: "Accounts",
@@ -413,7 +418,7 @@ export const id: Dictionary = {
   paydayAllocation: {
     title: "Alokasi gajian",
     subtitle:
-      "Setelah gaji masuk, bagi semua rupiah: cicilan, tagihan CC, fixed costs, pegangan cash, dan cap belanja.",
+      "Setelah gaji masuk, bagi semua rupiah: cicilan, tagihan CC, fixed costs, tabungan, uang fisik dompet, belanja debit/QRIS, dan plafon belanja CC.",
     cycle: "Periode {label}",
     salary: "Gaji aktual periode ini",
     salaryHint:
@@ -428,7 +433,7 @@ export const id: Dictionary = {
     envelopes: "Kantong",
     waterfallTitle: "Waterfall periode ini",
     waterfallSubtitle:
-      "Urutan: utang → fixed → goals/tabungan → pegangan tunai → foya. CC belanja harian pakai limit kartu (terpisah).",
+      "Urutan: utang → fixed → goals/tabungan → uang fisik dompet → belanja debit/QRIS. Plafon belanja CC dari sisa limit kartu (tidak memotong cash).",
     stepDebts: "1 · Utang & tagihan CC",
     stepDebtsDesc: "Harus dipotong dulu dari dana periode ini.",
     stepFixed: "2 · Fixed costs",
@@ -441,17 +446,20 @@ export const id: Dictionary = {
       "Saran dari kas bebas di rekening (setelah utang & fixed) — boleh naikin/turunin.",
     goalAdviceTitle: "Isi pocket ini dulu",
     goalAdviceBody: "{reason} Saran periode ini: {amount}.",
-    stepBuffer: "4 · Cash pegangan",
-    stepBufferDesc: "Sisa setelah goals — untuk tarik tunai / pegangan fisik.",
-    stepFun: "5 · Foya / hepi",
-    stepFunDesc: "Sisa terakhir untuk foya-foya cash. Belanja CC pakai limit kartu.",
+    stepBuffer: "4 · Uang fisik dompet",
+    stepBufferDesc:
+      "Uang tunai kecil di dompet — toko kecil / makanan yang tidak terima QRIS. Bukan saldo debit.",
+    stepFun: "5 · Belanja debit & CC",
+    stepFunDesc:
+      "Belanja sehari-hari lewat debit/QRIS, plus plafon belanja CC (kartu yang “pakai seperti debit”). Plafon CC tidak memotong cash.",
     stepOther: "Lainnya",
     afterStep: "Sisa setelah step ini: {amount}",
     stepLocked: "Terkunci sampai step sebelumnya muat di total tersedia.",
     stepEmpty: "Belum ada item di step ini.",
     addGoal: "Tambah kantong goals",
-    addFun: "Tambah kantong hepi / hidup",
-    addBuffer: "Tambah cash pegangan",
+    addFun: "Tambah belanja debit / QRIS",
+    addCcCap: "Tambah plafon belanja CC",
+    addBuffer: "Tambah uang fisik dompet",
     sectionTotal: "Total step: {amount}",
     save: "Simpan alokasi",
     saved: "Alokasi gajian tersimpan",
