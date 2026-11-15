@@ -167,6 +167,7 @@ export const en = {
     manageTenor: "Manage installment tenor",
     installmentMonthsLabel: "Installment · {months} months",
     monthlyInstallmentLabel: "Monthly installment",
+    ccDebitBillLabel: "Credit card bill (debit mode)",
     dueOnDate: "Due {date}",
     fullBill: "Full bill",
     dueShort: "due {date}",
@@ -179,7 +180,7 @@ export const en = {
     totalPayThisMonth: "Total due this period",
     upcomingInstallments: "Upcoming installments",
     upcomingInstallmentsDesc:
-      "Next dues after this period’s debt window — tenor still running.",
+      "Next period’s installments — settled this period but tenor still running.",
     nextInstallmentLabel: "Next installment",
     settledThisPeriod: " · settled this period",
     financialInsights: "Financial insights",
@@ -530,6 +531,10 @@ export const en = {
     newDebt: "New debt",
     created: "Debt created",
     updated: "Debt updated",
+    deleted: "Debt deleted",
+    deleteTitle: "Delete debt?",
+    deleteConfirm:
+      "Delete “{name}”? Payment history for this debt is removed; transactions stay.",
     paymentRecorded: "Payment recorded",
     installmentSaved: "Installment {name}: {amount} × {months} mo",
     payThisMonth: "Pay this period",

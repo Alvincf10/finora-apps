@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { formatMoney, toMinorUnits, fromMinorUnits } from "@/lib/money";
 import { applyGoalAllocation } from "@/lib/financial/survival-math";
+import { splitInstallmentDebtLists } from "@/lib/financial/debts-due-split";
 import type { Currency } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -154,6 +155,7 @@ type DashboardData = {
       monthlyPayment: number | null;
       installmentMonths?: number | null;
       isInstallment?: boolean;
+      obligationType?: string;
     }>;
     byCurrency: Array<{
       currency: Currency;
@@ -163,7 +165,7 @@ type DashboardData = {
     }>;
   };
   payCycleBuffer: {
-    cycle: { label: string; paydayDay: number };
+    cycle: { label: string; paydayDay: number; start?: string; end?: string };
     currency: Currency;
     monthlySalary: number;
     baseSalary?: number;
@@ -186,6 +188,7 @@ type DashboardData = {
       monthlyPayment?: number | null;
       installmentMonths?: number | null;
       isInstallment?: boolean;
+      obligationType?: string;
     }>;
     fixedCostTotal: number;
     fixedCostItems: Array<{
@@ -676,42 +679,34 @@ export default function DashboardPage() {
   const debtItemsAll = cycle?.debtItems?.length
     ? cycle.debtItems
     : data.debtsDueThisMonth?.items ?? [];
-  // Debt window = cycle end extended to calendar month-end (same as pay-cycle).
+  // Funding window end = last due date among unpaid items (Payday target cycle).
   const debtWindowEnd = (() => {
-    const raw = cycleStats?.end ?? null;
-    if (!raw) return null;
-    const end = new Date(raw);
-    const monthEnd = new Date(
-      end.getFullYear(),
-      end.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999
-    );
-    return end > monthEnd ? end : monthEnd;
+    const dates = debtItemsAll
+      .map((d) => (d.dueDate ? new Date(d.dueDate).getTime() : 0))
+      .filter((n) => n > 0);
+    if (dates.length === 0) {
+      const endRaw = cycleStats?.end ?? cycle?.cycle?.end ?? null;
+      return endRaw ? new Date(endRaw) : null;
+    }
+    return new Date(Math.max(...dates));
   })();
-  const dueInThisDebtWindow = (dueDate?: string) => {
-    if (!dueDate || !debtWindowEnd) return false;
-    return new Date(dueDate) <= debtWindowEnd;
-  };
-  // Unpaid now, or due inside this window (e.g. Kredivo 27 Nov) even if settled.
-  const debtItems = debtItemsAll.filter(
-    (d) =>
-      d.remainingDue > 0 ||
-      (d.remainingDue <= 0 &&
-        d.paidAmount > 0 &&
-        dueInThisDebtWindow(d.dueDate))
+  const { thisPeriod: debtItems } = splitInstallmentDebtLists(
+    debtItemsAll,
+    debtWindowEnd
   );
-  // Settled / next dues after this debt window (Dec+) → Upcoming.
-  const upcomingDebtItems = debtItemsAll.filter(
-    (d) =>
-      d.remainingDue <= 0 &&
-      (d.remainingAmount ?? 0) > 0 &&
-      Boolean(d.isInstallment || d.monthlyPayment) &&
-      !dueInThisDebtWindow(d.dueDate)
-  );
+  // Unpaid first (largest remaining), then by due date so multi-bill
+  // schedules (e.g. Rupiah Cepat) read chronologically.
+  const debtItemsSorted = [...debtItems].sort((a, b) => {
+    const aOpen = a.remainingDue > 0 ? 0 : 1;
+    const bOpen = b.remainingDue > 0 ? 0 : 1;
+    if (aOpen !== bOpen) return aOpen - bOpen;
+    if (a.remainingDue !== b.remainingDue) {
+      return b.remainingDue - a.remainingDue;
+    }
+    const da = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const db = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+    return da - db;
+  });
   const debtRemaining = cycle?.debtRemaining ?? data.debtsDueThisMonth?.totalRemaining ?? 0;
   const debtDue = cycle?.debtDue ?? data.debtsDueThisMonth?.totalDue ?? 0;
   const debtPaid = cycle?.debtPaid ?? data.debtsDueThisMonth?.totalPaid ?? 0;
@@ -1096,193 +1091,123 @@ export default function DashboardPage() {
         </p>
       ) : null}
 
-      {debtItems.length > 0 || upcomingDebtItems.length > 0 ? (
-        <div className="space-y-4">
-          {debtItems.length > 0 ? (
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-                <div className="space-y-1.5">
-                  <CardTitle>{t("dashboard.installmentsThisCycle")}</CardTitle>
-                  <CardDescription>
-                    {cycle
-                      ? t("dashboard.installmentsCycleDesc", {
-                          label: cycle.cycle.label,
-                        })
-                      : t("dashboard.installmentsFallbackDesc")}
-                  </CardDescription>
-                </div>
-                <Link
-                  href="/debts"
-                  className={cn(
-                    buttonVariants({ variant: "outline", size: "sm" })
-                  )}
+      {debtItems.length > 0 ? (
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>{t("dashboard.installmentsThisCycle")}</CardTitle>
+              <CardDescription>
+                {cycle
+                  ? t("dashboard.installmentsCycleDesc", {
+                      label: cycle.cycle.label,
+                    })
+                  : t("dashboard.installmentsFallbackDesc")}
+              </CardDescription>
+            </div>
+            <Link
+              href="/debts"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" })
+              )}
+            >
+              {t("dashboard.manageTenor")}
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {debtItemsSorted.map((d) => {
+              const isCicilan = Boolean(d.isInstallment || d.monthlyPayment);
+              const months = d.installmentMonths;
+              const isFutureBill =
+                d.remainingDue <= 0 &&
+                d.paidAmount <= 0 &&
+                (d.monthlyPayment ?? d.dueAmount ?? 0) > 0;
+              const amountShown = isFutureBill
+                ? (d.monthlyPayment ?? d.dueAmount ?? 0)
+                : d.remainingDue;
+              const dueLong = d.dueDate
+                ? new Date(d.dueDate).toLocaleDateString(intlLocale)
+                : "";
+              const dueShort = d.dueDate
+                ? new Date(d.dueDate).toLocaleDateString(intlLocale, {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "";
+              return (
+                <div
+                  key={d.debtId}
+                  className="flex items-center justify-between gap-3 text-sm"
                 >
-                  {t("dashboard.manageTenor")}
-                </Link>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {debtItems.map((d) => {
-                  const isCicilan = Boolean(d.isInstallment || d.monthlyPayment);
-                  const months = d.installmentMonths;
-                  const dueLong = d.dueDate
-                    ? new Date(d.dueDate).toLocaleDateString(intlLocale)
-                    : "";
-                  const dueShort = d.dueDate
-                    ? new Date(d.dueDate).toLocaleDateString(intlLocale, {
-                        day: "numeric",
-                        month: "short",
-                      })
-                    : "";
-                  return (
-                    <div
-                      key={d.debtId}
-                      className="flex items-center justify-between gap-3 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-rose-700 dark:text-rose-400">
-                          {d.name}
-                        </p>
-                        <p className="text-xs text-amber-700 dark:text-amber-400">
-                          {isCicilan
-                            ? months
-                              ? t("dashboard.installmentMonthsLabel", {
-                                  months,
-                                })
-                              : t("dashboard.monthlyInstallmentLabel")
-                            : d.dueDate
-                              ? t("dashboard.dueOnDate", { date: dueLong })
-                              : t("dashboard.fullBill")}
-                          {d.dueDate && isCicilan
-                            ? ` · ${t("dashboard.dueShort", { date: dueShort })}`
-                            : null}
-                          {d.paidAmount > 0 ? (
-                            <span className="text-emerald-700 dark:text-emerald-400">
-                              {t("dashboard.alreadyPaid", {
-                                amount: money(d.paidAmount, d.currency),
-                              })}
-                            </span>
-                          ) : null}
-                        </p>
-                        {isCicilan && d.remainingAmount != null ? (
-                          <p className="text-xs text-muted-foreground">
-                            {t("dashboard.remainingPrincipal", {
-                              amount: money(d.remainingAmount, d.currency),
-                            })}
-                          </p>
-                        ) : !isCicilan ? (
-                          <p className="text-xs text-muted-foreground">
-                            {t("dashboard.noTenorYet")}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {isCicilan
-                            ? t("dashboard.payThisMonthLabel")
-                            : t("dashboard.billLabel")}
-                        </p>
-                        <p className="font-mono text-rose-700 dark:text-rose-400">
-                          {money(d.remainingDue, d.currency)}
-                        </p>
-                        {d.paidAmount > 0 ? (
-                          <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
-                            {t("dashboard.ofAmount", {
-                              amount: money(d.dueAmount, d.currency),
-                            })}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div className="flex justify-between border-t pt-3 text-sm font-medium">
-                  <span>{t("dashboard.totalPayThisMonth")}</span>
-                  <span className="font-mono text-rose-700 dark:text-rose-400">
-                    {money(debtRemaining, debtCurrency)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {upcomingDebtItems.length > 0 ? (
-            <Card>
-              <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-                <div className="space-y-1.5">
-                  <CardTitle>{t("dashboard.upcomingInstallments")}</CardTitle>
-                  <CardDescription>
-                    {t("dashboard.upcomingInstallmentsDesc")}
-                  </CardDescription>
-                </div>
-                {debtItems.length === 0 ? (
-                  <Link
-                    href="/debts"
-                    className={cn(
-                      buttonVariants({ variant: "outline", size: "sm" })
-                    )}
-                  >
-                    {t("dashboard.manageTenor")}
-                  </Link>
-                ) : null}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {upcomingDebtItems.map((d) => {
-                  const months = d.installmentMonths;
-                  const nextAmount =
-                    d.dueAmount > 0
-                      ? d.dueAmount
-                      : (d.monthlyPayment ?? 0);
-                  const dueShort = d.dueDate
-                    ? new Date(d.dueDate).toLocaleDateString(intlLocale, {
-                        day: "numeric",
-                        month: "short",
-                      })
-                    : "";
-                  return (
-                    <div
-                      key={d.debtId}
-                      className="flex items-center justify-between gap-3 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium">{d.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {months
+                  <div>
+                    <p className="font-medium text-rose-700 dark:text-rose-400">
+                      {d.name}
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      {d.obligationType === "CREDIT_STATEMENT"
+                        ? t("dashboard.ccDebitBillLabel")
+                        : isCicilan
+                          ? months
                             ? t("dashboard.installmentMonthsLabel", {
                                 months,
                               })
-                            : t("dashboard.monthlyInstallmentLabel")}
-                          {dueShort
-                            ? ` · ${t("dashboard.dueShort", { date: dueShort })}`
-                            : null}
-                          {d.paidAmount > 0 ? (
-                            <span className="text-emerald-700 dark:text-emerald-400">
-                              {t("dashboard.settledThisPeriod")}
-                            </span>
-                          ) : null}
-                        </p>
-                        {d.remainingAmount != null ? (
-                          <p className="text-xs text-muted-foreground">
-                            {t("dashboard.remainingPrincipal", {
-                              amount: money(d.remainingAmount, d.currency),
-                            })}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {t("dashboard.nextInstallmentLabel")}
-                        </p>
-                        <p className="font-mono tabular-nums">
-                          {money(nextAmount, d.currency)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
+                            : t("dashboard.monthlyInstallmentLabel")
+                          : d.dueDate
+                            ? t("dashboard.dueOnDate", { date: dueLong })
+                            : t("dashboard.fullBill")}
+                      {d.dueDate &&
+                      (isCicilan || d.obligationType === "CREDIT_STATEMENT")
+                        ? ` · ${t("dashboard.dueShort", { date: dueShort })}`
+                        : null}
+                      {d.paidAmount > 0 ? (
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          {t("dashboard.alreadyPaid", {
+                            amount: money(d.paidAmount, d.currency),
+                          })}
+                        </span>
+                      ) : null}
+                    </p>
+                    {isCicilan && d.remainingAmount != null ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t("dashboard.remainingPrincipal", {
+                          amount: money(d.remainingAmount, d.currency),
+                        })}
+                      </p>
+                    ) : !isCicilan ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t("dashboard.noTenorYet")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {isFutureBill
+                        ? t("dashboard.nextInstallmentLabel")
+                        : isCicilan
+                          ? t("dashboard.payThisMonthLabel")
+                          : t("dashboard.billLabel")}
+                    </p>
+                    <p className="font-mono text-rose-700 dark:text-rose-400">
+                      {money(amountShown, d.currency)}
+                    </p>
+                    {d.paidAmount > 0 ? (
+                      <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                        {t("dashboard.ofAmount", {
+                          amount: money(d.dueAmount, d.currency),
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex justify-between border-t pt-3 text-sm font-medium">
+              <span>{t("dashboard.totalPayThisMonth")}</span>
+              <span className="font-mono text-rose-700 dark:text-rose-400">
+                {money(debtRemaining, debtCurrency)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       <Card>

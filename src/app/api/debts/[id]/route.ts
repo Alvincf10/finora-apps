@@ -3,6 +3,7 @@ import { ok, handleError } from "@/lib/api";
 import { requireUser } from "@/lib/session";
 import { updateDebtSchema } from "@/lib/validations";
 import { Debt } from "@/models/Debt";
+import { DebtPayment } from "@/models/DebtPayment";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -64,6 +65,19 @@ export async function PATCH(request: Request, { params }: Params) {
 
     await debt.save();
     return ok(debt);
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  try {
+    const { userId } = await requireUser();
+    const { id } = await params;
+    const debt = await Debt.findOneAndDelete({ _id: id, userId });
+    if (!debt) throw new Error("NOT_FOUND");
+    await DebtPayment.deleteMany({ debtId: debt._id, userId });
+    return ok({ deleted: true });
   } catch (error) {
     return handleError(error);
   }

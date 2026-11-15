@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { toCreditCardSummary } from "@/lib/financial/credit-cards";
+import {
+  creditCardStatementDueDate,
+  resolveCreditCardStatementDue,
+  toCreditCardSummary,
+} from "@/lib/financial/credit-cards";
 
 function mockCard(
   overrides: Partial<Parameters<typeof toCreditCardSummary>[0]> = {}
@@ -17,6 +21,72 @@ function mockCard(
     ...overrides,
   };
 }
+
+describe("resolveCreditCardStatementDue", () => {
+  it("uses outstanding when statement unset (normal CC)", () => {
+    expect(
+      resolveCreditCardStatementDue({
+        currentBalance: 500_000,
+        statementDueAmount: null,
+        debitMode: false,
+      })
+    ).toBe(500_000);
+  });
+
+  it("keeps explicit 0 for normal CC", () => {
+    expect(
+      resolveCreditCardStatementDue({
+        currentBalance: 500_000,
+        statementDueAmount: 0,
+        debitMode: false,
+      })
+    ).toBe(0);
+  });
+
+  it("debit-mode falls back to outstanding when statement is 0/unset", () => {
+    expect(
+      resolveCreditCardStatementDue({
+        currentBalance: 2_992_012,
+        statementDueAmount: 0,
+        debitMode: true,
+      })
+    ).toBe(2_992_012);
+    expect(
+      resolveCreditCardStatementDue({
+        currentBalance: 2_992_012,
+        statementDueAmount: null,
+        debitMode: true,
+      })
+    ).toBe(2_992_012);
+  });
+
+  it("debit-mode respects positive bank statement amount", () => {
+    expect(
+      resolveCreditCardStatementDue({
+        currentBalance: 3_000_000,
+        statementDueAmount: 2_500_000,
+        debitMode: true,
+      })
+    ).toBe(2_500_000);
+  });
+});
+
+describe("creditCardStatementDueDate", () => {
+  it("finds due day inside the debt window", () => {
+    const start = new Date(2026, 9, 23);
+    const end = new Date(2026, 10, 30, 23, 59, 59, 999);
+    const due = creditCardStatementDueDate(25, start, end);
+    expect(due?.getFullYear()).toBe(2026);
+    expect(due?.getMonth()).toBe(10);
+    expect(due?.getDate()).toBe(25);
+  });
+
+  it("returns undefined when day is outside the window", () => {
+    const start = new Date(2026, 9, 26);
+    const end = new Date(2026, 10, 24, 23, 59, 59, 999);
+    expect(creditCardStatementDueDate(25, start, end)).toBeUndefined();
+  });
+});
 
 describe("toCreditCardSummary", () => {
   it("returns null for non-liability account types", () => {
@@ -52,6 +122,18 @@ describe("toCreditCardSummary", () => {
       mockCard({ statementDueAmount: null, currentBalance: 500_000 })
     );
     expect(s!.statementDueAmount).toBe(500_000);
+  });
+
+  it("debit-mode maps zero statement to outstanding", () => {
+    const s = toCreditCardSummary(
+      mockCard({
+        debitMode: true,
+        statementDueAmount: 0,
+        currentBalance: 2_992_012,
+      })
+    );
+    expect(s!.statementDueAmount).toBe(2_992_012);
+    expect(s!.debitMode).toBe(true);
   });
 
   it("returns null utilization when limit is zero", () => {

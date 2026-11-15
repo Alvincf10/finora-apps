@@ -1,18 +1,27 @@
-import { endOfMonth, max as maxDate } from "date-fns";
 import { Account } from "@/models/Account";
 import { Debt } from "@/models/Debt";
 import { DebtPayment } from "@/models/DebtPayment";
+import {
+  creditCardStatementDueDate,
+  resolveCreditCardStatementDue,
+  toCreditCardSummary,
+} from "@/lib/financial/credit-cards";
+import { resolveDebtDueWindowEnd } from "@/lib/financial/debts-due-split";
+import {
+  resolveAllocationDebtWindow,
+  resolvePaydayTargetCycle,
+} from "@/lib/financial/pay-cycle-bounds";
 import { resolvePeriodBounds, type Period } from "@/lib/financial/summary";
 import type { Currency } from "@/types";
 
-/**
- * Debt due window matches pay-cycle: through cycle end, extended to calendar
- * month-end so dues right after payday (e.g. Nov 25 after cycle ending Nov 24)
- * still count as this period's bills.
- */
-export function resolveDebtDueWindowEnd(cycleEnd: Date): Date {
-  return maxDate([cycleEnd, endOfMonth(cycleEnd)]);
-}
+export {
+  resolveDebtDueWindowEnd,
+  splitInstallmentDebtLists,
+  nextInstallmentDueDate,
+  nextInstallmentAmount,
+  isDueInDebtWindow,
+} from "@/lib/financial/debts-due-split";
+export type { DebtDashboardSplitItem } from "@/lib/financial/debts-due-split";
 
 export type DebtObligationType =
   | "INSTALLMENT"
@@ -63,6 +72,33 @@ function isDueInPeriod(dueDate: Date | undefined | null, start: Date, end: Date)
 function isOverdueBeforePeriodEnd(dueDate: Date | undefined | null, end: Date) {
   if (!dueDate) return false;
   return new Date(dueDate) < end;
+}
+
+/**
+ * Payments that count toward this period's due for one debt.
+ * Ignores older installment payments when the window spans multiple months
+ * (e.g. Oct settle must not clear a Dec due).
+ */
+export function paidTowardDue(input: {
+  payments: Array<{ date: Date; amount: number }>;
+  dueAmount: number;
+  dueDate?: Date | null;
+  rangeStart: Date;
+}): number {
+  if (input.dueAmount <= 0 || input.payments.length === 0) return 0;
+
+  let attributionStart = input.rangeStart;
+  if (input.dueDate) {
+    const earliest = new Date(input.dueDate);
+    earliest.setDate(earliest.getDate() - 40);
+    if (earliest > attributionStart) attributionStart = earliest;
+  }
+
+  let paid = 0;
+  for (const p of input.payments) {
+    if (new Date(p.date) >= attributionStart) paid += p.amount;
+  }
+  return Math.min(paid, input.dueAmount);
 }
 
 export function deriveMonthlyInstallment(debt: {
@@ -131,8 +167,16 @@ export function monthlyDebtObligation(
 
   const derived = deriveMonthlyInstallment(debt);
   if (derived.monthlyPayment != null && derived.monthlyPayment > 0) {
+    // No dueDate → treat as due this cycle (legacy). With a dueDate, only charge
+    // when it falls in the window or is already overdue.
+    const dueNow =
+      !debt.dueDate ||
+      isDueInPeriod(debt.dueDate, start, end) ||
+      isOverdueBeforePeriodEnd(debt.dueDate, end);
     return {
-      dueAmount: Math.min(derived.monthlyPayment, debt.remainingAmount),
+      dueAmount: dueNow
+        ? Math.min(derived.monthlyPayment, debt.remainingAmount)
+        : 0,
       monthlyPayment: derived.monthlyPayment,
       installmentMonths: derived.installmentMonths,
       isInstallment: true,
@@ -178,10 +222,15 @@ export async function getDebtsDueInRange(
     ccAccounts.map((a) => [a._id.toString(), a] as const)
   );
 
-  const paidByDebt = new Map<string, number>();
+  const paymentsByDebt = new Map<
+    string,
+    Array<{ date: Date; amount: number }>
+  >();
   for (const p of payments) {
     const key = p.debtId.toString();
-    paidByDebt.set(key, (paidByDebt.get(key) ?? 0) + p.amount);
+    const list = paymentsByDebt.get(key) ?? [];
+    list.push({ date: new Date(p.date), amount: p.amount });
+    paymentsByDebt.set(key, list);
   }
 
   const items: DebtDueItem[] = [];
@@ -202,13 +251,12 @@ export async function getDebtsDueInRange(
 
     if (obligationType === "CREDIT_STATEMENT" && linkedAccountId) {
       const card = ccById.get(linkedAccountId);
-      const statementDue = Math.max(
-        0,
-        card?.statementDueAmount ??
-          debt.plannedPayment ??
-          debt.minimumPayment ??
-          0
-      );
+      const statementDue = card
+        ? resolveCreditCardStatementDue(card)
+        : Math.max(
+            0,
+            debt.plannedPayment ?? debt.minimumPayment ?? 0
+          );
       dueAmount = Math.min(statementDue, debt.remainingAmount);
       monthlyPayment = dueAmount > 0 ? dueAmount : null;
       isInstallment = true;
@@ -220,10 +268,22 @@ export async function getDebtsDueInRange(
       isInstallment = derived.isInstallment;
     }
 
-    if (dueAmount <= 0) continue;
+    // Skip empty obligations, but keep future-dated installments so the
+    // dashboard can show next dues (dueAmount 0 until their window).
+    if (
+      dueAmount <= 0 &&
+      !(isInstallment && debt.remainingAmount > 0 && monthlyPayment != null)
+    ) {
+      continue;
+    }
 
     const debtId = debt._id.toString();
-    const paidAmount = Math.min(paidByDebt.get(debtId) ?? 0, dueAmount);
+    const paidAmount = paidTowardDue({
+      payments: paymentsByDebt.get(debtId) ?? [],
+      dueAmount,
+      dueDate: debt.dueDate ? new Date(debt.dueDate) : null,
+      rangeStart: start,
+    });
     const remainingDue = Math.max(0, dueAmount - paidAmount);
     const currency = debt.currency as Currency;
 
@@ -243,15 +303,86 @@ export async function getDebtsDueInRange(
       linkedAccountId,
     });
 
-    const bucket = currencyTotals.get(currency) ?? {
-      totalDue: 0,
-      totalPaid: 0,
-      totalRemaining: 0,
-    };
-    bucket.totalDue += dueAmount;
-    bucket.totalPaid += paidAmount;
-    bucket.totalRemaining += remainingDue;
-    currencyTotals.set(currency, bucket);
+    if (dueAmount > 0) {
+      const bucket = currencyTotals.get(currency) ?? {
+        totalDue: 0,
+        totalPaid: 0,
+        totalRemaining: 0,
+      };
+      bucket.totalDue += dueAmount;
+      bucket.totalPaid += paidAmount;
+      bucket.totalRemaining += remainingDue;
+      currencyTotals.set(currency, bucket);
+    }
+  }
+
+  // Debit-mode (and other) CC accounts without a mirrored CREDIT_STATEMENT debt.
+  const linkedCcIds = new Set(
+    items
+      .filter(
+        (i) =>
+          i.obligationType === "CREDIT_STATEMENT" && i.linkedAccountId
+      )
+      .map((i) => i.linkedAccountId!)
+  );
+
+  for (const account of ccAccounts) {
+    const accountId = account._id.toString();
+    if (linkedCcIds.has(accountId)) continue;
+
+    const card = toCreditCardSummary(account);
+    if (!card) continue;
+    // Debit-mode cards always surface; other cards only when statement > 0.
+    if (!card.debitMode && card.statementDueAmount <= 0) continue;
+    if (card.debitMode && card.outstanding <= 0 && card.statementDueAmount <= 0) {
+      continue;
+    }
+
+    const dueDate = creditCardStatementDueDate(
+      card.statementDueDay,
+      start,
+      end
+    );
+    const dueNow =
+      !card.statementDueDay ||
+      (dueDate != null &&
+        (isDueInPeriod(dueDate, start, end) ||
+          isOverdueBeforePeriodEnd(dueDate, end)));
+
+    const billAmount =
+      card.statementDueAmount > 0
+        ? card.statementDueAmount
+        : card.outstanding;
+    const dueAmount = dueNow ? billAmount : 0;
+    if (dueAmount <= 0 && billAmount <= 0) continue;
+
+    const currency = card.currency;
+    items.push({
+      debtId: `cc:${accountId}`,
+      name: card.name,
+      currency,
+      dueAmount,
+      paidAmount: 0,
+      remainingDue: dueAmount,
+      remainingAmount: card.outstanding,
+      dueDate: dueDate?.toISOString(),
+      monthlyPayment: billAmount > 0 ? billAmount : null,
+      installmentMonths: null,
+      isInstallment: true,
+      obligationType: "CREDIT_STATEMENT",
+      linkedAccountId: accountId,
+    });
+
+    if (dueAmount > 0) {
+      const bucket = currencyTotals.get(currency) ?? {
+        totalDue: 0,
+        totalPaid: 0,
+        totalRemaining: 0,
+      };
+      bucket.totalDue += dueAmount;
+      bucket.totalRemaining += dueAmount;
+      currencyTotals.set(currency, bucket);
+    }
   }
 
   items.sort((a, b) => b.remainingDue - a.remainingDue);
@@ -279,11 +410,14 @@ export async function getDebtsDueThisMonth(
   period: Period,
   preferredCurrency: Currency = "IDR"
 ): Promise<DebtsDueThisMonth> {
-  const { start, end } = await resolvePeriodBounds(userId, period);
+  const { cycle } = await resolvePeriodBounds(userId, period);
+  // Align with Payday: mid-cycle show dues for the upcoming paycheck.
+  const debtTarget = resolvePaydayTargetCycle(cycle.paydayDay, new Date(), "auto");
+  const debtWindow = resolveAllocationDebtWindow(debtTarget.cycle);
   const due = await getDebtsDueInRange(
     userId,
-    start,
-    resolveDebtDueWindowEnd(end),
+    debtWindow.start,
+    debtWindow.end,
     preferredCurrency
   );
   return { period, ...due };

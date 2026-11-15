@@ -143,6 +143,7 @@ export default function DebtsPage() {
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Debt | null>(null);
   const [formCurrency, setFormCurrency] = useState<Currency>("IDR");
   const [createMonths, setCreateMonths] = useState(6);
   const [createAmountMajor, setCreateAmountMajor] = useState(0);
@@ -367,6 +368,20 @@ export default function DebtsPage() {
       });
       toast.success(t("debts.paymentRecorded"));
       setPayOpen(null);
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t("common.failed")
+      );
+    }
+  }
+
+  async function onDelete() {
+    if (!deleteTarget) return;
+    try {
+      await api(`/api/debts/${deleteTarget._id}`, { method: "DELETE" });
+      toast.success(t("debts.deleted"));
+      setDeleteTarget(null);
       await load();
     } catch (error) {
       toast.error(
@@ -739,7 +754,7 @@ export default function DebtsPage() {
                   </div>
                 ) : null}
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Dialog
                     open={editOpen === debt._id}
                     onOpenChange={(v) => setEditOpen(v ? debt._id : null)}
@@ -802,9 +817,11 @@ export default function DebtsPage() {
                               currency={debt.currency}
                               allowEmpty
                               defaultValue={
-                                monthly > 0
-                                  ? fromMinorUnits(monthly, debt.currency)
-                                  : undefined
+                                savedMonthly > 0
+                                  ? fromMinorUnits(savedMonthly, debt.currency)
+                                  : monthly > 0
+                                    ? fromMinorUnits(monthly, debt.currency)
+                                    : undefined
                               }
                             />
                           </div>
@@ -916,6 +933,14 @@ export default function DebtsPage() {
                       </DialogContent>
                     </Dialog>
                   ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 text-destructive"
+                    onClick={() => setDeleteTarget(debt)}
+                  >
+                    {t("common.delete")}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -930,6 +955,38 @@ export default function DebtsPage() {
             : t("debts.emptyActive")}
         </p>
       ) : null}
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("debts.deleteTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("debts.deleteConfirm", { name: deleteTarget?.name ?? "" })}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void onDelete()}
+            >
+              {t("common.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
