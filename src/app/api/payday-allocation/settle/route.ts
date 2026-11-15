@@ -10,7 +10,10 @@ import {
   resolveDefaultFundingAccountId,
 } from "@/lib/financial/record-debt-payment";
 import { recordFixedCostPayment } from "@/lib/financial/record-fixed-cost-payment";
-import { getPayCycleBounds } from "@/lib/financial/pay-cycle";
+import {
+  resolvePaydayTargetCycle,
+  type PaydayCycleTarget,
+} from "@/lib/financial/pay-cycle";
 import { requireUser } from "@/lib/session";
 import { sessionOption, withTransaction } from "@/lib/with-transaction";
 import { settlePaydayEnvelopeSchema } from "@/lib/validations";
@@ -47,6 +50,7 @@ async function upsertAllocationEnvelopePaid(args: {
     label: string;
     salary?: number;
     startingCash?: number;
+    target?: PaydayCycleTarget | "auto";
     envelopes?: Array<{
       key: string;
       label: string;
@@ -64,7 +68,11 @@ async function upsertAllocationEnvelopePaid(args: {
   const user = await User.findById(args.userId).lean();
   const paydayDay = user?.paydayDay ?? 25;
   const currency = user?.baseCurrency ?? "IDR";
-  const cycle = getPayCycleBounds(paydayDay);
+  const cycle = resolvePaydayTargetCycle(
+    paydayDay,
+    new Date(),
+    args.input.target ?? "auto"
+  ).cycle;
 
   let allocation = await PaydayAllocation.findOne({
     userId: args.userId,
@@ -288,7 +296,11 @@ export async function POST(request: Request) {
     const user = await User.findById(userId).lean();
     const paydayDay = user?.paydayDay ?? 25;
     const currency = user?.baseCurrency ?? "IDR";
-    const cycle = getPayCycleBounds(paydayDay);
+    const cycle = resolvePaydayTargetCycle(
+      paydayDay,
+      new Date(),
+      input.target ?? "auto"
+    ).cycle;
 
     let allocation = await PaydayAllocation.findOne({
       userId,

@@ -1,19 +1,31 @@
 import { ok, handleError } from "@/lib/api";
 import { suggestPaydayAllocation } from "@/lib/financial/payday-allocation";
-import { getPayCycleBounds } from "@/lib/financial/pay-cycle";
+import {
+  resolvePaydayTargetCycle,
+  type PaydayCycleTarget,
+} from "@/lib/financial/pay-cycle";
 import { requireUser } from "@/lib/session";
 import { savePaydayAllocationSchema } from "@/lib/validations";
 import { PaydayAllocation } from "@/models/PaydayAllocation";
 import { User } from "@/models/User";
+
+function parseTarget(
+  raw: string | null
+): PaydayCycleTarget | "auto" {
+  if (raw === "current" || raw === "next" || raw === "auto") return raw;
+  return "auto";
+}
 
 export async function GET(request: Request) {
   try {
     const { userId } = await requireUser();
     const url = new URL(request.url);
     const refresh = url.searchParams.get("refresh") === "1";
+    const target = parseTarget(url.searchParams.get("target"));
     return ok(
       await suggestPaydayAllocation(userId, new Date(), {
         ignoreSaved: refresh,
+        target,
       })
     );
   } catch (error) {
@@ -28,7 +40,13 @@ export async function POST(request: Request) {
     const user = await User.findById(userId).lean();
     const paydayDay = user?.paydayDay ?? 25;
     const currency = user?.baseCurrency ?? "IDR";
-    const cycle = getPayCycleBounds(paydayDay);
+    const targetPref = parseTarget(input.target ?? null);
+    const resolved = resolvePaydayTargetCycle(
+      paydayDay,
+      new Date(),
+      targetPref
+    );
+    const cycle = resolved.cycle;
 
     if (input.resetToSuggestion) {
       await PaydayAllocation.deleteOne({
@@ -38,6 +56,7 @@ export async function POST(request: Request) {
       return ok(
         await suggestPaydayAllocation(userId, new Date(), {
           ignoreSaved: true,
+          target: resolved.target,
         })
       );
     }
@@ -87,6 +106,17 @@ export async function POST(request: Request) {
         end: cycle.end.toISOString(),
         paydayDay: cycle.paydayDay,
         label: cycle.label,
+      },
+      target: resolved.target,
+      currentCycle: {
+        start: resolved.currentCycle.start.toISOString(),
+        end: resolved.currentCycle.end.toISOString(),
+        label: resolved.currentCycle.label,
+      },
+      nextCycle: {
+        start: resolved.nextCycle.start.toISOString(),
+        end: resolved.nextCycle.end.toISOString(),
+        label: resolved.nextCycle.label,
       },
       currency: doc.currency,
       salary: doc.salary,

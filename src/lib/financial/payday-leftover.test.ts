@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPaydayLeftoverEnvelopes,
   countsAgainstCashTotal,
+  resolvePaydayLeftoverCash,
   suggestPhysicalWallet,
   sumCashAllocated,
 } from "@/lib/financial/payday-leftover";
@@ -11,6 +12,30 @@ describe("countsAgainstCashTotal", () => {
     expect(countsAgainstCashTotal("CC_SPEND_CAP")).toBe(false);
     expect(countsAgainstCashTotal("LIVING")).toBe(true);
     expect(countsAgainstCashTotal("CASH_BUFFER")).toBe(true);
+  });
+});
+
+describe("resolvePaydayLeftoverCash", () => {
+  it("caps by bank cash when managing the running period", () => {
+    expect(
+      resolvePaydayLeftoverCash({
+        totalIn: 8_200_000,
+        obligatedAmount: 6_700_000,
+        spendableCash: 14_000,
+        planningAhead: false,
+      })
+    ).toBe(14_000);
+  });
+
+  it("uses full planned leftover when preparing the next payday", () => {
+    expect(
+      resolvePaydayLeftoverCash({
+        totalIn: 8_200_000,
+        obligatedAmount: 6_700_000,
+        spendableCash: 14_000,
+        planningAhead: true,
+      })
+    ).toBe(1_500_000);
   });
 });
 

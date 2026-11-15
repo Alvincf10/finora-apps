@@ -31,6 +31,31 @@ export function countsAgainstCashTotal(kind: string): boolean {
   return kind !== "CC_SPEND_CAP";
 }
 
+/**
+ * Cash available to split into goals / wallet / debit after obligated envelopes.
+ *
+ * - Running period (`planningAhead=false`): cap by real bank/cash so saran
+ *   matches what you can actually move today.
+ * - Preparing next payday (`planningAhead=true`): use the full planned
+ *   leftover from salary+cash-on-hand in the split (gaji belum masuk).
+ */
+export function resolvePaydayLeftoverCash(input: {
+  totalIn: number;
+  obligatedAmount: number;
+  manualLeftoverSum?: number;
+  spendableCash: number;
+  planningAhead: boolean;
+}): number {
+  const planned = Math.max(
+    0,
+    input.totalIn -
+      input.obligatedAmount -
+      Math.max(0, input.manualLeftoverSum ?? 0)
+  );
+  if (input.planningAhead) return planned;
+  return Math.min(planned, Math.max(0, input.spendableCash));
+}
+
 export function sumCashAllocated(
   envelopes: Array<{ kind: string; amount: number }>
 ): number {

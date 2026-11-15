@@ -185,6 +185,8 @@ export const savePaydayAllocationSchema = z
     status: z.enum(["DRAFT", "ACTIVE", "COMPLETED"]).optional(),
     notes: z.string().max(2000).optional(),
     resetToSuggestion: z.boolean().optional(),
+    /** Which paycheck cycle to save / reset (default auto on server). */
+    target: z.enum(["current", "next", "auto"]).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.resetToSuggestion) return;
@@ -232,6 +234,8 @@ export const settlePaydayEnvelopeSchema = z.object({
   startingCash: z.number().int().min(0).optional(),
   /** Full envelopes snapshot so we can upsert allocation if needed. */
   envelopes: z.array(paydayEnvelopeSchema).optional(),
+  /** Pay cycle being settled (upcoming vs running). */
+  target: z.enum(["current", "next", "auto"]).optional(),
 });
 
 export const createDebtPaymentSchema = z.object({

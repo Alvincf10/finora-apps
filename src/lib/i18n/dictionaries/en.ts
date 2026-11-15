@@ -416,6 +416,11 @@ export const en = {
     subtitle:
       "After salary lands, allocate every rupiah: debts, CC statement, fixed costs, savings, physical wallet cash, debit/QRIS spend, and a CC spend cap.",
     cycle: "Period {label}",
+    targetCurrent: "This period",
+    targetNext: "Prepare next payday",
+    targetNextHint:
+      "Debts and envelopes for the upcoming paycheck ({label}).",
+    targetCurrentHint: "Split for the pay period that is already running ({label}).",
     salary: "Actual salary this period",
     salaryHint:
       "Editable. Use what you actually received (bonus, overtime, etc.). Does not change your base salary in Settings.",

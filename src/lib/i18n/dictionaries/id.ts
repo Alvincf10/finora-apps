@@ -422,6 +422,11 @@ export const id: Dictionary = {
     subtitle:
       "Setelah gaji masuk, bagi semua rupiah: cicilan, tagihan CC, fixed costs, tabungan, uang fisik dompet, belanja debit/QRIS, dan plafon belanja CC.",
     cycle: "Periode {label}",
+    targetCurrent: "Periode berjalan",
+    targetNext: "Siapkan gaji berikutnya",
+    targetNextHint:
+      "Utang & kantong untuk gajian mendatang ({label}).",
+    targetCurrentHint: "Alokasi periode yang sedang berjalan ({label}).",
     salary: "Gaji aktual periode ini",
     salaryHint:
       "Bisa diedit. Isi yang benar-benar masuk (bonus, lembur, dll). Tidak mengubah gaji rutin di Settings.",

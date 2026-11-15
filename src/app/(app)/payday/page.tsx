@@ -54,8 +54,13 @@ type Envelope = {
   paymentTransactionId?: string;
 };
 
+type CycleTarget = "current" | "next";
+
 type Allocation = {
   cycle: { start: string; end: string; paydayDay: number; label: string };
+  target: CycleTarget;
+  currentCycle: { start: string; end: string; label: string };
+  nextCycle: { start: string; end: string; label: string };
   currency: Currency;
   salary: number;
   baseSalary: number;
@@ -172,15 +177,19 @@ export default function PaydayAllocationPage() {
     other: false,
   });
   const [fixedReserveBalance, setFixedReserveBalance] = useState(0);
+  const [cycleTarget, setCycleTarget] = useState<CycleTarget | "auto">("auto");
 
   const load = useCallback(
-    async (refresh = false) => {
+    async (refresh = false, target: CycleTarget | "auto" = cycleTarget) => {
       setLoading(true);
       try {
+        const params = new URLSearchParams();
+        if (refresh) params.set("refresh", "1");
+        if (target !== "auto") params.set("target", target);
+        else if (cycleTarget !== "auto") params.set("target", cycleTarget);
+        const qs = params.toString();
         const [rec, accounts] = await Promise.all([
-          api<Allocation>(
-            `/api/payday-allocation${refresh ? "?refresh=1" : ""}`
-          ),
+          api<Allocation>(`/api/payday-allocation${qs ? `?${qs}` : ""}`),
           api<
             Array<{
               _id: string;
@@ -193,6 +202,7 @@ export default function PaydayAllocationPage() {
           >("/api/accounts"),
         ]);
         setData(rec);
+        setCycleTarget(rec.target);
         setEnvelopes(rec.envelopes);
         setSalary(rec.salary);
         setStartingCash(rec.startingCash);
@@ -221,12 +231,14 @@ export default function PaydayAllocationPage() {
         setLoading(false);
       }
     },
-    [t]
+    [t, cycleTarget]
   );
 
   useEffect(() => {
-    load().catch(() => undefined);
-  }, [load]);
+    load(false, "auto").catch(() => undefined);
+    // Initial load only — target switches call load explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currency = data?.currency ?? "IDR";
   const money = (n: number) => formatMoney(n, currency, intlLocale);
@@ -381,6 +393,7 @@ export default function PaydayAllocationPage() {
           salary,
           startingCash,
           envelopes,
+          target: cycleTarget === "auto" ? undefined : cycleTarget,
         }),
       });
       setConfirmEnv(null);
@@ -395,7 +408,7 @@ export default function PaydayAllocationPage() {
           ),
         })
       );
-      await load();
+      await load(false, cycleTarget === "auto" ? "auto" : cycleTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -431,10 +444,11 @@ export default function PaydayAllocationPage() {
           startingCash,
           envelopes,
           status: "ACTIVE",
+          target: cycleTarget === "auto" ? undefined : cycleTarget,
         }),
       });
       toast.success(t("paydayAllocation.saved"));
-      await load();
+      await load(false, cycleTarget === "auto" ? "auto" : cycleTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
@@ -447,15 +461,24 @@ export default function PaydayAllocationPage() {
     try {
       await api("/api/payday-allocation", {
         method: "POST",
-        body: JSON.stringify({ resetToSuggestion: true }),
+        body: JSON.stringify({
+          resetToSuggestion: true,
+          target: cycleTarget === "auto" ? undefined : cycleTarget,
+        }),
       });
       toast.success(t("paydayAllocation.resetDone"));
-      await load(true);
+      await load(true, cycleTarget === "auto" ? "auto" : cycleTarget);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("common.failed"));
     } finally {
       setSaving(false);
     }
+  }
+
+  async function switchTarget(next: CycleTarget) {
+    if (next === cycleTarget) return;
+    setCycleTarget(next);
+    await load(false, next);
   }
 
   function stepTitle(id: StepId) {
@@ -543,6 +566,43 @@ export default function PaydayAllocationPage() {
             </Button>
           </div>
         </div>
+
+        {data ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={cycleTarget === "current" ? "default" : "outline"}
+                className="touch-manipulation"
+                disabled={loading || saving}
+                onClick={() => void switchTarget("current")}
+              >
+                {t("paydayAllocation.targetCurrent")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={cycleTarget === "next" ? "default" : "outline"}
+                className="touch-manipulation"
+                disabled={loading || saving}
+                onClick={() => void switchTarget("next")}
+              >
+                {t("paydayAllocation.targetNext")}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {cycleTarget === "next"
+                ? t("paydayAllocation.targetNextHint", {
+                    label: data.nextCycle.label,
+                  })
+                : t("paydayAllocation.targetCurrentHint", {
+                    label: data.currentCycle.label,
+                  })}
+            </p>
+          </div>
+        ) : null}
+
         <p className="text-sm text-muted-foreground">
           {t("paydayAllocation.waterfallSubtitle")}
         </p>

@@ -75,6 +75,56 @@ export function getPayCycleBounds(
   };
 }
 
+export type PaydayCycleTarget = "current" | "next";
+
+/**
+ * Which pay cycle the Payday split should edit.
+ *
+ * Mid-cycle (after this payday started, before the next): default to the
+ * upcoming cycle so you can prepare gaji berikutnya. On payday day itself,
+ * stay on the cycle that just started.
+ */
+export function resolvePaydayTargetCycle(
+  paydayDay: number,
+  now: Date = new Date(),
+  preference: PaydayCycleTarget | "auto" = "auto"
+): {
+  target: PaydayCycleTarget;
+  cycle: PayCycleBounds;
+  currentCycle: PayCycleBounds;
+  nextCycle: PayCycleBounds;
+} {
+  const currentCycle = getPayCycleBounds(paydayDay, now);
+  const probe = startOfDay(new Date(currentCycle.end));
+  probe.setDate(probe.getDate() + 1);
+  const nextCycle = getPayCycleBounds(paydayDay, probe);
+
+  let target: PaydayCycleTarget;
+  if (preference === "current" || preference === "next") {
+    target = preference;
+  } else {
+    const today = startOfDay(now).getTime();
+    const started = startOfDay(currentCycle.start).getTime();
+    const nextStart = startOfDay(nextCycle.start).getTime();
+    target = today > started && today < nextStart ? "next" : "current";
+  }
+
+  return {
+    target,
+    cycle: target === "next" ? nextCycle : currentCycle,
+    currentCycle,
+    nextCycle,
+  };
+}
+
+/** Debt dues funded by a given paycheck cycle: cycle start → cycle end. */
+export function resolveAllocationDebtWindow(cycle: {
+  start: Date;
+  end: Date;
+}): { start: Date; end: Date } {
+  return { start: cycle.start, end: cycle.end };
+}
+
 /**
  * Pay cycle for the payday that falls in `period`'s calendar month.
  * e.g. {2026,10} + paydayDay 25 → 23 Okt – 24 Nov 2026 (weekend-adjusted).

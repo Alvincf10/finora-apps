@@ -8,10 +8,15 @@ import { getCreditCardsForUser } from "@/lib/financial/credit-cards";
 import { getDebtsDueInRange } from "@/lib/financial/debts-due";
 import { getFixedCostsInRange } from "@/lib/financial/fixed-costs";
 import { getFixedCostPaidIdsInCycle } from "@/lib/financial/record-fixed-cost-payment";
-import { getPayCycleBounds } from "@/lib/financial/pay-cycle";
+import {
+  resolveAllocationDebtWindow,
+  resolvePaydayTargetCycle,
+  type PaydayCycleTarget,
+} from "@/lib/financial/pay-cycle";
 import {
   buildPaydayLeftoverEnvelopes,
   countsAgainstCashTotal,
+  resolvePaydayLeftoverCash,
   sumCashAllocated,
   type LeftoverEnvelope,
 } from "@/lib/financial/payday-leftover";
@@ -44,6 +49,10 @@ export type AllocationEnvelope = {
 
 export type PaydayAllocationSuggestion = {
   cycle: { start: string; end: string; paydayDay: number; label: string };
+  /** Which cycle is being edited (current running vs upcoming paycheck). */
+  target: PaydayCycleTarget;
+  currentCycle: { start: string; end: string; label: string };
+  nextCycle: { start: string; end: string; label: string };
   currency: Currency;
   /** Actual take-home for this cycle (editable; may exceed base). */
   salary: number;
@@ -69,20 +78,30 @@ export type PaydayAllocationSuggestion = {
 };
 
 /**
- * Build a suggested payday envelope split for the current pay cycle.
+ * Build a suggested payday envelope split for a pay cycle.
+ * Mid-cycle defaults to the upcoming paycheck so you can prepare next period.
  * CC statement due is taken from CREDIT_CARD accounts (not double-counted
  * via linked CREDIT_STATEMENT debts).
  */
 export async function suggestPaydayAllocation(
   userId: string,
   now: Date = new Date(),
-  options: { ignoreSaved?: boolean } = {}
+  options: {
+    ignoreSaved?: boolean;
+    target?: PaydayCycleTarget | "auto";
+  } = {}
 ): Promise<PaydayAllocationSuggestion> {
   const user = await User.findById(userId).lean();
   const paydayDay = user?.paydayDay ?? 25;
   const baseSalary = user?.monthlySalary ?? 0;
   const currency = (user?.baseCurrency as Currency) ?? "IDR";
-  const cycle = getPayCycleBounds(paydayDay, now);
+  const resolved = resolvePaydayTargetCycle(
+    paydayDay,
+    now,
+    options.target ?? "auto"
+  );
+  const cycle = resolved.cycle;
+  const debtWindow = resolveAllocationDebtWindow(cycle);
 
   const [
     accounts,
@@ -96,7 +115,7 @@ export async function suggestPaydayAllocation(
   ] = await Promise.all([
     Account.find({ userId, isActive: true }).lean(),
     getCreditCardsForUser(userId),
-    getDebtsDueInRange(userId, cycle.start, cycle.end, currency),
+    getDebtsDueInRange(userId, debtWindow.start, debtWindow.end, currency),
     getFixedCostsInRange(userId, cycle.start, cycle.end, currency),
     getFixedCostPaidIdsInCycle(userId, cycle.start, cycle.end),
     PaydayAllocation.findOne({
@@ -235,11 +254,15 @@ export async function suggestPaydayAllocation(
       (s, e) => s + (countsAgainstCashTotal(e.kind) ? e.amount : 0),
       0
     );
-    // Cap by real spendable bank cash (ex Fixed) so saran = dashboard, not inflated plan.
-    const leftoverCash = Math.min(
-      Math.max(0, totalIn - obligatedAmount - manualSum),
-      Math.max(0, spendableCash)
-    );
+    // Next-payday prep: allocate the full planned leftover from gaji.
+    // Current period: still cap by real bank/cash on hand.
+    const leftoverCash = resolvePaydayLeftoverCash({
+      totalIn,
+      obligatedAmount,
+      manualLeftoverSum: manualSum,
+      spendableCash,
+      planningAhead: resolved.target === "next",
+    });
 
     const priorityGoal = priority?.goal
       ? {
@@ -331,19 +354,34 @@ export async function suggestPaydayAllocation(
     );
     const mergedObligated: AllocationEnvelope[] = obligatedSaved.map(
       (saved: AllocationEnvelope) => {
+        const fresh = freshByKey.get(saved.key);
+        // Keep unpaid AUTO debt/CC amounts in sync with Dashboard dues.
+        if (
+          fresh &&
+          (saved.kind === "CC_STATEMENT" || saved.kind === "DEBT") &&
+          saved.source === "AUTO" &&
+          !saved.paid
+        ) {
+          return {
+            ...saved,
+            amount: fresh.amount,
+            linkedDebtId: saved.linkedDebtId ?? fresh.linkedDebtId,
+            linkedAccountId: saved.linkedAccountId ?? fresh.linkedAccountId,
+            paid: Boolean(fresh.paid),
+            paymentTransactionId:
+              saved.paymentTransactionId ?? fresh.paymentTransactionId,
+          };
+        }
         // Backfill CC links from fresh suggestion (older saves lacked linkedDebtId).
-        if (saved.kind === "CC_STATEMENT") {
-          const fresh = freshByKey.get(saved.key);
-          if (fresh) {
-            return {
-              ...saved,
-              linkedDebtId: saved.linkedDebtId ?? fresh.linkedDebtId,
-              linkedAccountId: saved.linkedAccountId ?? fresh.linkedAccountId,
-              paid: Boolean(saved.paid) || Boolean(fresh.paid),
-              paymentTransactionId:
-                saved.paymentTransactionId ?? fresh.paymentTransactionId,
-            };
-          }
+        if (saved.kind === "CC_STATEMENT" && fresh) {
+          return {
+            ...saved,
+            linkedDebtId: saved.linkedDebtId ?? fresh.linkedDebtId,
+            linkedAccountId: saved.linkedAccountId ?? fresh.linkedAccountId,
+            paid: Boolean(saved.paid) || Boolean(fresh.paid),
+            paymentTransactionId:
+              saved.paymentTransactionId ?? fresh.paymentTransactionId,
+          };
         }
         return saved;
       }
@@ -376,6 +414,17 @@ export async function suggestPaydayAllocation(
       end: cycle.end.toISOString(),
       paydayDay: cycle.paydayDay,
       label: cycle.label,
+    },
+    target: resolved.target,
+    currentCycle: {
+      start: resolved.currentCycle.start.toISOString(),
+      end: resolved.currentCycle.end.toISOString(),
+      label: resolved.currentCycle.label,
+    },
+    nextCycle: {
+      start: resolved.nextCycle.start.toISOString(),
+      end: resolved.nextCycle.end.toISOString(),
+      label: resolved.nextCycle.label,
     },
     currency,
     salary,

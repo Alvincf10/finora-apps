@@ -6,7 +6,6 @@ import { PaydayAllocation } from "@/models/PaydayAllocation";
 import { isLiabilityAccount } from "@/lib/financial/balances";
 import {
   getDebtsDueInRange,
-  resolveDebtDueWindowEnd,
   type DebtDueItem,
 } from "@/lib/financial/debts-due";
 import {
@@ -16,6 +15,8 @@ import {
 import { percent } from "@/lib/money";
 import {
   getPayCycleBounds,
+  resolveAllocationDebtWindow,
+  resolvePaydayTargetCycle,
   type PayCycleBounds,
 } from "@/lib/financial/pay-cycle-bounds";
 import type { AccountType, Currency } from "@/types";
@@ -26,9 +27,12 @@ export {
   getPayCycleBounds,
   getPayCycleForPeriod,
   periodFromDate,
+  resolveAllocationDebtWindow,
+  resolvePaydayTargetCycle,
   shiftPeriodRef,
   toDateInputValue,
   type PayCycleBounds,
+  type PaydayCycleTarget,
   type PeriodRef,
 } from "@/lib/financial/pay-cycle-bounds";
 
@@ -179,8 +183,9 @@ async function getPayCycleBufferUncached(
   const baseSalary = user?.monthlySalary ?? 0;
   const currency = (user?.baseCurrency as Currency) ?? "IDR";
   const cycle = getPayCycleBounds(paydayDay, now);
-
-  const debtWindowEnd = resolveDebtDueWindowEnd(cycle.end);
+  // Mid-cycle: dues for the upcoming paycheck (same default as Payday).
+  const debtTarget = resolvePaydayTargetCycle(paydayDay, now, "auto");
+  const debtWindow = resolveAllocationDebtWindow(debtTarget.cycle);
 
   const allocation = await PaydayAllocation.findOne({
     userId,
@@ -204,7 +209,7 @@ async function getPayCycleBufferUncached(
       date: { $gte: cycle.start, $lte: cycle.end },
       type: { $in: ["INCOME", "EXPENSE"] },
     }).lean(),
-    getDebtsDueInRange(userId, cycle.start, debtWindowEnd, currency),
+    getDebtsDueInRange(userId, debtWindow.start, debtWindow.end, currency),
     getFixedCostsInRange(userId, cycle.start, cycle.end, currency),
   ]);
 
