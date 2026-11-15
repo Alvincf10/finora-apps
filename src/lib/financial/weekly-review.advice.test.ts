@@ -117,5 +117,6 @@ describe("formatWeeklyReportWaText tags", () => {
     const text = formatWeeklyReportWaText(review);
     expect(text).toContain("[naik]");
     expect(text).not.toContain("[wow]");
+    expect(text).toContain("turun 61% vs minggu lalu · lebih hemat");
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { changePercent, formatChangePct } from "@/lib/financial/change-pct";
+import {
+  changePercent,
+  formatChangePct,
+  formatExpenseWowWaLabel,
+} from "@/lib/financial/change-pct";
 
 describe("changePercent", () => {
   it("returns rounded percent vs previous", () => {
@@ -36,5 +40,26 @@ describe("formatChangePct", () => {
 
   it("leaves negative values unsigned minus via number", () => {
     expect(formatChangePct(-5)).toBe("-5%");
+  });
+});
+
+describe("formatExpenseWowWaLabel", () => {
+  it("explains drop as more frugal", () => {
+    expect(formatExpenseWowWaLabel(-22)).toBe(
+      "turun 22% vs minggu lalu · lebih hemat"
+    );
+  });
+
+  it("explains rise as higher spend", () => {
+    expect(formatExpenseWowWaLabel(15)).toBe(
+      "naik 15% vs minggu lalu · lebih boros"
+    );
+  });
+
+  it("handles flat and missing baseline", () => {
+    expect(formatExpenseWowWaLabel(0)).toBe("sama seperti minggu lalu");
+    expect(formatExpenseWowWaLabel(null)).toBe(
+      "vs minggu lalu: belum ada data"
+    );
   });
 });

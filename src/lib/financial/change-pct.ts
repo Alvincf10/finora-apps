@@ -18,3 +18,16 @@ export function formatChangePct(pct: number | null): string {
   if (pct == null) return "baru";
   return `${pct > 0 ? "+" : ""}${pct}%`;
 }
+
+/**
+ * WhatsApp-friendly spend WoW gloss.
+ * Negative = spent less than last week (good); positive = spent more.
+ */
+export function formatExpenseWowWaLabel(pct: number | null): string {
+  if (pct == null) return "vs minggu lalu: belum ada data";
+  if (pct === 0) return "sama seperti minggu lalu";
+  if (pct < 0) {
+    return `turun ${Math.abs(pct)}% vs minggu lalu · lebih hemat`;
+  }
+  return `naik ${pct}% vs minggu lalu · lebih boros`;
+}

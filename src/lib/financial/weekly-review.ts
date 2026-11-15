@@ -5,7 +5,7 @@ import { Account } from "@/models/Account";
 import { formatMoney, percent } from "@/lib/money";
 import {
   changePercent,
-  formatChangePct,
+  formatExpenseWowWaLabel,
 } from "@/lib/financial/change-pct";
 import {
   isCuttableCategory,
@@ -20,7 +20,11 @@ export const WEEKLY_ENVELOPE_NAMES = [
   "Relationship",
 ] as const;
 
-export { changePercent, formatChangePct } from "@/lib/financial/change-pct";
+export {
+  changePercent,
+  formatChangePct,
+  formatExpenseWowWaLabel,
+} from "@/lib/financial/change-pct";
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 const WOW_PCT_THRESHOLD = 20;
@@ -630,7 +634,7 @@ export function formatWeeklyReportWaText(review: WeeklyReview): string {
   // fromMe echoes would re-trigger parseWeeklyReportQuery in a loop.
   lines.push(`Vira · Report minggu ${review.label}`);
   lines.push(
-    `Pengeluaran: ${formatMoney(review.expenses, c)} (vs minggu lalu ${formatChangePct(review.expenseChangePercent)})`
+    `Pengeluaran: ${formatMoney(review.expenses, c)} (${formatExpenseWowWaLabel(review.expenseChangePercent)})`
   );
 
   const overs = review.overCategories.slice(0, 5);
