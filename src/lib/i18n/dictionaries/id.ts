@@ -336,6 +336,8 @@ export const id: Dictionary = {
     newTransaction: "Transaksi baru",
     editTransaction: "Edit transaksi",
     created: "Transaksi dibuat",
+    incomeSaveSuggest:
+      "Saran: tabung {amount} ({pct}%) ke {goal} — tanpa auto-debit",
     updated: "Transaksi diperbarui",
     deleted: "Transaksi dihapus",
     deleteConfirmTitle: "Hapus transaksi?",

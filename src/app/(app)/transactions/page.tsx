@@ -457,7 +457,14 @@ export default function TransactionsPage() {
     }
 
     try {
-      await api("/api/transactions", {
+      const created = await api<{
+        incomeSaveSuggestion?: {
+          suggestAmount: number;
+          rate: number;
+          goalName: string;
+          currency: Currency;
+        } | null;
+      }>("/api/transactions", {
         method: "POST",
         body: JSON.stringify({
           type: txType,
@@ -477,6 +484,16 @@ export default function TransactionsPage() {
         }),
       });
       toast.success(t("transactions.created"));
+      const tip = created.incomeSaveSuggestion;
+      if (tip) {
+        toast.message(
+          t("transactions.incomeSaveSuggest", {
+            amount: formatMoney(tip.suggestAmount, tip.currency, intlLocale),
+            pct: String(Math.round(tip.rate * 100)),
+            goal: tip.goalName,
+          })
+        );
+      }
       setOpen(false);
       await refreshList();
     } catch (error) {

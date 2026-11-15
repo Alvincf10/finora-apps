@@ -330,6 +330,8 @@ export const en = {
     newTransaction: "New transaction",
     editTransaction: "Edit transaction",
     created: "Transaction created",
+    incomeSaveSuggest:
+      "Suggestion: save {amount} ({pct}%) toward {goal} — no auto-debit",
     updated: "Transaction updated",
     deleted: "Transaction deleted",
     deleteConfirmTitle: "Delete transaction?",

@@ -103,6 +103,9 @@ async function loadAppModules() {
   const catMod = await import("../src/lib/whatsapp/resolve-category");
   const accountResolveMod = await import("../src/lib/whatsapp/resolve-account");
   const txMod = await import("../src/lib/financial/transactions");
+  const incomeSaveMod = await import(
+    "../src/lib/financial/income-save-suggest"
+  );
   const moneyMod = await import("../src/lib/money");
   const helpMod = await import("../src/lib/whatsapp/help-text");
   const totalsMod = await import("../src/lib/whatsapp/query-totals");
@@ -122,6 +125,7 @@ async function loadAppModules() {
     resolveCategoryId: catMod.resolveCategoryId,
     resolveWaAccount: accountResolveMod.resolveWaAccount,
     createTransaction: txMod.createTransaction,
+    loadIncomeSaveSuggestion: incomeSaveMod.loadIncomeSaveSuggestion,
     formatMoney: moneyMod.formatMoney,
     getViraHelpText: helpMod.getViraHelpText,
     parseTotalsQuery: totalsMod.parseTotalsQuery,
@@ -542,12 +546,27 @@ async function handleMessage(
     lastMessageAt: new Date(),
   });
 
-  await sock.sendMessage(jid, {
-    text:
-      `OK · ${parsed.type === "EXPENSE" ? "Expense" : "Income"} ` +
-      `${parsed.categoryHint} ${mods.formatMoney(parsed.amount, parsed.currency)}` +
-      ` · ${account.name}`,
-  });
+  let reply =
+    `OK · ${parsed.type === "EXPENSE" ? "Expense" : "Income"} ` +
+    `${parsed.categoryHint} ${mods.formatMoney(parsed.amount, parsed.currency)}` +
+    ` · ${account.name}`;
+
+  if (parsed.type === "INCOME") {
+    const tip = await mods.loadIncomeSaveSuggestion(userId, {
+      type: "INCOME",
+      amount: parsed.amount,
+      currency: parsed.currency,
+      categoryName: parsed.categoryHint,
+    });
+    if (tip) {
+      const pct = Math.round(tip.rate * 100);
+      reply +=
+        `\nVira · saran tabung ${mods.formatMoney(tip.suggestAmount, tip.currency)}` +
+        ` ke ${tip.goalName} (${pct}%, tanpa auto-debit)`;
+    }
+  }
+
+  await sock.sendMessage(jid, { text: reply });
 
   logger.info(
     { userId, txId: String(tx._id), amount: parsed.amount },

@@ -4,7 +4,9 @@ import { sanitizeSearchQuery } from "@/lib/escape-regex";
 import { requireUser } from "@/lib/session";
 import { createTransactionSchema } from "@/lib/validations";
 import { Transaction } from "@/models/Transaction";
+import { loadIncomeSaveSuggestion } from "@/lib/financial/income-save-suggest";
 import { createTransaction } from "@/lib/financial/transactions";
+import type { Currency } from "@/types";
 
 const TX_TYPES = new Set(["INCOME", "EXPENSE", "TRANSFER"]);
 
@@ -85,7 +87,17 @@ export async function POST(request: Request) {
     const { userId } = await requireUser();
     const input = createTransactionSchema.parse(await request.json());
     const tx = await createTransaction(userId, input);
-    return ok(tx, 201);
+    const incomeSaveSuggestion = await loadIncomeSaveSuggestion(userId, {
+      type: input.type,
+      amount: input.amount,
+      currency: input.currency as Currency,
+      categoryId: input.categoryId ? String(input.categoryId) : null,
+    });
+    const body =
+      tx && typeof (tx as { toObject?: () => unknown }).toObject === "function"
+        ? (tx as { toObject: () => Record<string, unknown> }).toObject()
+        : tx;
+    return ok({ ...body, incomeSaveSuggestion }, 201);
   } catch (error) {
     return handleError(error);
   }

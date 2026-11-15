@@ -10,16 +10,15 @@ import { getFixedCostsInRange } from "@/lib/financial/fixed-costs";
 import { getFixedCostPaidIdsInCycle } from "@/lib/financial/record-fixed-cost-payment";
 import { getPayCycleBounds } from "@/lib/financial/pay-cycle";
 import {
-  EMERGENCY_PATTERNS,
-  LADDER_STARTER_GOAL_NAME,
-  nameMatches,
-} from "@/lib/financial/wealth-ladder-math";
-import {
   buildPaydayLeftoverEnvelopes,
   countsAgainstCashTotal,
   sumCashAllocated,
   type LeftoverEnvelope,
 } from "@/lib/financial/payday-leftover";
+import {
+  filterGoalsWithGap,
+  pickPriorityGoal,
+} from "@/lib/financial/priority-goal";
 import type { AccountType, Currency } from "@/types";
 
 export type AllocationEnvelope = {
@@ -123,55 +122,8 @@ export async function suggestPaydayAllocation(
   }, 0);
 
   /** All active goals that still have a gap — including system Basic tabungan. */
-  const pocketGoals = activeGoals.filter((g) => {
-    const gap = Math.max(0, (g.targetAmount ?? 0) - (g.currentAmount ?? 0));
-    return gap > 0;
-  });
-
-  function pickPriorityGoal() {
-    if (pocketGoals.length === 0) return null;
-
-    // Tangga Ternak Uang step 1: Basic tabungan / nabung cash 10jt first.
-    const basic = pocketGoals.find(
-      (g) =>
-        (g as { goalType?: string }).goalType === "BASIC_SAVINGS" ||
-        g.name === LADDER_STARTER_GOAL_NAME
-    );
-    if (basic) {
-      return {
-        goal: basic,
-        reason:
-          "Tangga Ternak Uang step 1: isi Basic tabungan (nabung cash 10jt) dulu sebelum goal lain.",
-      };
-    }
-
-    // Step 3-ish: emergency fund after starter + small debts.
-    const emergency = pocketGoals.find(
-      (g) =>
-        (g as { goalType?: string }).goalType === "EMERGENCY_FUND" ||
-        nameMatches(g.name, EMERGENCY_PATTERNS)
-    );
-    if (emergency) {
-      return {
-        goal: emergency,
-        reason:
-          "Basic tabungan sudah cukup — lanjut isi dana darurat (Tangga Ternak Uang).",
-      };
-    }
-
-    const sorted = [...pocketGoals].sort((a, b) => {
-      const gapA = Math.max(0, (a.targetAmount ?? 0) - (a.currentAmount ?? 0));
-      const gapB = Math.max(0, (b.targetAmount ?? 0) - (b.currentAmount ?? 0));
-      return gapA - gapB;
-    });
-    const nearest = sorted[0];
-    return {
-      goal: nearest,
-      reason: `Sisa target paling kecil — selesaikan “${nearest.name}” dulu sebelum goal lain.`,
-    };
-  }
-
-  const priority = pickPriorityGoal();
+  const pocketGoals = filterGoalsWithGap(activeGoals);
+  const priority = pickPriorityGoal(pocketGoals);
 
   let suggestedStartingCash = 0;
   for (const account of accounts) {
