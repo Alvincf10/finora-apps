@@ -86,7 +86,7 @@ function recommendationHref(actionType?: string | null): string {
     case "VIEW_SPENDING":
       return "/transactions";
     case "SIMULATE":
-      return "/simulator";
+      return "/debts";
     default:
       return "/insights";
   }

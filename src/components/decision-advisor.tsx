@@ -19,8 +19,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-type ScenarioRow = { id: string; name: string };
-
 type Props = {
   year?: number;
   month?: number;
@@ -30,8 +28,6 @@ type Props = {
 export function DecisionAdvisor({ year, month, className }: Props) {
   const { t, locale } = useI18n();
   const [preference, setPreference] = useState<DecisionPreference>("UNSET");
-  const [scenarios, setScenarios] = useState<ScenarioRow[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [savingPref, setSavingPref] = useState(false);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const prefLang = locale === "en" ? "en" : "id";
@@ -50,9 +46,6 @@ export function DecisionAdvisor({ year, month, className }: Props) {
       .catch(() => {
         /* settings optional for advisor session */
       });
-    api<{ scenarios: ScenarioRow[] }>("/api/scenarios")
-      .then((res) => setScenarios(res.scenarios ?? []))
-      .catch(() => setScenarios([]));
   }, []);
 
   if (enabled === false) {
@@ -81,17 +74,6 @@ export function DecisionAdvisor({ year, month, className }: Props) {
     } finally {
       setSavingPref(false);
     }
-  }
-
-  function toggleScenario(id: string) {
-    setSelectedIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 3) {
-        toast.error(t("decisionAdvisor.maxScenarios"));
-        return prev;
-      }
-      return [...prev, id];
-    });
   }
 
   return (
@@ -127,47 +109,15 @@ export function DecisionAdvisor({ year, month, className }: Props) {
               {t("decisionAdvisor.preferenceHint")}
             </p>
           </div>
-
-          {scenarios.length > 0 ? (
-            <div className="space-y-2">
-              <Label>{t("decisionAdvisor.scenariosLabel")}</Label>
-              <ul className="space-y-1.5">
-                {scenarios.map((s) => {
-                  const checked = selectedIds.includes(s.id);
-                  return (
-                    <li key={s.id}>
-                      <label className="flex cursor-pointer items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="size-4 rounded border"
-                          checked={checked}
-                          onChange={() => toggleScenario(s.id)}
-                        />
-                        <span>{s.name}</span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="text-xs text-muted-foreground">
-                {t("decisionAdvisor.scenariosHint")}
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              {t("decisionAdvisor.noScenarios")}
-            </p>
-          )}
         </CardContent>
       </Card>
 
       <AiExplainer
-        key={`da:${preference}:${selectedIds.join(",")}:${locale}`}
+        key={`da:${preference}:${locale}`}
         contextType="decision_advisor"
         contextRef={{
           ...(year && month ? { year, month } : {}),
           decisionPreference: preference,
-          ...(selectedIds.length > 0 ? { scenarioIds: selectedIds } : {}),
         }}
         title={t("decisionAdvisor.askTitle")}
         description={t("decisionAdvisor.askDesc")}

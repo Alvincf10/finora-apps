@@ -280,7 +280,7 @@ function InsightCard({
   function actionHref(actionType?: string) {
     if (actionType === "VIEW_BUDGET") return "/budget";
     if (actionType === "VIEW_BUDGET_REC") return "/budget";
-    if (actionType === "SIMULATE") return "/simulator";
+    if (actionType === "SIMULATE") return "/debts";
     if (actionType === "VIEW_SPENDING") return "/transactions";
     if (actionType === "VIEW_DEBT") return "/debts";
     if (actionType === "VIEW_GOALS") return "/goals";

@@ -710,7 +710,7 @@ export const id: Dictionary = {
     accept: "Sudah ditindak",
     dismiss: "Abaikan",
     actionBudget: "Lihat budget",
-    actionSimulate: "Buka simulator",
+    actionSimulate: "Lihat utang",
     actionSpending: "Lihat transaksi",
     actionDebt: "Lihat hutang",
     actionGoals: "Lihat goals",

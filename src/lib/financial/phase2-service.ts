@@ -452,7 +452,7 @@ export async function generatePhase2Insights(
       message: `Rasio tabungan periode ini ${summary.savingsRate}% — di bawah ambang 10%.`,
       currentValue: summary.savings,
       evidence: [{ metric: "savings_rate", current: summary.savingsRate }],
-      actionType: "SIMULATE",
+      actionType: "VIEW_GOALS",
       period,
     });
   }
@@ -472,7 +472,7 @@ export async function generatePhase2Insights(
           average3m: profile.averageMonthlySavings,
         },
       ],
-      actionType: "SIMULATE",
+      actionType: "VIEW_GOALS",
       period,
     });
   }
@@ -627,7 +627,7 @@ export async function generatePhase2Insights(
           expense: profile.averageMonthlyExpense,
         },
       ],
-      actionType: "SIMULATE",
+      actionType: "VIEW_DEBT",
       period,
     });
   }
@@ -679,7 +679,7 @@ export async function generatePhase2Insights(
             boostedPayment: Math.round(base * 1.15),
           },
         ],
-        actionType: "SIMULATE",
+        actionType: "VIEW_DEBT",
         period,
       });
     }

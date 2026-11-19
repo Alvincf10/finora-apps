@@ -705,7 +705,7 @@ export const en = {
     accept: "Done",
     dismiss: "Dismiss",
     actionBudget: "View budget",
-    actionSimulate: "Open simulator",
+    actionSimulate: "View debts",
     actionSpending: "View transactions",
     actionDebt: "View debts",
     actionGoals: "View goals",

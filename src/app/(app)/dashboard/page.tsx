@@ -931,14 +931,6 @@ export default function DashboardPage() {
                   >
                     {t("dashboard.ccOpenRoadmap")}
                   </Link>
-                  <Link
-                    href="/simulator"
-                    className={cn(
-                      buttonVariants({ variant: "secondary", size: "sm" })
-                    )}
-                  >
-                    {t("dashboard.ccOpenDecisionLab")}
-                  </Link>
                 </div>
               </CardContent>
             </Card>
