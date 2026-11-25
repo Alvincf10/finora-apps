@@ -7,6 +7,28 @@ import {
   type WeeklyReview,
 } from "./weekly-review";
 
+function emptyReview(
+  overrides: Partial<WeeklyReview> = {}
+): WeeklyReview {
+  return {
+    offset: 0,
+    label: "26/10–01/11/2026",
+    start: new Date().toISOString(),
+    end: new Date().toISOString(),
+    expenses: 3_224_000,
+    prevExpenses: 8_000_000,
+    expenseChangePercent: -61,
+    topCategories: [],
+    overCategories: [],
+    advice: [],
+    currency: "IDR",
+    daysLeftInMonth: 20,
+    ccHeadroom: null,
+    weeklyCcPool: null,
+    ...overrides,
+  };
+}
+
 describe("buildWeeklyCutAdvice", () => {
   it("suggests a concrete next-week target from the WoW excess", () => {
     const { message, nextWeekTarget } = buildWeeklyCutAdvice({
@@ -79,19 +101,39 @@ describe("suggestWeeklyEnvelopeBudget", () => {
     expect(msg).toContain("budget minggu depan");
     expect(msg).toContain("/hari");
   });
+
+  it("formats CC-headroom advice and zero-headroom stop", () => {
+    const funded = buildWeeklyEnvelopeAdvice({
+      categoryName: "Food",
+      displayName: "Makan (Food)",
+      weekAmount: 400_000,
+      weekAmounts: [400_000],
+      currency: "IDR",
+      forcedAmount: 275_000,
+      source: "cc_headroom",
+    });
+    expect(funded.amount).toBe(275_000);
+    expect(funded.message).toContain("sisa limit CC");
+    expect(funded.message).toContain("Debit/QRIS cadangan");
+
+    const empty = buildWeeklyEnvelopeAdvice({
+      categoryName: "Entertainment",
+      displayName: "Entertainment",
+      weekAmount: 0,
+      weekAmounts: [0],
+      currency: "IDR",
+      forcedAmount: 0,
+      source: "cc_headroom",
+    });
+    expect(empty.amount).toBe(0);
+    expect(empty.message).toContain("sisa limit CC habis");
+    expect(empty.message).toContain("backup darurat");
+  });
 });
 
 describe("formatWeeklyReportWaText tags", () => {
   it("labels week-over-week spikes as naik, not wow", () => {
-    const review: WeeklyReview = {
-      offset: 0,
-      label: "26/10–01/11/2026",
-      start: new Date().toISOString(),
-      end: new Date().toISOString(),
-      expenses: 3_224_000,
-      prevExpenses: 8_000_000,
-      expenseChangePercent: -61,
-      topCategories: [],
+    const review = emptyReview({
       overCategories: [
         {
           categoryId: "1",
@@ -109,14 +151,22 @@ describe("formatWeeklyReportWaText tags", () => {
           topItems: [{ label: "kopi nako bogor", amount: 114_600 }],
         },
       ],
-      advice: [],
-      currency: "IDR",
-      daysLeftInMonth: 20,
-    };
+    });
 
     const text = formatWeeklyReportWaText(review);
     expect(text).toContain("[naik]");
     expect(text).not.toContain("[wow]");
     expect(text).toContain("turun 61% vs minggu lalu · lebih hemat");
+  });
+
+  it("mentions CC headroom pool when present", () => {
+    const text = formatWeeklyReportWaText(
+      emptyReview({
+        ccHeadroom: 900_000,
+        weeklyCcPool: 300_000,
+      })
+    );
+    expect(text).toContain("Sisa limit CC");
+    expect(text).toContain("debit/QRIS cadangan");
   });
 });

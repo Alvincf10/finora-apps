@@ -67,7 +67,8 @@ export async function applyWeeklyBudgetSuggestions(
   const seen = new Set<string>();
 
   for (const tip of review.advice) {
-    if (tip.suggestedWeeklyAmount == null || tip.suggestedWeeklyAmount <= 0) {
+    // null = pacing tip only; 0 = hard stop (e.g. CC headroom habis).
+    if (tip.suggestedWeeklyAmount == null || tip.suggestedWeeklyAmount < 0) {
       skipped += 1;
       continue;
     }
@@ -88,7 +89,7 @@ export async function applyWeeklyBudgetSuggestions(
       continue;
     }
 
-    const weeklyAmount = Math.max(1, Math.round(tip.suggestedWeeklyAmount));
+    const weeklyAmount = Math.max(0, Math.round(tip.suggestedWeeklyAmount));
     const catName =
       byName.get(tip.categoryName.toLowerCase())?.name ?? tip.categoryName;
 

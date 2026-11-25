@@ -499,7 +499,7 @@ export const en = {
   budget: {
     title: "Budget",
     subtitle:
-      "Weekly category caps from the weekly report (Mon–Sun, until the next report).",
+      "Weekly category caps from remaining CC headroom (Mon–Sun report). Debit/QRIS is backup only.",
     add: "Add budget",
     setBudget: "Set budget",
     forPeriod: "Budget for payday month {month}/{year}",
@@ -916,7 +916,7 @@ export const en = {
     weeklySignalWow: "Up vs last",
     weeklyAdviceTitle: "Next-week advice",
     weeklyAdviceDesc:
-      "Concrete cut targets for lifestyle categories. Debt and fixed costs are not cut targets.",
+      "Caps from remaining debitMode CC headroom; debit/QRIS is backup only. Debt & fixed are not cut.",
     goldTitle: "Gold",
     goldHiddenBadge: "Hidden",
     goldSubtitle:

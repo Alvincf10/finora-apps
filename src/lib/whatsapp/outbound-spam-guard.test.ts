@@ -41,6 +41,8 @@ function sampleReview(): WeeklyReview {
     advice: [],
     currency: "IDR",
     daysLeftInMonth: 21,
+    ccHeadroom: null,
+    weeklyCcPool: null,
   };
 }
 

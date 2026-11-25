@@ -18,7 +18,7 @@ const WeeklyBudgetSchema = new Schema(
       ref: "Category",
       required: true,
     },
-    amount: { type: Number, required: true, min: 1 },
+    amount: { type: Number, required: true, min: 0 },
     currency: { type: String, enum: ["IDR", "EUR"], required: true },
   },
   { timestamps: true }

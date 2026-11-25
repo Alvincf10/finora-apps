@@ -504,7 +504,7 @@ export const id: Dictionary = {
   budget: {
     title: "Budget",
     subtitle:
-      "Plafon kategori per minggu dari saran Weekly Report (Sen–Min, sampai report berikutnya).",
+      "Plafon kategori per minggu dari sisa limit CC (Weekly Report Sen–Min). Debit/QRIS cadangan saja.",
     add: "Tambah budget",
     setBudget: "Atur budget",
     forPeriod: "Budget periode gaji {month}/{year}",
@@ -922,7 +922,7 @@ export const id: Dictionary = {
     weeklySignalWow: "Naik vs lalu",
     weeklyAdviceTitle: "Saran minggu depan",
     weeklyAdviceDesc:
-      "Target potong konkret per kategori hepi. Utang & fixed cost tidak disarankan dipotong.",
+      "Plafon dari sisa limit CC (debitMode); debit/QRIS cadangan saja. Utang & fixed tidak dipotong.",
     goldTitle: "Gold",
     goldHiddenBadge: "Hidden",
     goldSubtitle:

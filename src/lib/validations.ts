@@ -118,7 +118,7 @@ export const createWeeklyBudgetSchema = z.object({
     .optional(),
   offset: z.number().int().min(-52).max(1).optional(),
   categoryId: z.string().min(1),
-  amount: z.number().int().positive(),
+  amount: z.number().int().nonnegative(),
   currency: currencySchema,
 });
 

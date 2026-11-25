@@ -11,6 +11,17 @@ import {
   isCuttableCategory,
   meanPositive,
 } from "@/lib/financial/phase2-math";
+import { getCreditCardsForUser } from "@/lib/financial/credit-cards";
+import {
+  getPayCycleBounds,
+  getUserPaydayDay,
+} from "@/lib/financial/pay-cycle";
+import {
+  allocateWeeklyEnvelopesFromCc,
+  remainingCalendarWeeks,
+  sumDebitModeCcHeadroom,
+  type CcWeeklyEnvelopeName,
+} from "@/lib/financial/weekly-cc-envelopes";
 import type { Currency } from "@/types";
 
 /** Lifestyle envelopes we always surface in next-week advice. */
@@ -88,6 +99,13 @@ export type WeeklyReview = {
   advice: WeeklyAdvice[];
   currency: Currency;
   daysLeftInMonth: number;
+  /**
+   * When debitMode CC exists: remaining available credit that funds next-week
+   * envelopes. Null = no debitMode card (history fallback).
+   */
+  ccHeadroom: number | null;
+  /** Weekly burn pool = ccHeadroom / weeks left in pay cycle. */
+  weeklyCcPool: number | null;
 };
 
 export function jakartaParts(date = new Date()) {
@@ -308,11 +326,17 @@ export function buildWeeklyEnvelopeAdvice(input: {
   weekAmount: number;
   weekAmounts: number[];
   currency: Currency;
+  /** When set (including 0), skip history suggestion — CC headroom path. */
+  forcedAmount?: number | null;
+  source?: "cc_headroom" | "history";
 }): { amount: number; message: string } {
-  const amount = suggestWeeklyEnvelopeBudget({
-    categoryName: input.categoryName,
-    weekAmounts: input.weekAmounts,
-  });
+  const amount =
+    input.forcedAmount != null
+      ? Math.max(0, Math.round(input.forcedAmount))
+      : suggestWeeklyEnvelopeBudget({
+          categoryName: input.categoryName,
+          weekAmounts: input.weekAmounts,
+        });
   const daily = Math.round(amount / 7);
   const vsThis =
     input.weekAmount > 0 ? input.weekAmount - amount : 0;
@@ -320,6 +344,20 @@ export function buildWeeklyEnvelopeAdvice(input: {
     vsThis > 0
       ? ` (minggu ini ${formatMoney(input.weekAmount, input.currency)} → hemat ~${formatMoney(vsThis, input.currency)})`
       : "";
+
+  if (input.source === "cc_headroom") {
+    if (amount <= 0) {
+      return {
+        amount: 0,
+        message: `${input.displayName}: sisa limit CC habis — budget minggu depan ${formatMoney(0, input.currency)}. Debit/QRIS hanya backup darurat.`,
+      };
+    }
+    return {
+      amount,
+      message: `${input.displayName}: budget minggu depan ${formatMoney(amount, input.currency)} dari sisa limit CC (~${formatMoney(daily, input.currency)}/hari)${trimPart}. Debit/QRIS cadangan saja.`,
+    };
+  }
+
   return {
     amount,
     message: `${input.displayName}: budget minggu depan ${formatMoney(amount, input.currency)} (~${formatMoney(daily, input.currency)}/hari)${trimPart}.`,
@@ -350,12 +388,15 @@ export async function getWeeklyReview(
   const prev = getWeekBounds(weekOffset - 1, now);
   const prev2 = getWeekBounds(weekOffset - 2, now);
 
-  const [weekAgg, prevByCat, prev2ByCat, accounts] = await Promise.all([
-    aggregateWeekExpenses(userId, week.start, week.end),
-    sumExpensesByCategory(userId, prev.start, prev.end),
-    sumExpensesByCategory(userId, prev2.start, prev2.end),
-    Account.find({ userId, isActive: true }).lean(),
-  ]);
+  const [weekAgg, prevByCat, prev2ByCat, accounts, paydayDay, cards] =
+    await Promise.all([
+      aggregateWeekExpenses(userId, week.start, week.end),
+      sumExpensesByCategory(userId, prev.start, prev.end),
+      sumExpensesByCategory(userId, prev2.start, prev2.end),
+      Account.find({ userId, isActive: true }).lean(),
+      getUserPaydayDay(userId),
+      getCreditCardsForUser(userId),
+    ]);
   const weekByCat = weekAgg.byCategory;
   const weekFixedByCat = weekAgg.fixedByCategory;
   const weekTopItems = weekAgg.topByCategory;
@@ -363,6 +404,12 @@ export async function getWeeklyReview(
   const currency = (accounts[0]?.currency as Currency) ?? "IDR";
   const expenses = totalOf(weekByCat);
   const prevExpenses = totalOf(prevByCat);
+
+  const { hasDebitMode, ccHeadroom } = sumDebitModeCcHeadroom(cards);
+  const cycle = getPayCycleBounds(paydayDay, now);
+  // Advice targets the week after the reviewed week.
+  const nextWeek = getWeekBounds(weekOffset + 1, now);
+  const weeksLeft = remainingCalendarWeeks(nextWeek.start, cycle.end);
 
   // Budgets for the month of this week's Monday
   const budgets = await Budget.find({
@@ -512,7 +559,39 @@ export async function getWeeklyReview(
     envelopeCats.map((c) => [String(c.name).toLowerCase(), c._id.toString()])
   );
 
+  // Recent mix for CC split (reviewed week preferred; fall back across 3 weeks).
+  const recentWeekAmounts = {} as Partial<
+    Record<CcWeeklyEnvelopeName, number>
+  >;
+  for (const envelopeName of WEEKLY_ENVELOPE_NAMES) {
+    const row = rows.find(
+      (r) => r.categoryName.toLowerCase() === envelopeName.toLowerCase()
+    );
+    const categoryId =
+      row?.categoryId ??
+      envelopeIdByName.get(envelopeName.toLowerCase()) ??
+      null;
+    const weekAmount = row?.weekAmount ?? 0;
+    const prevAmount = row?.prevWeekAmount ?? 0;
+    const prev2Amount = categoryId ? (prev2ByCat.get(categoryId) ?? 0) : 0;
+    recentWeekAmounts[envelopeName] =
+      weekAmount > 0
+        ? weekAmount
+        : prevAmount > 0
+          ? prevAmount
+          : prev2Amount;
+  }
+
+  const ccAlloc = hasDebitMode
+    ? allocateWeeklyEnvelopesFromCc({
+        ccHeadroom,
+        remainingWeeks: weeksLeft,
+        recentWeekAmounts,
+      })
+    : null;
+
   // Always lead with Food / Entertainment / Relationship weekly envelopes.
+  // Prefer CC headroom when a debitMode card exists; else history floors/caps.
   for (const envelopeName of WEEKLY_ENVELOPE_NAMES) {
     const row = rows.find(
       (r) => r.categoryName.toLowerCase() === envelopeName.toLowerCase()
@@ -530,6 +609,8 @@ export async function getWeeklyReview(
       weekAmount,
       weekAmounts: [prev2Amount, prevAmount, weekAmount],
       currency,
+      forcedAmount: ccAlloc ? ccAlloc.amounts[envelopeName] : null,
+      source: ccAlloc ? "cc_headroom" : "history",
     });
     advice.push({
       categoryId,
@@ -623,6 +704,8 @@ export async function getWeeklyReview(
     advice: advice.slice(0, 6),
     currency,
     daysLeftInMonth,
+    ccHeadroom: hasDebitMode ? ccHeadroom : null,
+    weeklyCcPool: ccAlloc ? ccAlloc.weeklyPool : null,
   };
 }
 
@@ -636,6 +719,11 @@ export function formatWeeklyReportWaText(review: WeeklyReview): string {
   lines.push(
     `Pengeluaran: ${formatMoney(review.expenses, c)} (${formatExpenseWowWaLabel(review.expenseChangePercent)})`
   );
+  if (review.ccHeadroom != null && review.weeklyCcPool != null) {
+    lines.push(
+      `Sisa limit CC: ${formatMoney(review.ccHeadroom, c)} → pool minggu ~${formatMoney(review.weeklyCcPool, c)} (debit/QRIS cadangan)`
+    );
+  }
 
   const overs = review.overCategories.slice(0, 5);
   if (overs.length === 0) {
