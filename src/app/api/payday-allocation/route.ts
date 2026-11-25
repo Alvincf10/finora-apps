@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const salary = input.salary ?? user?.monthlySalary ?? 0;
+    const salary = input.salary ?? 0;
     const startingCash = input.startingCash ?? 0;
     const envelopes = input.envelopes ?? [];
 
@@ -93,44 +93,13 @@ export async function POST(request: Request) {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    const allocated = doc.envelopes.reduce(
-      (s: number, e: { amount: number }) => s + e.amount,
-      0
+    // Return a fresh suggestion so fixed-reserve funding math stays in sync.
+    return ok(
+      await suggestPaydayAllocation(userId, new Date(), {
+        ignoreSaved: false,
+        target: resolved.target,
+      })
     );
-    const totalIn = doc.salary + doc.startingCash;
-
-    return ok({
-      id: doc._id.toString(),
-      cycle: {
-        start: cycle.start.toISOString(),
-        end: cycle.end.toISOString(),
-        paydayDay: cycle.paydayDay,
-        label: cycle.label,
-      },
-      target: resolved.target,
-      currentCycle: {
-        start: resolved.currentCycle.start.toISOString(),
-        end: resolved.currentCycle.end.toISOString(),
-        label: resolved.currentCycle.label,
-      },
-      nextCycle: {
-        start: resolved.nextCycle.start.toISOString(),
-        end: resolved.nextCycle.end.toISOString(),
-        label: resolved.nextCycle.label,
-      },
-      currency: doc.currency,
-      salary: doc.salary,
-      baseSalary: user?.monthlySalary ?? 0,
-      startingCash: doc.startingCash,
-      totalIn,
-      envelopes: doc.envelopes,
-      status: doc.status,
-      allocated,
-      remaining: totalIn - allocated,
-      configured: true,
-      existingId: doc._id.toString(),
-      existingStatus: doc.status,
-    });
   } catch (error) {
     return handleError(error);
   }

@@ -8,6 +8,7 @@ import {
 } from "@/lib/financial/credit-cards";
 import { resolveDebtDueWindowEnd } from "@/lib/financial/debts-due-split";
 import {
+  isDueOnFollowingPayday,
   resolveAllocationDebtWindow,
   resolvePaydayTargetCycle,
 } from "@/lib/financial/pay-cycle-bounds";
@@ -115,6 +116,15 @@ export function deriveMonthlyInstallment(debt: {
     debt.installmentMonths != null && debt.installmentMonths > 0
       ? debt.installmentMonths
       : null;
+
+  // Single-period payoff must track principal — stale plannedPayment
+  // (e.g. after editing originalAmount) must not under-charge payslip.
+  if (months === 1) {
+    return {
+      monthlyPayment: debt.remainingAmount,
+      installmentMonths: 1,
+    };
+  }
 
   const explicit = debt.plannedPayment ?? debt.minimumPayment ?? null;
   if (explicit != null && explicit > 0) {
@@ -420,5 +430,18 @@ export async function getDebtsDueThisMonth(
     debtWindow.end,
     preferredCurrency
   );
-  return { period, ...due };
+  const items = due.items.filter(
+    (d) => !isDueOnFollowingPayday(d.dueDate, debtTarget.cycle)
+  );
+  const totalDue = items.reduce((s, d) => s + d.dueAmount, 0);
+  const totalPaid = items.reduce((s, d) => s + d.paidAmount, 0);
+  const totalRemaining = items.reduce((s, d) => s + d.remainingDue, 0);
+  return {
+    period,
+    ...due,
+    items,
+    totalDue,
+    totalPaid,
+    totalRemaining,
+  };
 }

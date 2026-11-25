@@ -432,9 +432,9 @@ export const id: Dictionary = {
     openCrushPlan: "Lihat rencana lunas",
     salary: "Gaji aktual periode ini",
     salaryHint:
-      "Bisa diedit. Isi yang benar-benar masuk (bonus, lembur, dll). Tidak mengubah gaji rutin di Settings.",
-    baseSalary: "Gaji rutin di Settings: {amount}",
-    useBaseSalary: "Pakai gaji rutin",
+      "Isi manual nominal yang benar-benar masuk. Tidak diisi otomatis dari Settings.",
+    baseSalary: "Referensi Settings: {amount}",
+    useBaseSalary: "Isi dari referensi",
     startingCash: "Cash di tangan",
     totalIn: "Total tersedia",
     allocated: "Teralloaksi",
@@ -448,9 +448,13 @@ export const id: Dictionary = {
     stepDebtsDesc: "Harus dipotong dulu dari dana periode ini.",
     stepFixed: "2 · Fixed costs",
     stepFixedDesc:
-      "Ini daftar tagihan + tanggalnya — bukan bukti sudah bayar. Kalau dana sudah di ATM Fixed, biarkan saja; bayar per tanggal di menu Fixed costs (pilih ATM Fixed).",
+      "Daftar tagihan + tanggalnya. Cadangan ATM Fixed mendanai step ini — tandai lunas hanya setelah langganan benar-benar dibayar (menu Fixed costs).",
     stepFixedReserveHint:
-      "Cadangan di rekening Fixed: {amount} · cukup untuk total fixed periode ini. Jangan tandai lunas di sini kecuali sudah benar-benar bayar langganannya.",
+      "Cadangan Fixed: {amount}.",
+    stepFixedFunded:
+      "Sudah didanai cadangan {funded} · tidak memotong gaji/cash. Jangan centang lunas sebelum bayar langganannya.",
+    stepFixedShortfall:
+      "Cadangan Fixed {reserve} · kurang {shortfall} masih dari gaji/cash.",
     stepGoals: "3 · Goals / tabungan",
     stepGoalsDesc:
       "Saran dari kas bebas di rekening (setelah utang & fixed) — boleh naikin/turunin.",
@@ -582,9 +586,13 @@ export const id: Dictionary = {
       "Belum ada utang. Tambah utang, pilih tenor, lalu lihat cicilan periode ini.",
     emptyActive: "Tidak ada utang aktif. Yang sudah lunas ada di menu Histori.",
     historyTitle: "Histori",
-    historyDesc: "Utang yang sudah lunas atau dibatalkan.",
+    historyDesc:
+      "Utang yang sudah lunas atau dibatalkan, diurutkan dari yang baru dibayar.",
     historyEmpty: "Belum ada utang lunas.",
     historyCount: "{count} lunas / dibatalkan",
+    historyMonthCount: "{count} item",
+    historyMonthTotal: "Total",
+    historyPaidOn: "dibayar {date}",
     backToDebts: "Kembali ke utang",
     crushPlan: "Rencana lunas",
 

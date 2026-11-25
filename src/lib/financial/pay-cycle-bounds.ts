@@ -4,6 +4,7 @@ import {
   startOfDay,
   subDays,
 } from "date-fns";
+import { resolveDebtDueWindowEnd } from "@/lib/financial/debts-due-split";
 import { resolvePaydayInMonth } from "@/lib/financial/payday";
 
 /** Client-safe pay-cycle date helpers (no DB / mongoose imports). */
@@ -117,12 +118,45 @@ export function resolvePaydayTargetCycle(
   };
 }
 
-/** Debt dues funded by a given paycheck cycle: cycle start → cycle end. */
+/**
+ * Debt dues funded by a given paycheck cycle.
+ * Through cycle end, extended to that calendar month-end so late-month
+ * bills (e.g. kredivo 27) still clear from this payday — same rule as
+ * dashboard debt window.
+ *
+ * Pair with {@link isDueOnFollowingPayday}: the next payday's own dues
+ * (e.g. rupiah cepat 25 Des) stay out — they belong to that paycheck.
+ */
 export function resolveAllocationDebtWindow(cycle: {
   start: Date;
   end: Date;
 }): { start: Date; end: Date } {
-  return { start: cycle.start, end: cycle.end };
+  return {
+    start: cycle.start,
+    end: resolveDebtDueWindowEnd(cycle.end),
+  };
+}
+
+/** Calendar start of the payday that opens the cycle after `cycle`. */
+export function followingPaydayFromCycle(cycle: { end: Date }): Date {
+  const probe = startOfDay(new Date(cycle.end));
+  probe.setDate(probe.getDate() + 1);
+  return startOfDay(probe);
+}
+
+/**
+ * True when the due falls on the following payday — funded by that
+ * paycheck, not this one (even if month-end window spills past it).
+ */
+export function isDueOnFollowingPayday(
+  dueDate: Date | string | null | undefined,
+  cycle: { end: Date }
+): boolean {
+  if (!dueDate) return false;
+  return (
+    startOfDay(new Date(dueDate)).getTime() ===
+    followingPaydayFromCycle(cycle).getTime()
+  );
 }
 
 /**

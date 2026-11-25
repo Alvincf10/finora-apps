@@ -85,7 +85,7 @@ async function upsertAllocationEnvelopePaid(args: {
       cycleStart: cycle.start,
       cycleEnd: cycle.end,
       currency,
-      salary: args.input.salary ?? user?.monthlySalary ?? 0,
+      salary: args.input.salary ?? 0,
       startingCash: args.input.startingCash ?? 0,
       envelopes: (args.input.envelopes ?? []).map((e) => ({
         key: e.key,
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
         cycleStart: cycle.start,
         cycleEnd: cycle.end,
         currency,
-        salary: input.salary ?? user?.monthlySalary ?? 0,
+        salary: input.salary ?? 0,
         startingCash: input.startingCash ?? 0,
         envelopes: (input.envelopes ?? []).map((e) => ({
           key: e.key,

@@ -426,9 +426,9 @@ export const en = {
     openCrushPlan: "Open crush plan",
     salary: "Actual salary this period",
     salaryHint:
-      "Editable. Use what you actually received (bonus, overtime, etc.). Does not change your base salary in Settings.",
-    baseSalary: "Base in Settings: {amount}",
-    useBaseSalary: "Use base salary",
+      "Enter the amount you actually received. Not auto-filled from Settings.",
+    baseSalary: "Settings reference: {amount}",
+    useBaseSalary: "Fill from reference",
     startingCash: "Cash on hand",
     totalIn: "Total available",
     allocated: "Allocated",
@@ -442,9 +442,12 @@ export const en = {
     stepDebtsDesc: "Must clear first from this period's money.",
     stepFixed: "2 · Fixed costs",
     stepFixedDesc:
-      "This is the bill list + due dates — not proof of payment. If cash is already in ATM Fixed, leave it; pay on each due date from Fixed costs (choose ATM Fixed).",
-    stepFixedReserveHint:
-      "Fixed reserve account: {amount} · covers this period's fixed total. Don’t mark paid here unless you actually paid the subscription.",
+      "Bill list + due dates. ATM Fixed reserve funds this step — mark paid only after you actually pay each subscription (Fixed costs menu).",
+    stepFixedReserveHint: "Fixed reserve: {amount}.",
+    stepFixedFunded:
+      "Funded by reserve {funded} · does not reduce salary/cash. Don’t mark paid until you pay the subscription.",
+    stepFixedShortfall:
+      "Fixed reserve {reserve} · still need {shortfall} from salary/cash.",
     stepGoals: "3 · Goals / savings",
     stepGoalsDesc:
       "Suggested from free cash in accounts (after debts & fixed) — raise or lower as you like.",
@@ -577,9 +580,12 @@ export const en = {
       "No debts yet. Add a debt, pick a tenor, then see this period’s installment.",
     emptyActive: "No active debts. Paid ones are in the History menu.",
     historyTitle: "History",
-    historyDesc: "Paid off and cancelled debts.",
+    historyDesc: "Paid off and cancelled debts, newest payments first.",
     historyEmpty: "No paid debts yet.",
     historyCount: "{count} paid / cancelled",
+    historyMonthCount: "{count} items",
+    historyMonthTotal: "Total",
+    historyPaidOn: "paid {date}",
     backToDebts: "Back to debts",
     crushPlan: "Crush plan",
 

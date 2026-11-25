@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/client-api";
 import {
-  countsAgainstCashTotal,
-  sumCashAllocated,
-} from "@/lib/financial/payday-leftover";
+  resolveFixedReserveFunding,
+  sumCashAllocatedWithFixedFunding,
+  sumUnpaidFixedAmount,
+} from "@/lib/financial/payday-fixed-funding";
+import { countsAgainstCashTotal } from "@/lib/financial/payday-leftover";
 import { formatMoney, fromMinorUnits, toMinorUnits } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { Currency } from "@/types";
@@ -66,6 +68,14 @@ type Allocation = {
   baseSalary: number;
   startingCash: number;
   suggestedStartingCash?: number;
+  fixedReserveBalance?: number;
+  fixedFunding?: {
+    reserve: number;
+    fixedTotal: number;
+    fundedAmount: number;
+    shortfall: number;
+    fullyFunded: boolean;
+  };
   totalIn: number;
   envelopes: Envelope[];
   allocated: number;
@@ -250,13 +260,35 @@ export default function PaydayAllocationPage() {
   const currency = data?.currency ?? "IDR";
   const money = (n: number) => formatMoney(n, currency, intlLocale);
   const totalIn = salary + startingCash;
-  const allocated = useMemo(() => sumCashAllocated(envelopes), [envelopes]);
+  const fixedFunding = useMemo(() => {
+    const reserve =
+      data?.fixedReserveBalance ??
+      data?.fixedFunding?.reserve ??
+      fixedReserveBalance;
+    const unpaid = sumUnpaidFixedAmount(envelopes);
+    return resolveFixedReserveFunding(reserve, unpaid);
+  }, [
+    data?.fixedFunding?.reserve,
+    data?.fixedReserveBalance,
+    envelopes,
+    fixedReserveBalance,
+  ]);
+  const allocated = useMemo(
+    () =>
+      sumCashAllocatedWithFixedFunding(
+        envelopes,
+        fixedFunding,
+        countsAgainstCashTotal
+      ),
+    [envelopes, fixedFunding]
+  );
   const paidAllocated = useMemo(
     () =>
       envelopes
         .filter(
           (e) =>
             countsAgainstCashTotal(e.kind) &&
+            e.kind !== "FIXED" &&
             (e.paid || e.paymentTransactionId)
         )
         .reduce((s, e) => s + e.amount, 0),
@@ -284,10 +316,14 @@ export default function PaydayAllocationPage() {
     let running = totalIn;
     return STEP_ORDER.map((id) => {
       const items = grouped[id];
-      const cashTotal = items
-        .filter((e) => countsAgainstCashTotal(e.kind))
-        .reduce((s, e) => s + e.amount, 0);
-      const total = items.reduce((s, e) => s + e.amount, 0);
+      const displayTotal = items.reduce((s, e) => s + e.amount, 0);
+      // Fixed only spends salary/cash for the uncovered shortfall.
+      const cashTotal =
+        id === "fixed"
+          ? fixedFunding.shortfall
+          : items
+              .filter((e) => countsAgainstCashTotal(e.kind))
+              .reduce((s, e) => s + e.amount, 0);
       const before = running;
       running -= cashTotal;
       // Only lock when prior steps already used up all available cash.
@@ -304,7 +340,7 @@ export default function PaydayAllocationPage() {
       return {
         id,
         items,
-        total,
+        total: displayTotal,
         cashTotal,
         before,
         after: running,
@@ -312,7 +348,7 @@ export default function PaydayAllocationPage() {
         share,
       };
     }).filter((s) => s.id !== "other" || s.items.length > 0);
-  }, [envelopes, totalIn]);
+  }, [envelopes, fixedFunding.shortfall, totalIn]);
 
   function updateAmount(key: string, major: number) {
     const amount = toMinorUnits(major, currency);
@@ -739,7 +775,10 @@ export default function PaydayAllocationPage() {
                 setSalary(toMinorUnits(Number(v) || 0, currency))
               }
             />
-            {data?.baseSalary != null ? (
+            <p className="text-[11px] text-muted-foreground">
+              {t("paydayAllocation.salaryHint")}
+            </p>
+            {data?.baseSalary != null && data.baseSalary > 0 ? (
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span>
                   {t("paydayAllocation.baseSalary", {
@@ -850,11 +889,29 @@ export default function PaydayAllocationPage() {
                           <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">
                             {stepDesc(step.id)}
                           </p>
-                          {step.id === "fixed" && fixedReserveBalance > 0 ? (
-                            <p className="mt-1 text-[11px] text-violet-700 dark:text-violet-300">
-                              {t("paydayAllocation.stepFixedReserveHint", {
-                                amount: money(fixedReserveBalance),
-                              })}
+                          {step.id === "fixed" &&
+                          (fixedFunding.reserve > 0 ||
+                            fixedFunding.fixedTotal > 0) ? (
+                            <p
+                              className={cn(
+                                "mt-1 text-[11px]",
+                                fixedFunding.shortfall === 0
+                                  ? "text-violet-700 dark:text-violet-300"
+                                  : "text-amber-700 dark:text-amber-300"
+                              )}
+                            >
+                              {fixedFunding.fixedTotal <= 0
+                                ? t("paydayAllocation.stepFixedReserveHint", {
+                                    amount: money(fixedFunding.reserve),
+                                  })
+                                : fixedFunding.shortfall === 0
+                                  ? t("paydayAllocation.stepFixedFunded", {
+                                      funded: money(fixedFunding.fundedAmount),
+                                    })
+                                  : t("paydayAllocation.stepFixedShortfall", {
+                                      reserve: money(fixedFunding.reserve),
+                                      shortfall: money(fixedFunding.shortfall),
+                                    })}
                             </p>
                           ) : null}
                           {step.id === "goals" && data?.goalAdvice ? (

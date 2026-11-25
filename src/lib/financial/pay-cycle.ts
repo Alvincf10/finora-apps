@@ -15,6 +15,7 @@ import {
 import { percent } from "@/lib/money";
 import {
   getPayCycleBounds,
+  isDueOnFollowingPayday,
   resolveAllocationDebtWindow,
   resolvePaydayTargetCycle,
   type PayCycleBounds,
@@ -26,6 +27,7 @@ export {
   getCycleProgress,
   getPayCycleBounds,
   getPayCycleForPeriod,
+  isDueOnFollowingPayday,
   periodFromDate,
   resolveAllocationDebtWindow,
   resolvePaydayTargetCycle,
@@ -194,13 +196,13 @@ async function getPayCycleBufferUncached(
     .select("salary")
     .lean();
 
-  // Prefer cycle override from Alokasi gajian when saved; else Settings base.
-  // Settings salary is planning only — actual deposit is a manual INCOME tx.
+  // Only count salary the user typed into Alokasi gajian for this cycle.
+  // Settings.monthlySalary is reference-only — never invent paycheck cash.
   const salaryFromAllocation =
     allocation != null && typeof allocation.salary === "number";
   const monthlySalary = salaryFromAllocation
     ? Math.max(0, allocation!.salary)
-    : baseSalary;
+    : 0;
 
   const [accounts, transactions, debtsDue, fixedCosts] = await Promise.all([
     Account.find({ userId, isActive: true }).lean(),
@@ -265,7 +267,13 @@ async function getPayCycleBufferUncached(
   }
   startingBalance = Math.max(0, startingBalance);
 
-  const debtRemaining = debtsDue.totalRemaining;
+  // Drop following-payday dues (e.g. 25 Des) — funded by that paycheck.
+  const debtItems = debtsDue.items.filter(
+    (d) => !isDueOnFollowingPayday(d.dueDate, debtTarget.cycle)
+  );
+  const debtDue = debtItems.reduce((s, d) => s + d.dueAmount, 0);
+  const debtPaid = debtItems.reduce((s, d) => s + d.paidAmount, 0);
+  const debtRemaining = debtItems.reduce((s, d) => s + d.remainingDue, 0);
   const fixedCostTotal = fixedCosts.total;
   // monthlySalary covers the paycheck; salaryIncomeLogged is only for cash reconstruction.
   const buffer =
@@ -285,10 +293,10 @@ async function getPayCycleBufferUncached(
     startingBalance,
     otherIncome,
     expenses,
-    debtDue: debtsDue.totalDue,
-    debtPaid: debtsDue.totalPaid,
+    debtDue,
+    debtPaid,
     debtRemaining,
-    debtItems: debtsDue.items,
+    debtItems,
     fixedCostTotal,
     fixedCostItems: fixedCosts.items,
     buffer,

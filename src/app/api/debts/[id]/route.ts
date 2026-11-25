@@ -54,12 +54,24 @@ export async function PATCH(request: Request, { params }: Params) {
     // Keep paid amount when correcting original principal.
     if (input.originalAmount !== undefined) {
       const paid = Math.max(0, debt.originalAmount - debt.remainingAmount);
+      const prevRemaining = debt.remainingAmount;
       debt.originalAmount = input.originalAmount;
       debt.remainingAmount = Math.max(0, input.originalAmount - paid);
       if (debt.remainingAmount === 0 && debt.status === "ACTIVE") {
         debt.status = "PAID";
       } else if (debt.remainingAmount > 0 && debt.status === "PAID") {
         debt.status = "ACTIVE";
+      }
+      // 1× tenor / planned that matched old remaining → keep in sync.
+      const singleShot =
+        debt.installmentMonths === 1 ||
+        (debt.plannedPayment != null && debt.plannedPayment === prevRemaining);
+      if (
+        singleShot &&
+        input.plannedPayment === undefined &&
+        debt.remainingAmount > 0
+      ) {
+        debt.plannedPayment = debt.remainingAmount;
       }
     }
 

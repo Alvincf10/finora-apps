@@ -5,6 +5,10 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/client-api";
+import {
+  groupDebtHistoryByMonth,
+  sumDebtHistoryMonthTotals,
+} from "@/lib/financial/debt-history";
 import { formatMoney } from "@/lib/money";
 import type { Currency, DebtKind } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -27,7 +31,7 @@ import {
 } from "@/components/ui/card";
 import { useI18n } from "@/components/i18n-provider";
 
-type Debt = {
+type HistoryDebt = {
   _id: string;
   name: string;
   kind?: DebtKind;
@@ -36,6 +40,8 @@ type Debt = {
   currency: Currency;
   status: string;
   dueDate?: string;
+  lastPaidAt: string | null;
+  sortAt: string;
 };
 
 function statusLabel(
@@ -50,19 +56,19 @@ function statusLabel(
 
 export default function DebtHistoryPage() {
   const { t, intlLocale } = useI18n();
-  const [debts, setDebts] = useState<Debt[]>([]);
+  const [debts, setDebts] = useState<HistoryDebt[]>([]);
   const [editOpen, setEditOpen] = useState<string | null>(null);
 
   const money = (amount: number, currency: Currency) =>
     formatMoney(amount, currency, intlLocale);
 
-  const historyDebts = useMemo(
-    () => debts.filter((d) => d.status === "PAID" || d.status === "CANCELLED"),
-    [debts]
+  const monthGroups = useMemo(
+    () => groupDebtHistoryByMonth(debts, intlLocale),
+    [debts, intlLocale]
   );
 
   async function load() {
-    const debtList = await api<Debt[]>("/api/debts");
+    const debtList = await api<HistoryDebt[]>("/api/debts/history");
     setDebts(debtList);
   }
 
@@ -70,7 +76,7 @@ export default function DebtHistoryPage() {
     load().catch((e) => toast.error(e.message));
   }, []);
 
-  async function onEdit(e: React.FormEvent<HTMLFormElement>, debt: Debt) {
+  async function onEdit(e: React.FormEvent<HTMLFormElement>, debt: HistoryDebt) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     try {
@@ -111,93 +117,142 @@ export default function DebtHistoryPage() {
         </div>
       </div>
 
-      {historyDebts.length === 0 ? (
+      {debts.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("debts.historyEmpty")}</p>
       ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">{t("debts.historyTitle")}</CardTitle>
-            <CardDescription>
-              {t("debts.historyCount", { count: historyDebts.length })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {historyDebts.map((debt) => (
-              <div
-                key={debt._id}
-                className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{debt.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Badge variant="outline" className="h-5 text-[10px]">
-                      {statusLabel(debt.status, t)}
-                    </Badge>
-                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                      {money(debt.originalAmount, debt.currency)}
-                    </span>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t("debts.historyCount", { count: debts.length })}
+          </p>
+          {monthGroups.map((group) => {
+            const totals = sumDebtHistoryMonthTotals(group.items);
+            return (
+            <Card key={group.key}>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-lg capitalize">
+                      {group.label}
+                    </CardTitle>
+                    <CardDescription>
+                      {t("debts.historyMonthCount", {
+                        count: group.items.length,
+                      })}
+                    </CardDescription>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {t("debts.historyMonthTotal")}
+                    </p>
+                    {totals.map((row) => (
+                      <p
+                        key={row.currency}
+                        className="font-mono text-sm font-semibold tabular-nums"
+                      >
+                        {money(row.total, row.currency as Currency)}
+                      </p>
+                    ))}
                   </div>
                 </div>
-                <Dialog
-                  open={editOpen === debt._id}
-                  onOpenChange={(v) => setEditOpen(v ? debt._id : null)}
-                >
-                  <DialogTrigger
-                    render={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 touch-manipulation"
-                      />
-                    }
-                  >
-                    {t("common.edit")}
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>
-                        {t("debts.editDebt", { name: debt.name })}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <form
-                      key={debt._id + debt.status + debt.name}
-                      className="space-y-3"
-                      onSubmit={(e) => onEdit(e, debt)}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {group.items.map((debt) => {
+                  const paidLabel = debt.lastPaidAt
+                    ? new Date(debt.lastPaidAt).toLocaleDateString(intlLocale, {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : null;
+                  return (
+                    <div
+                      key={debt._id}
+                      className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 px-3 py-2.5"
                     >
-                      <div className="space-y-2">
-                        <Label>{t("common.name")}</Label>
-                        <Input
-                          name="name"
-                          required
-                          defaultValue={debt.name}
-                        />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {debt.name}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="h-5 text-[10px]">
+                            {statusLabel(debt.status, t)}
+                          </Badge>
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                            {money(debt.originalAmount, debt.currency)}
+                          </span>
+                          {paidLabel ? (
+                            <span className="text-xs text-muted-foreground">
+                              {t("debts.historyPaidOn", { date: paidLabel })}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>{t("common.status")}</Label>
-                        <select
-                          name="status"
-                          className="flex h-9 w-full rounded-md border px-3 text-sm"
-                          defaultValue={debt.status}
+                      <Dialog
+                        open={editOpen === debt._id}
+                        onOpenChange={(v) => setEditOpen(v ? debt._id : null)}
+                      >
+                        <DialogTrigger
+                          render={
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="shrink-0 touch-manipulation"
+                            />
+                          }
                         >
-                          <option value="ACTIVE">
-                            {t("debts.statusActive")}
-                          </option>
-                          <option value="PAID">{t("debts.statusPaid")}</option>
-                          <option value="CANCELLED">
-                            {t("debts.statusCancelled")}
-                          </option>
-                        </select>
-                      </div>
-                      <Button type="submit" className="w-full">
-                        {t("debts.saveChanges")}
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+                          {t("common.edit")}
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>
+                              {t("debts.editDebt", { name: debt.name })}
+                            </DialogTitle>
+                          </DialogHeader>
+                          <form
+                            key={debt._id + debt.status + debt.name}
+                            className="space-y-3"
+                            onSubmit={(e) => onEdit(e, debt)}
+                          >
+                            <div className="space-y-2">
+                              <Label>{t("common.name")}</Label>
+                              <Input
+                                name="name"
+                                required
+                                defaultValue={debt.name}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>{t("common.status")}</Label>
+                              <select
+                                name="status"
+                                className="flex h-9 w-full rounded-md border px-3 text-sm"
+                                defaultValue={debt.status}
+                              >
+                                <option value="ACTIVE">
+                                  {t("debts.statusActive")}
+                                </option>
+                                <option value="PAID">
+                                  {t("debts.statusPaid")}
+                                </option>
+                                <option value="CANCELLED">
+                                  {t("debts.statusCancelled")}
+                                </option>
+                              </select>
+                            </div>
+                            <Button type="submit" className="w-full">
+                              {t("debts.saveChanges")}
+                            </Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );

@@ -50,6 +50,16 @@ describe("deriveMonthlyInstallment", () => {
     ).toBe(500_000);
   });
 
+  it("1× tenor uses remaining even if plannedPayment is stale", () => {
+    expect(
+      deriveMonthlyInstallment({
+        remainingAmount: 759_601,
+        plannedPayment: 649_601,
+        installmentMonths: 1,
+      })
+    ).toEqual({ monthlyPayment: 759_601, installmentMonths: 1 });
+  });
+
   it("divides by installmentMonths when no explicit payment", () => {
     expect(
       deriveMonthlyInstallment({

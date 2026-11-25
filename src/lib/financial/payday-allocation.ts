@@ -9,6 +9,7 @@ import { getDebtsDueInRange } from "@/lib/financial/debts-due";
 import { getFixedCostsInRange } from "@/lib/financial/fixed-costs";
 import { getFixedCostPaidIdsInCycle } from "@/lib/financial/record-fixed-cost-payment";
 import {
+  isDueOnFollowingPayday,
   resolveAllocationDebtWindow,
   resolvePaydayTargetCycle,
   type PaydayCycleTarget,
@@ -17,9 +18,15 @@ import {
   buildPaydayLeftoverEnvelopes,
   countsAgainstCashTotal,
   resolvePaydayLeftoverCash,
-  sumCashAllocated,
   type LeftoverEnvelope,
 } from "@/lib/financial/payday-leftover";
+import {
+  isFixedReserveAccountName,
+  resolveFixedReserveFunding,
+  sumCashAllocatedWithFixedFunding,
+  sumUnpaidFixedAmount,
+  type FixedReserveFunding,
+} from "@/lib/financial/payday-fixed-funding";
 import {
   filterGoalsWithGap,
   pickPriorityGoal,
@@ -28,7 +35,11 @@ import {
   assessPaydayCompleteness,
   type PaydayCompletenessResult,
 } from "@/lib/financial/debt-crush-plan";
+import { resolveManualCycleSalary } from "@/lib/financial/payday-salary";
 import type { AccountType, Currency } from "@/types";
+
+export { resolveManualCycleSalary } from "@/lib/financial/payday-salary";
+export type { FixedReserveFunding } from "@/lib/financial/payday-fixed-funding";
 
 export type AllocationEnvelope = {
   key: string;
@@ -65,6 +76,10 @@ export type PaydayAllocationSuggestion = {
   startingCash: number;
   /** Suggested cash from accounts (before any saved override). */
   suggestedStartingCash: number;
+  /** ATM Fixed (name match) balance — funds fixed bills without eating salary. */
+  fixedReserveBalance: number;
+  /** Coverage of unpaid FIXED envelopes by the fixed reserve. */
+  fixedFunding: FixedReserveFunding;
   totalIn: number;
   envelopes: AllocationEnvelope[];
   allocated: number;
@@ -142,7 +157,13 @@ export async function suggestPaydayAllocation(
 
   const spendableCash = accounts.reduce((sum, account) => {
     if (isLiabilityAccount(account.type as AccountType)) return sum;
-    if (/fixed/i.test(account.name ?? "")) return sum;
+    if (isFixedReserveAccountName(account.name)) return sum;
+    return sum + Math.max(0, account.currentBalance ?? 0);
+  }, 0);
+
+  const fixedReserveBalance = accounts.reduce((sum, account) => {
+    if (isLiabilityAccount(account.type as AccountType)) return sum;
+    if (!isFixedReserveAccountName(account.name)) return sum;
     return sum + Math.max(0, account.currentBalance ?? 0);
   }, 0);
 
@@ -150,11 +171,12 @@ export async function suggestPaydayAllocation(
   const pocketGoals = filterGoalsWithGap(activeGoals);
   const priority = pickPriorityGoal(pocketGoals);
 
+  // Same as spendable: Fixed reserve is not free cash for the split.
   let suggestedStartingCash = 0;
   for (const account of accounts) {
-    if (!isLiabilityAccount(account.type as AccountType)) {
-      suggestedStartingCash += Math.max(0, account.currentBalance);
-    }
+    if (isLiabilityAccount(account.type as AccountType)) continue;
+    if (isFixedReserveAccountName(account.name)) continue;
+    suggestedStartingCash += Math.max(0, account.currentBalance ?? 0);
   }
 
   const useSaved =
@@ -162,10 +184,7 @@ export async function suggestPaydayAllocation(
     existing?.envelopes &&
     existing.envelopes.length > 0;
 
-  // Cycle salary is flexible: saved override wins, else Settings base.
-  const salary = useSaved
-    ? (existing!.salary ?? baseSalary)
-    : baseSalary;
+  const salary = resolveManualCycleSalary(existing, useSaved);
   const startingCash = useSaved
     ? (existing!.startingCash ?? suggestedStartingCash)
     : suggestedStartingCash;
@@ -207,6 +226,8 @@ export async function suggestPaydayAllocation(
       continue;
     }
     if (debt.remainingDue <= 0) continue;
+    // Next payday's own dues (e.g. rupiah cepat 25 Des) → that paycheck.
+    if (isDueOnFollowingPayday(debt.dueDate, cycle)) continue;
     envelopes.push({
       key: `debt:${debt.debtId}`,
       label: debt.name,
@@ -248,8 +269,21 @@ export async function suggestPaydayAllocation(
     .filter((c) => c.debitMode)
     .reduce((sum, c) => sum + Math.max(0, c.available), 0);
 
+  function obligatedCashAmount(list: AllocationEnvelope[]): number {
+    const unpaidFixed = sumUnpaidFixedAmount(list);
+    const funding = resolveFixedReserveFunding(
+      fixedReserveBalance,
+      unpaidFixed
+    );
+    return sumCashAllocatedWithFixedFunding(
+      list,
+      funding,
+      countsAgainstCashTotal
+    );
+  }
+
   /**
-   * Split cash left after debts/CC/fixed:
+   * Split cash left after debts/CC/fixed shortfall:
    * goals → physical wallet → debit/QRIS. CC plafon is planning-only.
    */
   function buildLeftoverEnvelopes(
@@ -293,7 +327,7 @@ export async function suggestPaydayAllocation(
     }));
   }
 
-  const obligatedFresh = envelopes.reduce((s, e) => s + e.amount, 0);
+  const obligatedFresh = obligatedCashAmount(envelopes);
   envelopes.push(...buildLeftoverEnvelopes(obligatedFresh));
 
   let finalEnvelopes: AllocationEnvelope[] = envelopes;
@@ -399,10 +433,8 @@ export async function suggestPaydayAllocation(
       }
     }
 
-    const obligatedAmount = [...mergedObligated, ...freshFixed].reduce(
-      (s, e) => s + e.amount,
-      0
-    );
+    const obligatedList = [...mergedObligated, ...freshFixed];
+    const obligatedAmount = obligatedCashAmount(obligatedList);
     finalEnvelopes = [
       ...mergedObligated,
       ...freshFixed,
@@ -410,7 +442,15 @@ export async function suggestPaydayAllocation(
     ];
   }
 
-  const allocated = sumCashAllocated(finalEnvelopes);
+  const fixedFunding = resolveFixedReserveFunding(
+    fixedReserveBalance,
+    sumUnpaidFixedAmount(finalEnvelopes)
+  );
+  const allocated = sumCashAllocatedWithFixedFunding(
+    finalEnvelopes,
+    fixedFunding,
+    countsAgainstCashTotal
+  );
   const totalInFinal = salary + startingCash;
   const goalsEnvelope = finalEnvelopes.find((e) => e.kind === "GOALS");
 
@@ -456,11 +496,14 @@ export async function suggestPaydayAllocation(
     baseSalary,
     startingCash,
     suggestedStartingCash,
+    fixedReserveBalance,
+    fixedFunding,
     totalIn: totalInFinal,
     envelopes: finalEnvelopes,
     allocated,
     remaining: totalInFinal - allocated,
-    configured: baseSalary > 0 || salary > 0,
+    // Always editable — salary is typed in on this page, not gated by Settings.
+    configured: true,
     existingId: existing?._id?.toString() ?? null,
     existingStatus:
       (existing?.status as PaydayAllocationSuggestion["existingStatus"]) ??
