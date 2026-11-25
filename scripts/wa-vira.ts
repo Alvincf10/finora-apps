@@ -12,10 +12,17 @@ import makeWASocket, {
   useMultiFileAuthState,
   type WASocket,
   type WAMessage,
+  type AnyMessageContent,
+  type MiscMessageGenerationOptions,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import pino from "pino";
 import mongoose from "mongoose";
+import {
+  bindGetMessage,
+  createRecentMessageStore,
+  type RecentMessageStore,
+} from "../src/lib/whatsapp/recent-message-store";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
@@ -29,6 +36,8 @@ type Active = {
   userId: string;
   sock: WASocket;
   stopping: boolean;
+  /** Outbound content for Baileys retry / "Waiting for this message" fix. */
+  recentMessages: RecentMessageStore;
 };
 
 const active = new Map<string, Active>();
@@ -70,18 +79,62 @@ function messagePhoneCandidates(msg: WAMessage): string[] {
   return [...out];
 }
 
+/** Unwrap text like Spidernet — covers ephemeral / view-once / captions. */
 function extractText(msg: WAMessage): string {
-  const m = msg.message;
-  if (!m) return "";
-  if (m.conversation) return m.conversation;
-  if (m.extendedTextMessage?.text) return m.extendedTextMessage.text;
-  if (m.ephemeralMessage?.message?.conversation) {
-    return m.ephemeralMessage.message.conversation;
+  return unwrapWaText(msg.message);
+}
+
+function unwrapWaText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const m = payload as Record<string, unknown>;
+
+  if (typeof m.conversation === "string" && m.conversation.trim()) {
+    return m.conversation.trim();
   }
-  if (m.ephemeralMessage?.message?.extendedTextMessage?.text) {
-    return m.ephemeralMessage.message.extendedTextMessage.text;
+
+  const extended = m.extendedTextMessage as { text?: string } | undefined;
+  if (extended?.text?.trim()) return extended.text.trim();
+
+  const image = m.imageMessage as { caption?: string } | undefined;
+  if (image?.caption?.trim()) return image.caption.trim();
+
+  const video = m.videoMessage as { caption?: string } | undefined;
+  if (video?.caption?.trim()) return video.caption.trim();
+
+  const doc = m.documentMessage as { caption?: string } | undefined;
+  if (doc?.caption?.trim()) return doc.caption.trim();
+
+  for (const key of [
+    "ephemeralMessage",
+    "viewOnceMessage",
+    "viewOnceMessageV2",
+    "viewOnceMessageV2Extension",
+    "documentWithCaptionMessage",
+  ]) {
+    const nested = m[key] as { message?: unknown } | undefined;
+    if (nested?.message) {
+      const inner = unwrapWaText(nested.message);
+      if (inner) return inner;
+    }
   }
+
   return "";
+}
+
+/**
+ * sendMessage + remember content so Baileys can answer retry requests
+ * (same role as Spidernet Baileys 7 enableRecentMessageCache).
+ */
+async function sendTracked(
+  sock: WASocket,
+  store: RecentMessageStore,
+  jid: string,
+  content: AnyMessageContent,
+  options?: MiscMessageGenerationOptions
+) {
+  const sent = await sock.sendMessage(jid, content, options);
+  store.remember(sent?.key?.id, sent?.message as Record<string, unknown> | undefined);
+  return sent;
 }
 
 async function connectMongo() {
@@ -172,6 +225,10 @@ async function stopSocket(userId: string, logout: boolean) {
   if (!entry) return;
   entry.stopping = true;
   try {
+    // Match Spidernet endSocket: drop listeners before close to avoid double-fire.
+    entry.sock.ev.removeAllListeners("connection.update");
+    entry.sock.ev.removeAllListeners("creds.update");
+    entry.sock.ev.removeAllListeners("messages.upsert");
     if (logout) {
       await entry.sock.logout();
     } else {
@@ -180,6 +237,7 @@ async function stopSocket(userId: string, logout: boolean) {
   } catch (err) {
     logger.warn({ err, userId }, "error while stopping socket");
   }
+  entry.recentMessages.clear();
   active.delete(userId);
   starting.delete(userId);
 }
@@ -220,7 +278,10 @@ async function startSocket(userId: string, mods: AppModules) {
     mkdirSync(authDir(userId), { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(authDir(userId));
     const { version } = await fetchLatestBaileysVersion();
+    const recentMessages = createRecentMessageStore({ maxEntries: 200 });
 
+    // Socket options aligned with Spidernet (whatsapp.service.ts): no history
+    // sync + getMessage store so peers do not stick on "Waiting for this message".
     const sock = makeWASocket({
       version,
       auth: state,
@@ -230,9 +291,11 @@ async function startSocket(userId: string, mods: AppModules) {
       printQRInTerminal: false,
       syncFullHistory: false,
       markOnlineOnConnect: false,
+      shouldSyncHistoryMessage: () => false,
+      getMessage: bindGetMessage(recentMessages),
     });
 
-    const entry: Active = { userId, sock, stopping: false };
+    const entry: Active = { userId, sock, stopping: false, recentMessages };
     active.set(userId, entry);
 
     sock.ev.on("creds.update", saveCreds);
@@ -333,11 +396,12 @@ async function startSocket(userId: string, mods: AppModules) {
     });
 
     sock.ev.on("messages.upsert", async (event) => {
-      if (event.type !== "notify" && event.type !== "append") return;
+      // Spidernet only handles notify — skip append/history echoes.
+      if (event.type !== "notify") return;
 
       for (const msg of event.messages) {
         try {
-          await handleMessage(userId, sock, msg, mods);
+          await handleMessage(userId, sock, msg, mods, recentMessages);
         } catch (err) {
           logger.error({ err, userId }, "message handler failed");
         }
@@ -389,7 +453,8 @@ async function handleMessage(
   userId: string,
   sock: WASocket,
   msg: WAMessage,
-  mods: AppModules
+  mods: AppModules,
+  recentMessages: RecentMessageStore
 ) {
   const jid = msg.key.remoteJid;
   if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
@@ -446,14 +511,16 @@ async function handleMessage(
     lower === "?" ||
     lower === "menu"
   ) {
-    await sock.sendMessage(jid, { text: mods.getViraHelpText() });
+    await sendTracked(sock, recentMessages, jid, {
+      text: mods.getViraHelpText(),
+    });
     return;
   }
 
   // Deterministic /saldo — no LLM (Phase 1)
   if (mods.parseBalanceQuery(body)) {
     const reply = await mods.buildBalanceReply(userId);
-    await sock.sendMessage(jid, { text: reply });
+    await sendTracked(sock, recentMessages, jid, { text: reply });
     await patchSession(mods.WhatsAppSession, userId, {
       lastMessageAt: new Date(),
     });
@@ -463,7 +530,7 @@ async function handleMessage(
   if (mods.parseWeeklyReportQuery(body)) {
     const review = await mods.getWeeklyReview(userId, 0);
     const reply = mods.formatWeeklyReportWaText(review);
-    await sock.sendMessage(jid, { text: reply });
+    await sendTracked(sock, recentMessages, jid, { text: reply });
     await patchSession(mods.WhatsAppSession, userId, {
       lastMessageAt: new Date(),
     });
@@ -473,7 +540,7 @@ async function handleMessage(
   const totalsQuery = mods.parseTotalsQuery(body);
   if (totalsQuery) {
     const reply = await mods.buildTotalsReply(userId, totalsQuery);
-    await sock.sendMessage(jid, { text: reply });
+    await sendTracked(sock, recentMessages, jid, { text: reply });
     await patchSession(mods.WhatsAppSession, userId, {
       lastMessageAt: new Date(),
     });
@@ -483,7 +550,7 @@ async function handleMessage(
   const parsed = mods.parseMoneyMessage(body);
   if (!parsed) {
     // Prefixed but not understood — guide user (OpenClaw already skipped)
-    await sock.sendMessage(jid, {
+    await sendTracked(sock, recentMessages, jid, {
       text: `Vira · format tidak dikenali. Contoh: ${mods.formatPrefixExamples()}`,
     });
     return;
@@ -495,13 +562,13 @@ async function handleMessage(
     parsed.accountHint ?? null
   );
   if (!resolved.ok) {
-    await sock.sendMessage(jid, { text: resolved.error });
+    await sendTracked(sock, recentMessages, jid, { text: resolved.error });
     return;
   }
   const account = resolved.account;
 
   if (account.currency !== parsed.currency) {
-    await sock.sendMessage(jid, {
+    await sendTracked(sock, recentMessages, jid, {
       text: `Vira · parser IDR, rekening kamu ${account.currency}.`,
     });
     return;
@@ -513,7 +580,7 @@ async function handleMessage(
     parsed.categoryHint
   );
   if (!categoryId) {
-    await sock.sendMessage(jid, {
+    await sendTracked(sock, recentMessages, jid, {
       text: "Vira · kategori tidak ditemukan. Seed kategori dulu lewat app.",
     });
     return;
@@ -566,7 +633,7 @@ async function handleMessage(
     }
   }
 
-  await sock.sendMessage(jid, { text: reply });
+  await sendTracked(sock, recentMessages, jid, { text: reply });
 
   logger.info(
     { userId, txId: String(tx._id), amount: parsed.amount },
@@ -577,7 +644,8 @@ async function handleMessage(
 async function flushOutbound(
   userId: string,
   sock: WASocket,
-  mods: AppModules
+  mods: AppModules,
+  recentMessages: RecentMessageStore
 ) {
   const pending = await mods.WhatsAppOutbound.find({
     userId,
@@ -601,7 +669,9 @@ async function flushOutbound(
       continue;
     }
     try {
-      await sock.sendMessage(`${phone}@s.whatsapp.net`, { text: msg.body });
+      await sendTracked(sock, recentMessages, `${phone}@s.whatsapp.net`, {
+        text: msg.body,
+      });
       // updateOne status only — never msg.save() (stale kind enum → pending loop)
       await markOutboundSent(mods.WhatsAppOutbound, msg._id);
       logger.info(
@@ -753,7 +823,7 @@ async function tick(mods: AppModules) {
       });
       const entry = active.get(userId);
       if (entry && !entry.stopping) {
-        await flushOutbound(userId, entry.sock, mods);
+        await flushOutbound(userId, entry.sock, mods, entry.recentMessages);
       }
     }
   }
