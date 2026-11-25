@@ -24,6 +24,10 @@ import {
   filterGoalsWithGap,
   pickPriorityGoal,
 } from "@/lib/financial/priority-goal";
+import {
+  assessPaydayCompleteness,
+  type PaydayCompletenessResult,
+} from "@/lib/financial/debt-crush-plan";
 import type { AccountType, Currency } from "@/types";
 
 export type AllocationEnvelope = {
@@ -75,6 +79,8 @@ export type PaydayAllocationSuggestion = {
     reason: string;
     suggestedAmount: number;
   } | null;
+  /** Raw saved envelopes vs auto obligations (P0 completeness). */
+  completeness: PaydayCompletenessResult;
 };
 
 /**
@@ -408,6 +414,25 @@ export async function suggestPaydayAllocation(
   const totalInFinal = salary + startingCash;
   const goalsEnvelope = finalEnvelopes.find((e) => e.kind === "GOALS");
 
+  const completeness = assessPaydayCompleteness({
+    salary: existing?.salary ?? salary,
+    startingCash: existing?.startingCash ?? startingCash,
+    expected: envelopes.map((e) => ({
+      key: e.key,
+      label: e.label,
+      amount: e.amount,
+      kind: e.kind,
+    })),
+    saved: (existing?.envelopes ?? []).map(
+      (e: { key: string; label: string; amount: number; kind?: string }) => ({
+        key: e.key,
+        label: e.label,
+        amount: e.amount,
+        kind: e.kind ?? "OTHER",
+      })
+    ),
+  });
+
   return {
     cycle: {
       start: cycle.start.toISOString(),
@@ -449,5 +474,6 @@ export async function suggestPaydayAllocation(
             suggestedAmount: goalsEnvelope.amount,
           }
         : null,
+    completeness,
   };
 }

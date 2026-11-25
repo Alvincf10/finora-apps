@@ -418,6 +418,12 @@ export default function DebtsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
+            render={<Link href="/debts/crush" />}
+          >
+            {t("debts.crushPlan")}
+          </Button>
+          <Button
+            variant="outline"
             render={<Link href="/debts/history" />}
           >
             {t("debts.historyTitle")}

@@ -43,7 +43,7 @@ export function AlertsBell({ className }: { className?: string }) {
       href="/alerts"
       className={cn(
         buttonVariants({ variant: "outline", size: "icon" }),
-        "relative size-10 shrink-0 touch-manipulation",
+        "relative size-10 shrink-0 touch-manipulation md:rounded-lg",
         className
       )}
       aria-label={
@@ -52,12 +52,12 @@ export function AlertsBell({ className }: { className?: string }) {
           : t("nav.alerts")
       }
     >
-      <Bell className="size-4" />
+      <Bell className="size-5 md:size-4" />
       {visibleCount > 0 ? (
         <span
           className={cn(
-            "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white",
-            hasCritical ? "bg-rose-600" : "bg-amber-600"
+            "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-primary-foreground",
+            hasCritical ? "bg-destructive" : "bg-tertiary"
           )}
         >
           {visibleCount > 9 ? "9+" : visibleCount}

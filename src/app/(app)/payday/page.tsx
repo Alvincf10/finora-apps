@@ -79,6 +79,13 @@ type Allocation = {
     reason: string;
     suggestedAmount: number;
   } | null;
+  completeness?: {
+    ok: boolean;
+    score: number;
+    utilizationPct: number;
+    issues: string[];
+    missingLabels: string[];
+  };
 };
 
 type StepId = "debts" | "fixed" | "buffer" | "fun" | "goals" | "other";
@@ -600,6 +607,37 @@ export default function PaydayAllocationPage() {
                     label: data.currentCycle.label,
                   })}
             </p>
+            {data.completeness && !data.completeness.ok ? (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                <p className="font-medium text-destructive">
+                  {t("paydayAllocation.completenessWarn", {
+                    score: data.completeness.score,
+                  })}
+                </p>
+                {data.completeness.issues[0] ? (
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    {data.completeness.issues[0]}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={<Link href="/debts/crush" />}
+                  >
+                    {t("paydayAllocation.openCrushPlan")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={saving}
+                    onClick={() => onReset()}
+                  >
+                    {t("paydayAllocation.reset")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
